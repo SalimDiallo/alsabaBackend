@@ -5,7 +5,7 @@ ACCOUNT_SID = ''
 AUTH_TOKEN = ''
 
 # Initialise le client Twilio
-client = Client(ACCOUNT_SID, AUTH_TOKEN)
+#client = Client(ACCOUNT_SID, AUTH_TOKEN)
 
 # Envoie un message via WhatsApp sandbox
 message = client.messages.create(

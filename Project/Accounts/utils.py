@@ -213,7 +213,7 @@ ACCOUNT_SID = ''
 AUTH_TOKEN = ''
 # Fonction pour simulation SMS (développement)
 def simulate_sms_send(phone_number, otp_code, provider="TwiliSandbox"):
-    client = Client(ACCOUNT_SID, AUTH_TOKEN)
+    #client = Client(ACCOUNT_SID, AUTH_TOKEN)
     """
     Simule l'envoi d'un SMS (à remplacer par vrai service en production)
     
