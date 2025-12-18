@@ -1,0 +1,14 @@
+{
+  "phone_number": "781112533",
+  "country_code": "+221"
+}
+
+OTP = 653000
+
+git remote add origin https://github.com/SalimDiallo/alsabaBackend
+"tokens": {
+		"refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2NjYxMzgwMCwiaWF0IjoxNzY2MDA5MDAwLCJqdGkiOiJkOTVjZDc0YzMyNzY0M2QzYTZmNGIzYmNmMjc3YjI5NiIsInVzZXJfaWQiOiJiZTM5OTEzOC0zNjdmLTQ4MjUtOTA3Ni0zYjI4OTgxN2FhODYifQ.mBCNVXF00FcrzqsmiO4ca754YBJAjuHiSfZUMLpa6SM",
+		"access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY2MDEyNjAwLCJpYXQiOjE3NjYwMDkwMDAsImp0aSI6IjNhNDljODM2ZDNiNDQyZWZhZjQ4M2JkMmIwOWZhZjIzIiwidXNlcl9pZCI6ImJlMzk5MTM4LTM2N2YtNDgyNS05MDc2LTNiMjg5ODE3YWE4NiJ9.90CXaSkUpBC9eHmf9uMmoeleaAn_HNQyxfooX9qEb9Q",
+		"note": "Utilisez le token d'accès dans le header Authorization: Bearer <token>"
+	}
+Twilio
