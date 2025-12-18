@@ -2,9 +2,9 @@
 from twilio.rest import Client
 ACCOUNT_SID = ''
 AUTH_TOKEN = ''
-token = "f04d7bf315def2fc2b6ecf621c03397d"
+token = ""
 
-client = Client("AC9d786889771cf6122472d0d8739bc947", token)
+client = Client("", token)
 
 # Liste tes numéros Twilio
 numbers = client.incoming_phone_numbers.list()
