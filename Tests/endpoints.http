@@ -1,0 +1,373 @@
+### ===========================================
+### ALSABA Backend - API Endpoints Test File
+### ===========================================
+### Utilisez cette extension VS Code : "REST Client"
+### Ou IntelliJ/PyCharm avec "HTTP Client"
+### ===========================================
+
+### Variables globales
+@baseUrl = http://localhost:8000/api
+@contentType = application/json
+
+### Variables d'authentification (à remplir après login)
+@accessToken = VOTRE_ACCESS_TOKEN_ICI
+@refreshToken = VOTRE_REFRESH_TOKEN_ICI
+
+### ===========================================
+### 🔓 ENDPOINTS PUBLICS (Sans authentification)
+### ===========================================
+
+### -------------------------------------------
+### 1. Vérifier si un numéro de téléphone existe
+### -------------------------------------------
+# @name checkPhone
+POST {{baseUrl}}/accounts/check-phone/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "+221781234567",
+    "country_code": "SN"
+}
+
+### -------------------------------------------
+### 2. Authentification par téléphone (Login/Register)
+### Crée un compte si le numéro n'existe pas
+### Envoie un OTP pour vérification
+### -------------------------------------------
+# @name phoneAuth
+POST {{baseUrl}}/accounts/auth/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "+221781234567",
+    "country_code": "SN"
+}
+
+### -------------------------------------------
+### 3. Vérifier l'OTP et obtenir les tokens JWT
+### Utilisez le code OTP reçu (ou consultez debug/otps/)
+### -------------------------------------------
+# @name verifyOTP
+POST {{baseUrl}}/accounts/verify-otp/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "+221781234567",
+    "otp": "123456"
+}
+
+### -------------------------------------------
+### 4. 🔧 DEBUG - Voir tous les OTP actifs
+### ⚠️ À désactiver en production !
+### -------------------------------------------
+# @name debugOTPs
+GET {{baseUrl}}/accounts/debug/otps/
+Content-Type: {{contentType}}
+
+
+### ===========================================
+### 🔐 ENDPOINTS PROTÉGÉS (Authentification requise)
+### ===========================================
+### ⚠️ Remplacez @accessToken par le token reçu de verify-otp
+
+### -------------------------------------------
+### 5. Récupérer le profil utilisateur
+### -------------------------------------------
+# @name getProfile
+GET {{baseUrl}}/accounts/profile/
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+### -------------------------------------------
+### 6. Mettre à jour le profil (PATCH - partiel)
+### -------------------------------------------
+# @name updateProfile
+PATCH {{baseUrl}}/accounts/profile/
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+    "first_name": "Salim",
+    "last_name": "Diallo",
+    "email": "salim@example.com"
+}
+
+### -------------------------------------------
+### 7. Mettre à jour le profil - Seulement le prénom
+### -------------------------------------------
+# @name updateFirstName
+PATCH {{baseUrl}}/accounts/profile/
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+    "first_name": "Nouveau Prénom"
+}
+
+### -------------------------------------------
+### 8. Mettre à jour le profil - Seulement l'email
+### -------------------------------------------
+# @name updateEmail
+PATCH {{baseUrl}}/accounts/profile/
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+    "email": "nouveau@email.com"
+}
+
+
+### ===========================================
+### 📄 KYC - VÉRIFICATION D'IDENTITÉ
+### ===========================================
+
+### -------------------------------------------
+### 9. Récupérer les documents KYC de l'utilisateur
+### -------------------------------------------
+# @name getKYCDocuments
+GET {{baseUrl}}/accounts/kyc/submit/
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+### -------------------------------------------
+### 10. Soumettre un document KYC (version test sans images)
+### document_type: "passport", "national_id", "driver_license"
+### -------------------------------------------
+# @name submitKYC
+POST {{baseUrl}}/accounts/kyc/submit/
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+    "document_type": "national_id"
+}
+
+### -------------------------------------------
+### 11. Soumettre KYC avec passeport
+### -------------------------------------------
+# @name submitKYCPassport
+POST {{baseUrl}}/accounts/kyc/submit/
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+    "document_type": "passport"
+}
+
+### -------------------------------------------
+### 12. Soumettre KYC avec permis de conduire
+### -------------------------------------------
+# @name submitKYCDriverLicense
+POST {{baseUrl}}/accounts/kyc/submit/
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+    "document_type": "driver_license"
+}
+
+### -------------------------------------------
+### 13. Vérifier le statut KYC
+### -------------------------------------------
+# @name getKYCStatus
+GET {{baseUrl}}/accounts/kyc/status/
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+
+### ===========================================
+### 👤 GESTION DU COMPTE
+### ===========================================
+
+### -------------------------------------------
+### 14. Supprimer/Désactiver le compte
+### -------------------------------------------
+# @name deleteAccount
+DELETE {{baseUrl}}/accounts/delete-account/
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+    "confirmation": "DELETE MY ACCOUNT",
+    "refresh_token": "{{refreshToken}}"
+}
+
+
+### ===========================================
+### 🔄 SCÉNARIOS DE TEST COMPLETS
+### ===========================================
+
+### -------------------------------------------
+### SCÉNARIO 1 : Inscription complète d'un nouvel utilisateur
+### -------------------------------------------
+### Étape 1 : Vérifier si le numéro existe
+# @name scenario1_step1
+POST {{baseUrl}}/accounts/check-phone/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "+221771234568",
+    "country_code": "SN"
+}
+
+### Étape 2 : Initier l'authentification (créer compte + envoyer OTP)
+# @name scenario1_step2
+POST {{baseUrl}}/accounts/auth/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "+221771234568",
+    "country_code": "SN"
+}
+
+### Étape 3 : Récupérer l'OTP en mode debug
+# @name scenario1_step3
+GET {{baseUrl}}/accounts/debug/otps/
+
+### Étape 4 : Vérifier l'OTP (remplacez par le vrai code)
+# @name scenario1_step4
+POST {{baseUrl}}/accounts/verify-otp/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "+221771234568",
+    "otp": "REMPLACER_PAR_OTP_REEL"
+}
+
+### -------------------------------------------
+### SCÉNARIO 2 : Utilisateur existant qui se reconnecte
+### -------------------------------------------
+### Étape 1 : Authentification
+# @name scenario2_step1
+POST {{baseUrl}}/accounts/auth/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "+221781234568",
+    "country_code": "SN"
+}
+
+### Étape 2 : Récupérer l'OTP
+# @name scenario2_step2
+GET {{baseUrl}}/accounts/debug/otps/
+
+### -------------------------------------------
+### SCÉNARIO 3 : Compléter le profil après inscription
+### -------------------------------------------
+### Utilisez le token obtenu après verify-otp
+
+# @name scenario3_completeProfile
+PATCH {{baseUrl}}/accounts/profile/
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+    "first_name": "Salim",
+    "last_name": "Diallo",
+    "email": "salim.diallo@alsaba.com"
+}
+
+
+### ===========================================
+### ❌ TESTS D'ERREURS (Validation)
+### ===========================================
+
+### -------------------------------------------
+### Test : Numéro de téléphone invalide
+### -------------------------------------------
+# @name errorInvalidPhone
+POST {{baseUrl}}/accounts/auth/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "123",
+    "country_code": "SN"
+}
+
+### -------------------------------------------
+### Test : OTP incorrect
+### -------------------------------------------
+# @name errorWrongOTP
+POST {{baseUrl}}/accounts/verify-otp/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "+221781234567",
+    "otp": "000000"
+}
+
+### -------------------------------------------
+### Test : Accès sans token (devrait retourner 401)
+### -------------------------------------------
+# @name errorNoToken
+GET {{baseUrl}}/accounts/profile/
+Content-Type: {{contentType}}
+
+### -------------------------------------------
+### Test : Token invalide (devrait retourner 401)
+### -------------------------------------------
+# @name errorInvalidToken
+GET {{baseUrl}}/accounts/profile/
+Content-Type: {{contentType}}
+Authorization: Bearer invalid_token_here
+
+### -------------------------------------------
+### Test : Type de document KYC invalide
+### -------------------------------------------
+# @name errorInvalidKYCType
+POST {{baseUrl}}/accounts/kyc/submit/
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+    "document_type": "invalid_type"
+}
+
+### -------------------------------------------
+### Test : Email déjà utilisé
+### -------------------------------------------
+# @name errorDuplicateEmail
+PATCH {{baseUrl}}/accounts/profile/
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+    "email": "email.deja.utilise@example.com"
+}
+
+
+### ===========================================
+### 🔧 ADMIN - Django Admin
+### ===========================================
+
+### -------------------------------------------
+### Accéder à l'interface admin (ouvrir dans navigateur)
+### URL: http://localhost:8000/admin/
+### -------------------------------------------
+
+
+### ===========================================
+### 📝 NOTES
+### ===========================================
+###
+### 1. WORKFLOW D'AUTHENTIFICATION:
+###    check-phone → auth → debug/otps → verify-otp → [token obtenu]
+###
+### 2. TYPES DE DOCUMENTS KYC:
+###    - "passport"
+###    - "national_id"
+###    - "driver_license"
+###
+### 3. STATUTS KYC:
+###    - "unverified" : Non vérifié
+###    - "pending"    : En attente de vérification
+###    - "verified"   : Vérifié avec succès
+###    - "rejected"   : Rejeté
+###
+### 4. CODES DE PAYS SUPPORTÉS:
+###    - SN (Sénégal)
+###    - CI (Côte d'Ivoire)
+###    - ML (Mali)
+###    - etc.
+###
+### ===========================================

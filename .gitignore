@@ -240,6 +240,12 @@ node_modules/
 
 # Docker
 .docker/
+docker/postgres/data/
+docker/mysql/data/
+
+# Volumes Docker locaux
+**/data/
+!**/init/
 
 # Pytest
 .pytest_cache/

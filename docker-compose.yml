@@ -1,0 +1,87 @@
+# ===================================
+# Docker Compose - Django + PostgreSQL
+# ===================================
+
+services:
+  # Service PostgreSQL
+  db:
+    image: postgres:16-alpine
+    container_name: alsaba_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-alsaba_db}
+      POSTGRES_USER: ${POSTGRES_USER:-alsaba_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alsaba_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-alsaba_user} -d ${POSTGRES_DB:-alsaba_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - alsaba_network
+
+  # Service Django
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: alsaba_django
+    restart: unless-stopped
+    environment:
+      - DEBUG=${DEBUG:-True}
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-change-me-in-production}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - DATABASE_ENGINE=django.db.backends.postgresql
+      - DATABASE_NAME=${POSTGRES_DB:-alsaba_db}
+      - DATABASE_USER=${POSTGRES_USER:-alsaba_user}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-alsaba_password}
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./Project:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - alsaba_network
+
+  # Service pgAdmin (interface web pour PostgreSQL)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: alsaba_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@alsaba.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - alsaba_network
+
+# Volumes persistants
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
+  pgadmin_data:
+
+# Réseau
+networks:
+  alsaba_network:
+    driver: bridge
