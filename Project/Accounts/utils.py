@@ -209,8 +209,8 @@ def get_active_otps_count(user=None):
     
     return queryset.count()
 
-ACCOUNT_SID = 'AC9d786889771cf6122472d0d8739bc947'
-AUTH_TOKEN = 'f04d7bf315def2fc2b6ecf621c03397d'
+ACCOUNT_SID = ''
+AUTH_TOKEN = ''
 # Fonction pour simulation SMS (développement)
 def simulate_sms_send(phone_number, otp_code, provider="TwiliSandbox"):
     client = Client(ACCOUNT_SID, AUTH_TOKEN)
