@@ -5,6 +5,7 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import OTPCode, User
 from twilio.rest import Client
+import os
 def validate_phone_number(phone_number, country_code='+33'):
     """
     Valide un numéro de téléphone avec un code pays
@@ -209,31 +210,64 @@ def get_active_otps_count(user=None):
     
     return queryset.count()
 
-ACCOUNT_SID = ''
-AUTH_TOKEN = ''
+
 # Fonction pour simulation SMS (développement)
-def simulate_sms_send(phone_number, otp_code, provider="TwiliSandbox"):
-    client = Client(ACCOUNT_SID, AUTH_TOKEN)
+
+
+def send_sms_otp(phone_number, otp_code):
     """
-    Simule l'envoi d'un SMS (à remplacer par vrai service en production)
-    
+    Sends an SMS containing a one-time password (OTP) using Twilio.
+
     Args:
-        phone_number: Numéro de téléphone
-        otp_code: Code OTP
-        provider: Nom du fournisseur simulé
-    
+        phone_number (str): The recipient's phone number in E.164 format (e.g., '+12345678901').
+        otp_code (str): The OTP code to send.
+
     Returns:
-        dict: Informations sur l'envoi simulé
+        dict: A dictionary containing the result of the operation.
     """
-    message = client.messages.create(
-    from_='whatsapp:+14155238886',  # Numéro sandbox par défaut
-    body='Bonjour depuis le sandbox WhatsApp de Twilio ! 🚀',
-    to=f'whatsapp:{phone_number}'      # Ton numéro WhatsApp (avec indicatif)
-)
+    # 1. Get credentials from environment
+    account_sid = os.getenv('ACCOUNT_SID')
+    auth_token = os.getenv('AUTH_TOKEN')
     
-    return {
-        "success": True,
-        "provider": provider,
-        "phone_number": phone_number,
-        "timestamp": timezone.now().isoformat(),
-    }
+    # Validate that credentials exist
+    if not account_sid or not auth_token:
+        return {
+            "success": False,
+            "error": "Twilio credentials (ACCOUNT_SID, AUTH_TOKEN) are not configured in environment variables."
+        }
+    
+    # 2. Initialize the Twilio client
+    client = Client(account_sid, auth_token)
+    
+    # 3. Your Twilio phone number (REPLACE THIS)
+    twilio_phone_number = os.getenv('YOUR_TWILIO_NUMBER')  
+    
+    # 4. The message body containing the OTP
+    message_body = f"Your verification code is {otp_code}. It is valid for 10 minutes."
+    
+    try:
+        # 5. Send the SMS via Twilio API
+        message = client.messages.create(
+            body=message_body,
+            from_=twilio_phone_number,  # Your Twilio number
+            to=phone_number              # Recipient's number
+        )
+        
+        # 6. Return success information
+        return {
+            "success": True,
+            "provider": "Twilio SMS",
+            "phone_number": phone_number,
+            "message_sid": message.sid,
+            "timestamp": timezone.now().isoformat(),
+        }
+        
+    except Exception as e:
+        # 7. Return error information if sending fails
+        return {
+            "success": False,
+            "error": str(e),
+            "provider": "Twilio SMS",
+            "phone_number": phone_number,
+            "timestamp": timezone.now().isoformat(),
+        }

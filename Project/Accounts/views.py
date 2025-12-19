@@ -9,6 +9,7 @@ from django.utils import timezone
 from datetime import timedelta
 import random
 from .models import User, KYCDocument, OTPCode
+from django.contrib.auth import logout
 from .serializers import (
     PhoneNumberSerializer,
     UserProfileSerializer,
@@ -18,7 +19,7 @@ from .serializers import (
     PhoneAuthSerializer,
     OTPSerializer
 )
-from .utils import create_otp_for_user, validate_otp, simulate_sms_send
+from .utils import create_otp_for_user, send_sms_otp, validate_otp
 
 class CheckPhoneNumberView(APIView):
     """Vérifie si un numéro de téléphone existe déjà"""
@@ -413,45 +414,31 @@ class DeleteAccountView(APIView):
         if serializer.is_valid():
             user = request.user
             
-            # Ici on pourrait faire un "soft delete" au lieu d'une vraie suppression
-            # Pour l'instant, on désactive juste le compte
+            # Soft delete - on désactive le compte sans le supprimer
             user.is_active = False
             user.save()
             
-            # Supprimer les tokens JWT (en les ajoutant à une blacklist)
-            try:
-                refresh_token = request.data.get('refresh_token')
-                if refresh_token:
-                    token = RefreshToken(refresh_token)
-                    token.blacklist()
-            except Exception:
-                pass
+            # Optionnel : Déconnecter l'utilisateur de la session Django
+            from django.contrib.auth import logout
+            logout(request)
             
             return Response({
-                "message": "Compte désactivé avec succès"
+                "message": "Compte désactivé avec succès",
+                "note": "Votre compte a été désactivé. Vous pourrez le réactiver en contactant le support."
             }, status=status.HTTP_200_OK)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class LogoutView(APIView):
-    """Déconnexion - Blacklist le refresh token"""
+    """Déconnexion simple"""
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
-        try:
-            refresh_token = request.data.get("refresh")
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-            
-            return Response({
-                "message": "Déconnexion réussie"
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            return Response({
-                "error": "Token invalide ou expiré"
-            }, status=status.HTTP_400_BAD_REQUEST)
+        logout(request)
+        return Response({
+            "message": "Déconnecté avec succès"
+        }, status=status.HTTP_200_OK)
 # POUR L'AUTHENTIFICATION PAR TÉLÉPHONE ET OTP
            
 class PhoneAuthView(APIView):
@@ -488,7 +475,7 @@ class PhoneAuthView(APIView):
         otp_code = create_otp_for_user(user, expires_in_minutes=10)
         
         # Simuler l'envoi SMS (à remplacer en production)
-        sms_result = simulate_sms_send(
+        sms_result = send_sms_otp(
             phone_number=user.full_phone,
             otp_code=otp_code,
             provider="TwilioSandBox"
@@ -526,6 +513,7 @@ class PhoneAuthView(APIView):
             "note": "Utilisez /verify-otp/ avec le code reçu pour obtenir vos tokens d'accès"
         }, status=status.HTTP_200_OK)
 
+
 class VerifyOTPView(APIView):
     """Vérifier l'OTP et authentifier l'utilisateur"""
     permission_classes = [AllowAny]
@@ -546,10 +534,7 @@ class VerifyOTPView(APIView):
                 "error": message
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # MAINTENANT générer les tokens JWT (seulement après OTP vérifié)
-        refresh = RefreshToken.for_user(user)
-        
-        # MAINTENANT mettre à jour last_login (seulement après OTP vérifié)
+        # Mettre à jour last_login
         user.last_login = timezone.now()
         user.save()
         
@@ -564,24 +549,15 @@ class VerifyOTPView(APIView):
                 "kyc_status_display": user.get_kyc_status_display(),
                 "has_kyc_documents": user.kyc_documents.exists()
             },
-            "tokens": {
-                "refresh": str(refresh),
-                "access": str(refresh.access_token),
-                "note": "Utilisez le token d'accès dans le header Authorization: Bearer <token>"
-            },
+            "otp_verified": True,
             "kyc_info": {
                 "status": user.kyc_status,
                 "is_verified": user.is_verified,
                 "required": True,
                 "next_step": "complete-profile" if user.kyc_status == "unverified" else "ready"
-            },
-            "otp_verified": True,
-            "expires_in": {
-                "access_token": "1 heure",
-                "refresh_token": "7 jours"
             }
         }, status=status.HTTP_200_OK)
-# POUR DEBUG - À SUPPRIMER EN PRODUCTION
+#Pour le debug des OTP
 class DebugOTPView(APIView):
     """
     Vue de debug pour voir les OTP actifs
