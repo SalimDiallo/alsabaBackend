@@ -26,3 +26,8 @@ Port: 5432
 Database: alsaba_db
 Username: alsaba_user
 Password: alsaba_password
+Name: Alsba
+
+Master password for pgAdmin
+
+alsaba_master_password

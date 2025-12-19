@@ -8,25 +8,30 @@ set -e
 
 echo "🔄 Attente de la base de données PostgreSQL..."
 
-# Attendre que PostgreSQL soit prêt
-while ! nc -z ${DATABASE_HOST:-db} ${DATABASE_PORT:-5432}; do
-    echo "⏳ PostgreSQL n'est pas encore prêt - attente..."
+# Variables avec fallback
+HOST=${DATABASE_HOST:-db}
+PORT=${DATABASE_PORT:-5432}
+USER=${DATABASE_USER:-alsaba_user}
+
+# Attente fiable avec pg_isready (beaucoup mieux que nc)
+until pg_isready -h "$HOST" -p "$PORT" -U "$USER"; do
+    echo "⏳ PostgreSQL n'est pas encore prêt ($HOST:$PORT) - attente 2s..."
     sleep 2
 done
 
-echo "✅ PostgreSQL est prêt!"
+echo "✅ PostgreSQL est prêt !"
 
-# Appliquer les migrations
+# Application des migrations
 echo "🔄 Application des migrations..."
 python manage.py migrate --noinput
 
-# Collecter les fichiers statiques (si en production)
+# Collection des fichiers statiques seulement si DEBUG=False (production)
 if [ "$DEBUG" = "False" ]; then
     echo "📦 Collection des fichiers statiques..."
-    python manage.py collectstatic --noinput
+    python manage.py collectstatic --noinput --clear
 fi
 
 echo "🚀 Démarrage du serveur Django..."
 
-# Exécuter la commande passée en argument
+# Exécute la commande passée (runserver par défaut)
 exec "$@"

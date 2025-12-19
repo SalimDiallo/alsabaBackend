@@ -1,37 +1,38 @@
 # ===================================
-# Dockerfile pour Django avec MySQL
+# Dockerfile pour Django avec PostgreSQL
 # ===================================
 
-# Image de base Python
 FROM python:3.12-slim
 
-# Variables d'environnement
+# Variables d'environnement Python
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 # Répertoire de travail
 WORKDIR /app
 
-# Installation des dépendances système pour PostgreSQL
+# Installation des dépendances système
 RUN apt-get update && apt-get install -y \
     libpq-dev \
     build-essential \
     netcat-openbsd \
+    postgresql-client \   
     && rm -rf /var/lib/apt/lists/*
 
-# Copie des fichiers de requirements
+# Copie du requirements.txt
 COPY requirements.txt .
 
-# Installation des dépendances Python
+# Upgrade pip et installation des dépendances Python
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-# Copie du projet
 COPY Project/ .
-
 # Copie du script d'entrée
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
+
+# Correction des fins de ligne Windows (facultatif mais recommandé)
+RUN sed -i 's/\r$//' /docker-entrypoint.sh
 
 # Port exposé
 EXPOSE 8000
