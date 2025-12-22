@@ -1,0 +1,145 @@
+# class KYCVerificationView(APIView):
+#     """Soumettre les documents pour la vérification KYC"""
+#     permission_classes = [IsAuthenticated]
+    
+#     def get(self, request):
+#         """Récupérer les documents KYC de l'utilisateur"""
+#         documents = KYCDocument.objects.filter(user=request.user)
+#         serializer = KYCDocumentSerializer(documents, many=True)
+#         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+#     def post(self, request):
+#         """Soumettre un nouveau document KYC"""
+        
+#         # Vérifier si l'utilisateur n'est pas déjà vérifié
+#         if request.user.kyc_status == 'verified':
+#             return Response({
+#                 "error": "Votre compte est déjà vérifié"
+#             }, status=status.HTTP_400_BAD_REQUEST)
+        
+#         # Vérifier si une demande est déjà en attente
+#         if request.user.kyc_status == 'pending':
+#             return Response({
+#                 "error": "Vous avez déjà une demande en attente de vérification"
+#             }, status=status.HTTP_400_BAD_REQUEST)
+        
+#         serializer = KYCVerificationSerializer(
+#             data=request.data,
+#             context={'request': request}
+#         )
+        
+#         if serializer.is_valid():
+#             document = serializer.save()
+            
+#             # ICI: Placeholder pour l'intégration Persona
+#             # Pour l'instant, on simule une vérification automatique réussie
+#             # À remplacer par l'appel à l'API Persona plus tard
+            
+#             # Simulation de vérification (à supprimer plus tard)
+#             request.user.kyc_status = 'verified'
+#             request.user.is_verified = True
+#             request.user.save()
+            
+#             document.verified = True
+#             document.save()
+            
+#             return Response({
+#                 "message": "Documents soumis avec succès. Vérification KYC complétée.",
+#                 "document_id": str(document.id),
+#                 "kyc_status": request.user.kyc_status,
+#                 "note": "Placeholder - Intégration Persona à venir"
+#             }, status=status.HTTP_201_CREATED)
+        
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# class KYCVerificationView(APIView):
+#     """Soumettre les documents pour la vérification KYC"""
+#     permission_classes = [IsAuthenticated]
+    
+#     def get(self, request):
+#         """Récupérer les documents KYC de l'utilisateur"""
+#         documents = KYCDocument.objects.filter(user=request.user)
+#         serializer = KYCDocumentSerializer(documents, many=True)
+#         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+#     def post(self, request):
+#         """Soumettre un nouveau document KYC - VERSION TEST (sans upload images)"""
+        
+#         # Vérifier si l'utilisateur n'est pas déjà vérifié
+#         if request.user.kyc_status == 'verified':
+#             return Response({
+#                 "error": "Votre compte est déjà vérifié"
+#             }, status=status.HTTP_400_BAD_REQUEST)
+        
+#         # Vérifier si une demande est déjà en attente
+#         if request.user.kyc_status == 'pending':
+#             return Response({
+#                 "error": "Vous avez déjà une demande en attente de vérification"
+#             }, status=status.HTTP_400_BAD_REQUEST)
+        
+#         # MODIFICATION TEMPORAIRE POUR TEST
+#         # Accepter juste le document_type sans images
+#         document_type = request.data.get('document_type')
+        
+#         if not document_type:
+#             return Response({
+#                 "error": "Le type de document est requis"
+#             }, status=status.HTTP_400_BAD_REQUEST)
+        
+#         # Vérifier que c'est un type valide
+#         valid_types = [choice[0] for choice in KYCDocument.DOCUMENT_TYPES]
+#         if document_type not in valid_types:
+#             return Response({
+#                 "error": f"Type de document invalide. Choisissez parmi: {', '.join(valid_types)}"
+#             }, status=status.HTTP_400_BAD_REQUEST)
+        
+#         # MODIFICATION: Créer un document sans images pour le test
+#         document = KYCDocument.objects.create(
+#             user=request.user,
+#             document_type=document_type,
+#             # Pas d'images pour l'instant - champs laissés vides
+#             # front_image=None,
+#             # back_image=None,
+#             # selfie_image=None
+#         )
+        
+#         # MODIFICATION: Ajouter des dates pour le suivi
+#         from django.utils import timezone
+        
+#         # Mettre à jour le statut de l'utilisateur
+#         request.user.kyc_status = 'verified'  # Directement vérifié pour le test
+#         request.user.is_verified = True
+#         request.user.kyc_submitted_at = timezone.now()
+#         request.user.kyc_verified_at = timezone.now()
+#         request.user.save()
+        
+#         # Marquer le document comme vérifié
+#         document.verified = True
+#         document.save()
+        
+#         return Response({
+#             "message": "KYC soumis avec succès. Vérification simulée (pas d'images uploadées).",
+#             "document_id": str(document.id),
+#             "document_type": document_type,
+#             "kyc_status": request.user.kyc_status,
+#             "is_verified": request.user.is_verified,
+#             "submitted_at": request.user.kyc_submitted_at,
+#             "verified_at": request.user.kyc_verified_at,
+#             "note": "TEST - Upload d'images désactivé temporairement"
+#         }, status=status.HTTP_201_CREATED)
+        
+# class KYCStatusView(APIView):
+#     """Vérifier le statut KYC de l'utilisateur"""
+#     permission_classes = [IsAuthenticated]
+    
+#     def get(self, request):
+#         user = request.user
+        
+#         return Response({
+#             "kyc_status": user.kyc_status,
+#             "is_verified": user.is_verified,
+#             "kyc_submitted_at": user.kyc_submitted_at,
+#             "kyc_verified_at": user.kyc_verified_at,
+#             "documents_count": KYCDocument.objects.filter(user=user).count()
+#         }, status=status.HTTP_200_OK)
+
