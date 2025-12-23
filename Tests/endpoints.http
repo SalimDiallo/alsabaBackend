@@ -25,8 +25,8 @@ POST {{baseUrl}}/accounts/check-phone/
 Content-Type: {{contentType}}
 
 {
-    "phone_number": "+221781234567",
-    "country_code": "SN"
+    "phone_number": "781234567",
+    "country_code": "+221"
 }
 
 ### -------------------------------------------
@@ -39,8 +39,8 @@ POST {{baseUrl}}/accounts/auth/
 Content-Type: {{contentType}}
 
 {
-    "phone_number": "+221781234567",
-    "country_code": "SN"
+    "phone_number": "781234567",
+    "country_code": "+221"
 }
 
 ### -------------------------------------------

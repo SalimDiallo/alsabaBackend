@@ -249,6 +249,8 @@ docker/mysql/data/
 
 # Pytest
 .pytest_cache/
+.env
+
 
 # Coverage
 htmlcov/
