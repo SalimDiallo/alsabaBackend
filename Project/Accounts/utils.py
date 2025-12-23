@@ -1,3 +1,4 @@
+import os
 import phonenumbers
 from phonenumbers.phonenumberutil import NumberParseException
 import secrets
@@ -5,6 +6,8 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import OTPCode, User
 from twilio.rest import Client
+
+
 def validate_phone_number(phone_number, country_code='+33'):
     """
     Valide un numéro de téléphone avec un code pays
@@ -209,8 +212,8 @@ def get_active_otps_count(user=None):
     
     return queryset.count()
 
-ACCOUNT_SID = ''
-AUTH_TOKEN = ''
+ACCOUNT_SID = os.getenv('ACCOUNT_SID')
+AUTH_TOKEN = os.getenv('AUTH_TOKEN')
 # Fonction pour simulation SMS (développement)
 def simulate_sms_send(phone_number, otp_code, provider="TwiliSandbox"):
     client = Client(ACCOUNT_SID, AUTH_TOKEN)
