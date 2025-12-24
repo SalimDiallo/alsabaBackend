@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from datetime import timedelta
 import random
-from .models import User, KYCDocument, OTPCode
+from .models import User, KYCDocument
 from django.contrib.auth import logout
 from .serializers import (
     PhoneNumberSerializer,
@@ -19,8 +19,20 @@ from .serializers import (
     PhoneAuthSerializer,
     OTPSerializer
 )
+from .services import KYCService
 from .utils import create_otp_for_user, send_sms_otp, validate_otp
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+        
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from django.utils import timezone
+from django.core.cache import cache
 
+from .serializers import PhoneAuthSerializer, DiditVerifySerializer
+from .services import DiditPhoneService
 class CheckPhoneNumberView(APIView):
     """Vérifie si un numéro de téléphone existe déjà"""
     permission_classes = [AllowAny]
@@ -257,153 +269,6 @@ class UserProfileView(APIView):
             "note": "PUT nécessite tous les champs, PATCH permet des mises à jour partielles"
         }, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
-
-# class KYCVerificationView(APIView):
-#     """Soumettre les documents pour la vérification KYC"""
-#     permission_classes = [IsAuthenticated]
-    
-#     def get(self, request):
-#         """Récupérer les documents KYC de l'utilisateur"""
-#         documents = KYCDocument.objects.filter(user=request.user)
-#         serializer = KYCDocumentSerializer(documents, many=True)
-#         return Response(serializer.data, status=status.HTTP_200_OK)
-    
-#     def post(self, request):
-#         """Soumettre un nouveau document KYC"""
-        
-#         # Vérifier si l'utilisateur n'est pas déjà vérifié
-#         if request.user.kyc_status == 'verified':
-#             return Response({
-#                 "error": "Votre compte est déjà vérifié"
-#             }, status=status.HTTP_400_BAD_REQUEST)
-        
-#         # Vérifier si une demande est déjà en attente
-#         if request.user.kyc_status == 'pending':
-#             return Response({
-#                 "error": "Vous avez déjà une demande en attente de vérification"
-#             }, status=status.HTTP_400_BAD_REQUEST)
-        
-#         serializer = KYCVerificationSerializer(
-#             data=request.data,
-#             context={'request': request}
-#         )
-        
-#         if serializer.is_valid():
-#             document = serializer.save()
-            
-#             # ICI: Placeholder pour l'intégration Persona
-#             # Pour l'instant, on simule une vérification automatique réussie
-#             # À remplacer par l'appel à l'API Persona plus tard
-            
-#             # Simulation de vérification (à supprimer plus tard)
-#             request.user.kyc_status = 'verified'
-#             request.user.is_verified = True
-#             request.user.save()
-            
-#             document.verified = True
-#             document.save()
-            
-#             return Response({
-#                 "message": "Documents soumis avec succès. Vérification KYC complétée.",
-#                 "document_id": str(document.id),
-#                 "kyc_status": request.user.kyc_status,
-#                 "note": "Placeholder - Intégration Persona à venir"
-#             }, status=status.HTTP_201_CREATED)
-        
-#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class KYCVerificationView(APIView):
-    """Soumettre les documents pour la vérification KYC"""
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        """Récupérer les documents KYC de l'utilisateur"""
-        documents = KYCDocument.objects.filter(user=request.user)
-        serializer = KYCDocumentSerializer(documents, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    
-    def post(self, request):
-        """Soumettre un nouveau document KYC - VERSION TEST (sans upload images)"""
-        
-        # Vérifier si l'utilisateur n'est pas déjà vérifié
-        if request.user.kyc_status == 'verified':
-            return Response({
-                "error": "Votre compte est déjà vérifié"
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Vérifier si une demande est déjà en attente
-        if request.user.kyc_status == 'pending':
-            return Response({
-                "error": "Vous avez déjà une demande en attente de vérification"
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # MODIFICATION TEMPORAIRE POUR TEST
-        # Accepter juste le document_type sans images
-        document_type = request.data.get('document_type')
-        
-        if not document_type:
-            return Response({
-                "error": "Le type de document est requis"
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Vérifier que c'est un type valide
-        valid_types = [choice[0] for choice in KYCDocument.DOCUMENT_TYPES]
-        if document_type not in valid_types:
-            return Response({
-                "error": f"Type de document invalide. Choisissez parmi: {', '.join(valid_types)}"
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # MODIFICATION: Créer un document sans images pour le test
-        document = KYCDocument.objects.create(
-            user=request.user,
-            document_type=document_type,
-            # Pas d'images pour l'instant - champs laissés vides
-            # front_image=None,
-            # back_image=None,
-            # selfie_image=None
-        )
-        
-        # MODIFICATION: Ajouter des dates pour le suivi
-        from django.utils import timezone
-        
-        # Mettre à jour le statut de l'utilisateur
-        request.user.kyc_status = 'verified'  # Directement vérifié pour le test
-        request.user.is_verified = True
-        request.user.kyc_submitted_at = timezone.now()
-        request.user.kyc_verified_at = timezone.now()
-        request.user.save()
-        
-        # Marquer le document comme vérifié
-        document.verified = True
-        document.save()
-        
-        return Response({
-            "message": "KYC soumis avec succès. Vérification simulée (pas d'images uploadées).",
-            "document_id": str(document.id),
-            "document_type": document_type,
-            "kyc_status": request.user.kyc_status,
-            "is_verified": request.user.is_verified,
-            "submitted_at": request.user.kyc_submitted_at,
-            "verified_at": request.user.kyc_verified_at,
-            "note": "TEST - Upload d'images désactivé temporairement"
-        }, status=status.HTTP_201_CREATED)
-        
-class KYCStatusView(APIView):
-    """Vérifier le statut KYC de l'utilisateur"""
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        user = request.user
-        
-        return Response({
-            "kyc_status": user.kyc_status,
-            "is_verified": user.is_verified,
-            "kyc_submitted_at": user.kyc_submitted_at,
-            "kyc_verified_at": user.kyc_verified_at,
-            "documents_count": KYCDocument.objects.filter(user=user).count()
-        }, status=status.HTTP_200_OK)
-
-
 class DeleteAccountView(APIView):
     """Supprimer le compte utilisateur"""
     permission_classes = [IsAuthenticated]
@@ -429,7 +294,6 @@ class DeleteAccountView(APIView):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
 class LogoutView(APIView):
     """Déconnexion simple"""
     permission_classes = [IsAuthenticated]
@@ -441,8 +305,248 @@ class LogoutView(APIView):
         }, status=status.HTTP_200_OK)
 # POUR L'AUTHENTIFICATION PAR TÉLÉPHONE ET OTP
            
+# class PhoneAuthView(APIView):
+#     """Endpoint unifié pour login/register par téléphone"""
+#     permission_classes = [AllowAny]
+    
+#     def post(self, request):
+#         serializer = PhoneAuthSerializer(data=request.data)
+#         if not serializer.is_valid():
+#             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+#         phone_number = serializer.validated_data['phone_number']
+#         country_code = serializer.validated_data['country_code']
+        
+#         # Vérifier si l'utilisateur existe déjà
+#         try:
+#             user = User.objects.get(phone_number=phone_number)
+#             action = 'login'
+            
+#             if not user.is_active:
+#                 return Response({
+#                     "error": "Ce compte a été désactivé"
+#                 }, status=status.HTTP_400_BAD_REQUEST)
+                
+#         except User.DoesNotExist:
+#             # Créer un nouvel utilisateur
+#             user = User.objects.create_user(
+#                 phone_number=phone_number,
+#                 country_code=country_code,
+#             )
+#             action = 'register'
+        
+#         # Créer un OTP pour l'utilisateur
+#         otp_code = create_otp_for_user(user, expires_in_minutes=10)
+        
+#         # Simuler l'envoi SMS (à remplacer en production)
+#         sms_result = send_sms_otp(
+#             phone_number=user.full_phone,
+#             otp_code=otp_code,
+#             provider="TwilioSandBox"
+#         )
+        
+#         # NE PAS générer de tokens ici - seulement après vérification OTP
+#         # NE PAS mettre à jour last_login ici - seulement après vérification OTP
+        
+#         return Response({
+#             "action": action,
+#             "message": f"{'Connexion' if action == 'login' else 'Inscription'} initiée",
+#             "phone_number": phone_number,
+#             "country_code": country_code,
+#             "otp_sent": True,
+#             "sms_simulation": sms_result,  # Retirer en production
+            
+#             # INFOS UTILISATEUR SANS TOKENS
+#             "user_info": {
+#                 "id": str(user.id),
+#                 "kyc_status": user.kyc_status,
+#                 "is_verified": user.is_verified,
+#                 "kyc_status_display": user.get_kyc_status_display(),
+#                 "has_kyc_documents": user.kyc_documents.exists()
+#             },
+            
+#             "kyc_info": {
+#                 "status": user.kyc_status,
+#                 "is_verified": user.is_verified,
+#                 "required": True,
+#                 "next_step": "verify-otp"  # Toujours "verify-otp"
+#             },
+            
+#             "user_id": str(user.id),
+#             "expires_in": "10 minutes",
+#             "note": "Utilisez /verify-otp/ avec le code reçu pour obtenir vos tokens d'accès"
+#         }, status=status.HTTP_200_OK)
+# class VerifyOTPView(APIView):
+#     """Vérifier l'OTP et authentifier l'utilisateur"""
+#     permission_classes = [AllowAny]
+    
+#     def post(self, request):
+#         serializer = OTPSerializer(data=request.data)
+#         if not serializer.is_valid():
+#             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+#         phone_number = serializer.validated_data['phone_number']
+#         otp_code = serializer.validated_data['otp']
+        
+#         # Valider l'OTP
+#         success, message, user = validate_otp(phone_number, otp_code)
+        
+#         if not success:
+#             return Response({
+#                 "error": message
+#             }, status=status.HTTP_400_BAD_REQUEST)
+        
+#         # Mettre à jour last_login
+#         user.last_login = timezone.now()
+#         user.save()
+        
+#         return Response({
+#             "message": "Authentification réussie",
+#             "user": {
+#                 "id": str(user.id),
+#                 "phone_number": user.phone_number,
+#                 "country_code": user.country_code,
+#                 "kyc_status": user.kyc_status,
+#                 "is_verified": user.is_verified,
+#                 "kyc_status_display": user.get_kyc_status_display(),
+#                 "has_kyc_documents": user.kyc_documents.exists()
+#             },
+#             "otp_verified": True,
+#             "kyc_info": {
+#                 "status": user.kyc_status,
+#                 "is_verified": user.is_verified,
+#                 "required": True,
+#                 "next_step": "complete-profile" if user.kyc_status == "unverified" else "ready"
+#             }
+#         }, status=status.HTTP_200_OK)
+#Pour le debug des OTP
+class DebugOTPView(APIView):
+    pass
+#     """
+#     Vue de debug pour voir les OTP actifs
+#     À désactiver en production !
+#     """
+#     permission_classes = [AllowAny]  # En production : IsAdminUser
+    
+#     def get(self, request):
+#         from .utils import get_active_otps_count
+        
+#         active_otps = OTPCode.objects.filter(
+#             used=False,
+#             expires_at__gt=timezone.now()
+#         ).select_related('user')
+        
+#         data = []
+#         for otp in active_otps:
+#             data.append({
+#                 'user': {
+#                     'id': str(otp.user.id),
+#                     'phone': otp.user.phone_number,
+#                     'full_phone': otp.user.full_phone
+#                 },
+#                 'code': otp.code,
+#                 'created': otp.created_at,
+#                 'expires': otp.expires_at,
+#                 'remaining_minutes': max(0, (otp.expires_at - timezone.now()).seconds // 60),
+#                 'is_valid': otp.expires_at > timezone.now() and not otp.used
+#             })
+        
+#         return Response({
+#             "count": len(data),
+#             "active_otps": data,
+#             "total_active": get_active_otps_count(),
+#             "timestamp": timezone.now()
+#         })
+@method_decorator(csrf_exempt, name="dispatch")
+class DiditWebhookView(APIView):
+    def post(self, request):
+        # TODO: Valider la signature Didit (header X-Didit-Signature)
+        # Exemple avec HMAC :
+        # import hmac, hashlib
+        # signature = request.headers.get("X-Didit-Signature")
+        # computed = hmac.new(settings.DIDIT_WEBHOOK_SECRET.encode(), request.body, hashlib.sha256).hexdigest()
+        # if not hmac.compare_digest(signature, computed):
+        #     return HttpResponse("Signature invalide", status=401)
+
+        try:
+            payload = request.data
+            message, code = KYCService.handle_didit_webhook(payload)
+            return Response(message, status=code)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+class KYCVerificationView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        documents = KYCDocument.objects.filter(user=request.user)
+        serializer = KYCDocumentSerializer(documents, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        user = request.user
+        document_type = request.data.get("document_type")
+
+        if not document_type:
+            return Response({"error": "Type de document requis"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Vérifications préalables
+        if user.kyc_status == "verified":
+            return Response({"error": "Compte déjà vérifié"}, status=status.HTTP_400_BAD_REQUEST)
+        if user.kyc_status == "pending":
+            return Response({"error": "Demande déjà en cours"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # 1. Créer la session Didit
+            session_data = KYCService.create_didit_session(document_type, user)
+
+            # 2. Créer le document local
+            document = KYCService.create_document(
+                user=user,
+                document_type=document_type,
+                session_id=session_data["session_id"],
+            )
+
+            # 3. Mettre à jour le statut utilisateur
+            KYCService.update_user_status(user, "pending")
+
+            return Response({
+                "message": "Session KYC créée avec succès",
+                "document_id": document.id,
+                "document_type": document_type,
+                "session_id": session_data["session_id"],
+                "session_url": session_data["session_url"],  # À utiliser dans le frontend
+                "kyc_status": user.kyc_status,
+                "submitted_at": user.kyc_submitted_at,
+            }, status=status.HTTP_201_CREATED)
+
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+class KYCStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        documents_count = KYCDocument.objects.filter(user=user).count()
+
+        # Optionnel : rafraîchir le statut si pending
+        if user.kyc_status == "pending":
+            latest_doc = KYCDocument.objects.filter(user=user).order_by("-created_at").first()
+            if latest_doc and latest_doc.session_id:
+                # Ici tu peux appeler l'API Didit pour vérifier (mais webhook est préférable)
+                pass
+
+        return Response({
+            "kyc_status": user.kyc_status,
+            "is_verified": user.is_verified,
+            "kyc_submitted_at": user.kyc_submitted_at,
+            "kyc_verified_at": user.kyc_verified_at,
+            "documents_count": documents_count,
+        }, status=status.HTTP_200_OK)
+#Configuraton OTP avec Didit
 class PhoneAuthView(APIView):
-    """Endpoint unifié pour login/register par téléphone"""
+    """Endpoint unifié pour login/register avec Didit"""
     permission_classes = [AllowAny]
     
     def post(self, request):
@@ -451,7 +555,6 @@ class PhoneAuthView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         phone_number = serializer.validated_data['phone_number']
-        country_code = serializer.validated_data['country_code']
         
         # Vérifier si l'utilisateur existe déjà
         try:
@@ -465,132 +568,85 @@ class PhoneAuthView(APIView):
                 
         except User.DoesNotExist:
             # Créer un nouvel utilisateur
-            user = User.objects.create_user(
-                phone_number=phone_number,
-                country_code=country_code,
-            )
+            user = User.objects.create_user(phone_number=phone_number)
             action = 'register'
         
-        # Créer un OTP pour l'utilisateur
-        otp_code = create_otp_for_user(user, expires_in_minutes=10)
-        
-        # Simuler l'envoi SMS (à remplacer en production)
-        sms_result = send_sms_otp(
-            phone_number=user.full_phone,
-            otp_code=otp_code,
-            provider="TwilioSandBox"
+        # Envoyer le code via Didit (Didit génère le code)
+        service = DiditPhoneService()
+        result = service.send_verification_code(
+            phone_number=phone_number,
+            vendor_user_id=str(user.id)
         )
         
-        # NE PAS générer de tokens ici - seulement après vérification OTP
-        # NE PAS mettre à jour last_login ici - seulement après vérification OTP
+        if not result["success"]:
+            return Response({
+                "error": result["message"]
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Stocker le session_uuid en cache pour l'utilisateur
+        cache_key = f"didit_session:{user.id}"
+        cache.set(cache_key, result["session_uuid"], timeout=300)  # 5 min comme Didit
         
         return Response({
             "action": action,
             "message": f"{'Connexion' if action == 'login' else 'Inscription'} initiée",
             "phone_number": phone_number,
-            "country_code": country_code,
             "otp_sent": True,
-            "sms_simulation": sms_result,  # Retirer en production
-            
-            # INFOS UTILISATEUR SANS TOKENS
-            "user_info": {
-                "id": str(user.id),
-                "kyc_status": user.kyc_status,
-                "is_verified": user.is_verified,
-                "kyc_status_display": user.get_kyc_status_display(),
-                "has_kyc_documents": user.kyc_documents.exists()
-            },
-            
-            "kyc_info": {
-                "status": user.kyc_status,
-                "is_verified": user.is_verified,
-                "required": True,
-                "next_step": "verify-otp"  # Toujours "verify-otp"
-            },
-            
+            "session_uuid": result["session_uuid"],  # Important pour la vérification
             "user_id": str(user.id),
-            "expires_in": "10 minutes",
-            "note": "Utilisez /verify-otp/ avec le code reçu pour obtenir vos tokens d'accès"
+            "expires_in": "5 minutes",  # Didit expire après 5 min
+            "note": "Utilisez /verify-otp/ avec le code reçu par SMS"
         }, status=status.HTTP_200_OK)
-
-
 class VerifyOTPView(APIView):
-    """Vérifier l'OTP et authentifier l'utilisateur"""
+    """Vérifie le code via l'API Didit"""
     permission_classes = [AllowAny]
     
     def post(self, request):
-        serializer = OTPSerializer(data=request.data)
+        serializer = DiditVerifySerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        phone_number = serializer.validated_data['phone_number']
-        otp_code = serializer.validated_data['otp']
+        user_id = serializer.validated_data['user_id']
+        user_code = serializer.validated_data['otp']
         
-        # Valider l'OTP
-        success, message, user = validate_otp(phone_number, otp_code)
+        # Récupérer le session_uuid depuis le cache
+        cache_key = f"didit_session:{user_id}"
+        session_uuid = cache.get(cache_key)
         
-        if not success:
+        if not session_uuid:
             return Response({
-                "error": message
+                "error": "Session expirée ou invalide"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Vérifier le code avec Didit
+        service = DiditPhoneService()
+        verified, message = service.verify_code(session_uuid, user_code)
+        
+        if not verified:
+            return Response({
+                "error": message or "Code incorrect"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Récupérer l'utilisateur
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({
+                "error": "Utilisateur non trouvé"
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Mettre à jour last_login
         user.last_login = timezone.now()
         user.save()
         
+        # Nettoyer le cache
+        cache.delete(cache_key)
+        
         return Response({
             "message": "Authentification réussie",
             "user": {
                 "id": str(user.id),
                 "phone_number": user.phone_number,
-                "country_code": user.country_code,
-                "kyc_status": user.kyc_status,
-                "is_verified": user.is_verified,
-                "kyc_status_display": user.get_kyc_status_display(),
-                "has_kyc_documents": user.kyc_documents.exists()
             },
             "otp_verified": True,
-            "kyc_info": {
-                "status": user.kyc_status,
-                "is_verified": user.is_verified,
-                "required": True,
-                "next_step": "complete-profile" if user.kyc_status == "unverified" else "ready"
-            }
         }, status=status.HTTP_200_OK)
-#Pour le debug des OTP
-class DebugOTPView(APIView):
-    """
-    Vue de debug pour voir les OTP actifs
-    À désactiver en production !
-    """
-    permission_classes = [AllowAny]  # En production : IsAdminUser
-    
-    def get(self, request):
-        from .utils import get_active_otps_count
-        
-        active_otps = OTPCode.objects.filter(
-            used=False,
-            expires_at__gt=timezone.now()
-        ).select_related('user')
-        
-        data = []
-        for otp in active_otps:
-            data.append({
-                'user': {
-                    'id': str(otp.user.id),
-                    'phone': otp.user.phone_number,
-                    'full_phone': otp.user.full_phone
-                },
-                'code': otp.code,
-                'created': otp.created_at,
-                'expires': otp.expires_at,
-                'remaining_minutes': max(0, (otp.expires_at - timezone.now()).seconds // 60),
-                'is_valid': otp.expires_at > timezone.now() and not otp.used
-            })
-        
-        return Response({
-            "count": len(data),
-            "active_otps": data,
-            "total_active": get_active_otps_count(),
-            "timestamp": timezone.now()
-        })

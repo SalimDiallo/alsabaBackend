@@ -106,7 +106,7 @@ WSGI_APPLICATION = 'Project.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 # Utiliser PostgreSQL si DATABASE_ENGINE est défini, sinon SQLite pour le développement local
-if os.getenv('DATABASE_ENGINE'):
+if not os.getenv('DATABASE_ENGINE'):
     DATABASES = {
         'default': {
             'ENGINE': os.getenv('DATABASE_ENGINE', 'django.db.backends.postgresql'),
@@ -145,7 +145,33 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        # En production, utilise Redis:
+        # 'BACKEND': 'django_redis.cache.RedisCache',
+        # 'LOCATION': 'redis://127.0.0.1:6379/1',
+    }
+}
 
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'authentication.services': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}
+
+DIDIT_API_KEY = os.environ.get('DIDIT_API_KEY', 'your-key-here')
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 

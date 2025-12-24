@@ -58,6 +58,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     is_verified = models.BooleanField(default=False)
     
+    #uuid_didit
+    didit_session_uuid = models.CharField(max_length=100, blank=True, null=True)
+    didit_session_expires = models.DateTimeField(null=True, blank=True)
+    
     # Dates
     date_joined = models.DateTimeField(default=timezone.now)
     last_login = models.DateTimeField(null=True, blank=True)
@@ -110,24 +114,25 @@ class KYCDocument(models.Model):
     
 # OTP Model
 class OTPCode(models.Model):
-    """Modèle pour stocker les codes OTP"""
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    code = models.CharField(max_length=6)
-    created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField()
-    used = models.BooleanField(default=False)
+    pass
+#     """Modèle pour stocker les codes OTP"""
+#     user = models.ForeignKey(User, on_delete=models.CASCADE)
+#     code = models.CharField(max_length=6)
+#     created_at = models.DateTimeField(auto_now_add=True)
+#     expires_at = models.DateTimeField()
+#     used = models.BooleanField(default=False)
     
-    class Meta:
-        db_table = 'otp_codes'
-        verbose_name = 'Code OTP'
-        verbose_name_plural = 'Codes OTP'
+#     class Meta:
+#         db_table = 'otp_codes'
+#         verbose_name = 'Code OTP'
+#         verbose_name_plural = 'Codes OTP'
     
-    def is_valid(self):
-        """Vérifier si le code est encore valide"""
-        from django.utils import timezone
-        return not self.used and self.expires_at > timezone.now()
+#     def is_valid(self):
+#         """Vérifier si le code est encore valide"""
+#         from django.utils import timezone
+#         return not self.used and self.expires_at > timezone.now()
     
-    def mark_used(self):
-        """Marquer le code comme utilisé"""
-        self.used = True
-        self.save()
+#     def mark_used(self):
+#         """Marquer le code comme utilisé"""
+#         self.used = True
+#         self.save()

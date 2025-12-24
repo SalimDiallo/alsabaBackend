@@ -150,6 +150,14 @@ class PhoneAuthSerializer(serializers.Serializer):
         """Nettoyer le numéro"""
         return ''.join(filter(str.isdigit, value))
 
+class DiditVerifySerializer(serializers.Serializer):
+    """Pour la vérification avec Didit"""
+    user_id = serializers.CharField(help_text="ID utilisateur de la session")
+    otp = serializers.CharField(
+        max_length=6,
+        min_length=6,
+        help_text="Code reçu par SMS"
+    )
 class OTPSerializer(serializers.Serializer):
     """Serializer pour la vérification OTP"""
     phone_number = serializers.CharField(max_length=20)
