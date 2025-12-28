@@ -12,7 +12,7 @@ from .views import (
     # VerifyOTPView,
     DiditWebhookView,
 )
-from .Views.registerLogViews import PhoneAuthView, VerifyOTPView, AuthStatusView
+from .Views.registerLogViews import PhoneAuthView, VerifyOTPView, AuthStatusView, ResendOTPView
 app_name = 'Accounts'
 
 urlpatterns = [
@@ -33,7 +33,8 @@ urlpatterns = [
     path("kyc/status/", KYCStatusView.as_view(), name="kyc-status"),
     path("webhook/didit/", DiditWebhookView.as_view(), name="didit-webhook"),
     # OTP avec Didit
-    path('auth/', PhoneAuthView.as_view(), name='phone_auth'),
-    path('verify/', VerifyOTPView.as_view(), name='verify_otp'),
-    path('status/', AuthStatusView.as_view(), name='auth_status'),
+    path('auth/phone/', PhoneAuthView.as_view(), name='phone_auth'),
+    path('auth/verify/', VerifyOTPView.as_view(), name='verify_otp'),
+    path('auth/resend/', ResendOTPView.as_view(), name='resend_otp'),
+    path('auth/status/', AuthStatusView.as_view(), name='auth_status'),
 ]
