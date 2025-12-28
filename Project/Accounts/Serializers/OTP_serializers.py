@@ -1,142 +1,154 @@
+# apps/auth/Serializers/OTP_serializers.py
+
 from rest_framework import serializers
 import phonenumbers
+from phonenumbers import PhoneNumberFormat
 from django.core.cache import cache
-from django.utils import timezone
 from ..models import User
 
+
 class PhoneAuthSerializer(serializers.Serializer):
-    """Validation pour l'envoi de code OTP"""
+    """
+    Validation pour la demande d'envoi de code OTP
+    Retourne le numéro au format E.164 complet (+336...)
+    """
     phone_number = serializers.CharField(max_length=20, trim_whitespace=True)
     country_code = serializers.CharField(
-        max_length=5, 
-        default="+33", 
+        max_length=5,
         required=False,
-        help_text="Code pays par défaut: +33 (France)"
+        default="+33",
+        help_text="Code pays avec +, ex: +33, +1, +44"
     )
-    
+
     def validate(self, data):
-        phone = data.get('phone_number').strip()
+        raw_phone = data.get('phone_number').strip()
         country_code = data.get('country_code', '+33').strip()
-        
-        # Formatage automatique
-        if not phone.startswith('+'):
-            if phone.startswith('0'):
-                phone = country_code + phone[1:]
-            else:
-                phone = country_code + phone
-        
-        # Validation avec phonenumbers
+
+        # Nettoyage et préparation du numéro
+        if raw_phone.startswith('+'):
+            full_input = raw_phone
+        elif raw_phone.startswith('0'):
+            full_input = country_code + raw_phone[1:]
+        else:
+            full_input = country_code + raw_phone
+
         try:
-            parsed = phonenumbers.parse(phone, None)
-            
+            parsed = phonenumbers.parse(full_input, None)
+
             if not phonenumbers.is_valid_number(parsed):
                 raise serializers.ValidationError({
                     "phone_number": "Numéro de téléphone invalide"
                 })
-            
-            # Vérifier le type de ligne
+
+            # Vérification type de numéro (optionnel mais recommandé)
             number_type = phonenumbers.number_type(parsed)
             if number_type == phonenumbers.PhoneNumberType.PREMIUM_RATE:
                 raise serializers.ValidationError({
                     "phone_number": "Les numéros surtaxés ne sont pas autorisés"
                 })
-            
-            # Format E.164 standardisé
-            formatted = phonenumbers.format_number(
-                parsed, 
-                phonenumbers.PhoneNumberFormat.E164
-            )
-            
-            # Mettre à jour les données validées
-            data['phone_number'] = formatted
-            data['country_code'] = '+' + str(parsed.country_code)
-            data['raw_phone'] = phone  # Pour le debug
-            
+
+            # Format E.164 standardisé → c'est ce qu'on utilise partout maintenant
+            full_e164 = phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
+
+            data['phone_number'] = full_e164
+            data['country_code'] = f"+{parsed.country_code}"
+
             return data
-            
+
         except phonenumbers.NumberParseException:
             raise serializers.ValidationError({
-                "phone_number": "Format invalide. Utilisez: +33612345678 ou 0612345678"
+                "phone_number": "Format invalide. Exemples valides : +33612345678, 0612345678, 0033612345678"
             })
 
 
 class VerifyOTPSerializer(serializers.Serializer):
-    """Validation pour la vérification de code OTP"""
-    phone_number = serializers.CharField(max_length=20)
+    """
+    Validation pour la vérification du code OTP
+    """
+    phone_number = serializers.CharField(max_length=20)  # Doit être en E.164
     code = serializers.CharField(min_length=6, max_length=6, trim_whitespace=True)
-    session_key = serializers.CharField(required=False)  # Nouveau champ
-    
+    session_key = serializers.CharField(required=False, allow_blank=True)
+
     def validate_code(self, value):
-        """Validation du code OTP"""
         if not value.isdigit():
             raise serializers.ValidationError("Le code doit contenir uniquement des chiffres")
         return value
-    
+
+    def validate_phone_number(self, value):
+        # Vérification rapide que c'est bien du E.164
+        if not value.startswith('+') or len(value) < 10 or len(value) > 16:
+            raise serializers.ValidationError("Format du numéro invalide (doit être E.164)")
+        return value
+
     def validate(self, data):
-        """Validation croisée"""
         phone_number = data.get('phone_number')
         session_key = data.get('session_key')
-        
-        # Si session_key fournie, vérifier la cohérence
+
         if session_key:
             session_data = cache.get(session_key)
             if not session_data:
                 raise serializers.ValidationError({
                     "session_key": "Session expirée ou invalide"
                 })
-            
-            # Vérifier que le phone_number correspond
-            if session_data.get('phone_number') != phone_number:
+
+            if session_data.get('full_phone_number') != phone_number:
                 raise serializers.ValidationError({
-                    "phone_number": "Incohérence avec la session"
+                    "phone_number": "Ce numéro ne correspond pas à la session"
                 })
-        
+
         return data
 
 
 class ResendOTPSerializer(serializers.Serializer):
-    """Validation pour le renvoi de code OTP"""
-    session_key = serializers.CharField()
-    
+    """
+    Validation pour le renvoi du code OTP
+    """
+    session_key = serializers.CharField(required=True)
+
     def validate_session_key(self, value):
-        """Vérifie que la session existe"""
         session_data = cache.get(value)
         if not session_data:
-            raise serializers.ValidationError("Session expirée")
+            raise serializers.ValidationError("Session expirée ou invalide")
         return value
 
 
 class UserSerializer(serializers.ModelSerializer):
-    """Sérialiseur utilisateur enrichi"""
+    """
+    Sérialiseur complet de l'utilisateur pour les réponses auth
+    """
     kyc_status_display = serializers.CharField(
-        source='get_kyc_status_display', 
+        source='get_kyc_status_display',
         read_only=True
     )
     has_kyc_documents = serializers.SerializerMethodField()
     profile_complete = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = User
         fields = [
             'id',
-            'phone_number',
+            'full_phone_number',      # On expose le numéro complet
             'country_code',
-            'kyc_status',
-            'kyc_status_display',
-            'is_verified',
-            'has_kyc_documents',
-            'profile_complete',
+            'phone_number',           # Numéro national (optionnel, pour debug ou app)
+            'email',
             'first_name',
             'last_name',
-            'email',
+            'kyc_status',
+            'kyc_status_display',
+            'phone_verified',
+            'phone_verified_at',
+            'carrier',
+            'is_disposable',
+            'is_voip',
+            'has_kyc_documents',
+            'profile_complete',
             'date_joined',
             'last_login'
         ]
         read_only_fields = fields
-    
+
     def get_has_kyc_documents(self, obj):
-        return obj.kyc_documents.exists() if hasattr(obj, 'kyc_documents') else False
-    
+        return obj.kyc_documents.exists()
+
     def get_profile_complete(self, obj):
-        """Vérifie si le profil est complété"""
         return bool(obj.first_name and obj.last_name and obj.email)
