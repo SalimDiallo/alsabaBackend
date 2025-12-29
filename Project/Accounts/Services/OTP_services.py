@@ -24,7 +24,7 @@ class DiditVerificationService:
         self.headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "x-api-key": self.api_key,
+            "x-api-key": self.api_key, 
         }
         self.timeout = 15
 
