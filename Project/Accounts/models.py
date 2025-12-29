@@ -78,6 +78,18 @@ class User(AbstractBaseUser, PermissionsMixin):
     kyc_submitted_at = models.DateTimeField(null=True, blank=True)
     kyc_verified_at = models.DateTimeField(null=True, blank=True)
     persona_inquiry_id = models.CharField(max_length=100, blank=True, null=True)
+    kyc_request_id = models.CharField(max_length=100, blank=True, null=True)
+    kyc_retry_count = models.IntegerField(default=0)
+    
+    # Données extraites par Didit après vérification KYC
+    kyc_document_type = models.CharField(max_length=20, blank=True, null=True)
+    kyc_document_number = models.CharField(max_length=100, blank=True, null=True)
+    kyc_date_of_birth = models.DateField(null=True, blank=True)
+    kyc_expiration_date = models.DateField(null=True, blank=True)
+    kyc_gender = models.CharField(max_length=20, blank=True, null=True)
+    kyc_nationality = models.CharField(max_length=100, blank=True, null=True)
+    kyc_place_of_birth = models.CharField(max_length=200, blank=True, null=True)
+    kyc_address = models.TextField(blank=True, null=True)
 
     # Infos enrichies par Didit (anti-fraude)
     carrier = models.CharField(max_length=100, blank=True)

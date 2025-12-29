@@ -1,19 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import (
-    CheckPhoneNumberView,
-    # DebugOTPView,
-    UserProfileView,
-    KYCVerificationView,
-    KYCStatusView,
-    DeleteAccountView,
-    LogoutView,
-    # PhoneAuthView,
-    # VerifyOTPView,
-    DiditWebhookView,
-)
 from .Views.registerLogViews import PhoneAuthView, VerifyOTPView, AuthStatusView, ResendOTPView
-from.Views.id_verificationViews import KYCVerifyView
+from .Views.id_verificationViews import KYCVerifyView
 from .Views.profile import ProfileView
 from .Views.delete import AccountDeleteRequestView, AccountDeleteConfirmView
 app_name = 'Accounts'
@@ -23,6 +11,8 @@ urlpatterns = [
     path('auth/phone/', PhoneAuthView.as_view(), name='phone_auth'),
     path('auth/verify/', VerifyOTPView.as_view(), name='verify_otp'),
     path('auth/status/', AuthStatusView.as_view(), name='auth_status'),
+    # JWT Token refresh
+    path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     # Profile User
     path('profile/', ProfileView.as_view(), name='user_profile'),
     #Didit KYC

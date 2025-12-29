@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.throttling import AnonRateThrottle
+from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
 from django.core.cache import cache
 import uuid
@@ -312,8 +313,8 @@ class VerifyOTPView(APIView):
         if session_key:
             cache.delete(session_key)
 
-        # Token simple (à remplacer par JWT plus tard)
-        auth_token = self._create_auth_token(user)
+        # Génération des tokens JWT
+        tokens = self._create_auth_token(user)
 
         user_serializer = UserSerializer(user)
 
@@ -323,9 +324,10 @@ class VerifyOTPView(APIView):
             "message": "Authentification réussie",
             "user": user_serializer.data,
             "auth": {
-                "token": auth_token,
-                "expires_in": 86400,
-                "type": "bearer"
+                "access_token": tokens['access'],
+                "refresh_token": tokens['refresh'],
+                "expires_in": 3600,  # 1 heure (configuré dans SIMPLE_JWT)
+                "token_type": "bearer"
             },
             "kyc_info": {
                 "status": user.kyc_status,
@@ -349,13 +351,15 @@ class VerifyOTPView(APIView):
         return Response(response_data, status=status.HTTP_200_OK)
 
     def _create_auth_token(self, user):
-        token = f"usr_{user.id}_{uuid.uuid4().hex[:16]}"
-        cache.set(f"auth_token_{token}", {
-            "user_id": str(user.id),
-            "created_at": timezone.now().isoformat(),
-            "full_phone_number": user.full_phone_number
-        }, timeout=86400)
-        return token
+        """
+        Génère les tokens JWT (access + refresh) pour l'utilisateur.
+        Utilise rest_framework_simplejwt qui est déjà configuré dans settings.
+        """
+        refresh = RefreshToken.for_user(user)
+        return {
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+        }
 
     def _mask_phone(self, phone_number):
         if len(phone_number or "") > 10:

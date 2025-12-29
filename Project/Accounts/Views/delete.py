@@ -62,6 +62,21 @@ class AccountDeleteRequestView(APIView):
             "expires_in": 600,
             "next_step": "enter_code"
         })
+    
+    def _extract_request_metadata(self, request):
+        """Extrait les métadonnées de la requête pour Didit"""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0].strip()
+        else:
+            ip = request.META.get('REMOTE_ADDR', '')
+        
+        return {
+            'REMOTE_ADDR': ip,
+            'HTTP_USER_AGENT': request.META.get('HTTP_USER_AGENT', ''),
+            'HTTP_X_DEVICE_ID': request.META.get('HTTP_X_DEVICE_ID', ''),
+            'HTTP_X_APP_VERSION': request.META.get('HTTP_X_APP_VERSION', ''),
+        }
 
 class AccountDeleteConfirmView(APIView):
     """
