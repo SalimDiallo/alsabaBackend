@@ -1,174 +1,115 @@
+# apps/auth/Services/OTP_services.py
+
 import requests
-import logging
+import structlog
 from django.conf import settings
 from django.core.cache import cache
-from datetime import datetime, timedelta
 import uuid
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
+
 
 class DiditVerificationService:
     """
-    Service professionnel pour l'API Didit V2
-    Documentation: https://docs.didit.me/reference/send-phone-verification-code-api
+    Service d'intégration avec Didit V2
+    Documentation : https://docs.didit.me
     """
-    
-    # URLs d'API CORRIGÉES selon la documentation
     BASE_URL = "https://verification.didit.me/v2"
-    SEND_CODE_URL = f"{BASE_URL}/phone/send/"
-    VERIFY_CODE_URL = f"{BASE_URL}/phone/verify/"  # À confirmer dans la doc
-    
+    SEND_CODE_URL = f"{BASE_URL}/phone/send"
+    VERIFY_CODE_URL = f"{BASE_URL}/phone/check"
+    RESEND_CODE_URL = f"{BASE_URL}/phone/resend"
+
     def __init__(self):
         self.api_key = settings.DIDIT_API_KEY
         self.headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "x-api-key": self.api_key, 
+            "x-api-key": self.api_key,
         }
-    
+        self.timeout = 15
+
     def send_verification_code(self, phone_number, request_meta=None, vendor_data=None):
         """
-        Envoie un code de vérification via l'API Didit V2
-        
-        Args:
-            phone_number (str): Numéro au format E.164
-            request_meta (dict): Métadonnées de la requête (ip, user_agent, etc.)
-            vendor_data (str): Données vendeur optionnelles
-        
-        Returns:
-            dict: {
-                "success": bool,
-                "request_id": str,  # ID de la requête Didit
-                "status": str,      # "Success", "Blocked", etc.
-                "reason": str,      # Raison si échec
-                "message": str      # Message utilisateur
-            }
+        Envoie un code OTP.
+        phone_number doit être en E.164 (ex: +33612345678)
         """
         payload = {
             "phone_number": phone_number,
-            "options": {
-                "code_size": 6,
-                "locale": "fr-FR",
-                "preferred_channel": "sms"  # Par défaut SMS
-            }
+            "options": {"code_size": 6}
         }
-        
-        # Ajouter les signaux de fraude si disponibles
+
+        # Ajout des signaux anti-fraude si disponibles et valides
         if request_meta:
-            payload["signals"] = self._extract_signals(request_meta)
-        
+            signals = self._extract_signals(request_meta)
+            if self._are_signals_valid(signals):
+                payload["signals"] = signals
+            else:
+                missing = self._get_missing_signal_fields(signals)
+                logger.warning(
+                    "didit_signals_incomplete",
+                    phone_number=self._mask_phone(phone_number),
+                    missing_fields=missing
+                )
+
         if vendor_data:
             payload["vendor_data"] = vendor_data
-        
+
+        logger.info(
+            "didit_send_code_attempt",
+            phone_number=self._mask_phone(phone_number),
+            has_signals="signals" in payload
+        )
+
         try:
-            logger.info(f"Envoi de code Didit à {phone_number}")
             response = requests.post(
                 self.SEND_CODE_URL,
                 json=payload,
                 headers=self.headers,
-                timeout=15
+                timeout=self.timeout
             )
-            
             response_data = response.json()
-            
-            # Log détaillé pour le debug
-            logger.debug(f"Didit Response - Status: {response.status_code}, Body: {response_data}")
-            
+
+            logger.info(
+                "didit_send_code_response",
+                status_code=response.status_code,
+                status=response_data.get("status"),
+                request_id=response_data.get("request_id", "N/A")[:20]
+            )
+
             if response.status_code == 200:
-                status = response_data.get("status", "Unknown")
-                request_id = response_data.get("request_id")
-                
-                if status == "Success":
-                    return {
-                        "success": True,
-                        "request_id": request_id,
-                        "status": status,
-                        "reason": None,
-                        "message": "Code de vérification envoyé avec succès"
-                    }
-                else:
-                    reason = response_data.get("reason", "unknown_reason")
-                    return {
-                        "success": False,
-                        "request_id": request_id,
-                        "status": status,
-                        "reason": reason,
-                        "message": self._get_user_friendly_message(status, reason)
-                    }
-            
-            elif response.status_code == 401:
-                logger.error("Didit API: Clé API invalide")
-                return {
-                    "success": False,
-                    "request_id": None,
-                    "status": "Unauthorized",
-                    "reason": "invalid_api_key",
-                    "message": "Erreur de configuration du service"
-                }
-            
-            elif response.status_code == 403:
-                error_detail = response_data.get("detail", response_data.get("error", ""))
-                logger.error(f"Didit API: Permission denied - {error_detail}")
-                return {
-                    "success": False,
-                    "request_id": None,
-                    "status": "Forbidden",
-                    "reason": "permission_denied",
-                    "message": "Service temporairement indisponible"
-                }
-            
-            elif response.status_code == 429:
-                logger.error("Didit API: Rate limit ou crédits insuffisants")
-                return {
-                    "success": False,
-                    "request_id": None,
-                    "status": "TooManyRequests",
-                    "reason": "insufficient_credits",
-                    "message": "Service temporairement saturé"
-                }
-            
+                return self._handle_success_send(response_data)
             else:
-                logger.error(f"Didit API: Erreur inattendue - {response.status_code}")
-                return {
-                    "success": False,
-                    "request_id": None,
-                    "status": "Error",
-                    "reason": f"http_{response.status_code}",
-                    "message": "Erreur technique, veuillez réessayer"
-                }
-                
+                return self._handle_error_send(response.status_code, response_data)
+
+        except requests.exceptions.Timeout:
+            logger.error("didit_send_timeout", phone_number=self._mask_phone(phone_number))
+            return self._error_response("Timeout", "request_timeout", "Service trop lent")
         except requests.exceptions.RequestException as e:
-            logger.error(f"Didit API Request Exception: {str(e)}")
-            return {
-                "success": False,
-                "request_id": None,
-                "status": "NetworkError",
-                "reason": "request_failed",
-                "message": "Service de vérification temporairement indisponible"
-            }
-        except ValueError as e:
-            logger.error(f"Didit API JSON Parse Error: {str(e)}")
-            return {
-                "success": False,
-                "request_id": None,
-                "status": "ParseError",
-                "reason": "invalid_response",
-                "message": "Erreur technique, veuillez réessayer"
-            }
-    
-    def verify_code(self, request_id, code):
+            logger.error("didit_send_network_error", error=str(e))
+            return self._error_response("NetworkError", "request_failed", "Service indisponible")
+        except ValueError:
+            logger.error("didit_send_json_error")
+            return self._error_response("ParseError", "invalid_response", "Réponse invalide")
+
+    def verify_code(self, phone_number, code):
         """
-        Vérifie un code de vérification
-        NOTE: L'endpoint exact doit être confirmé dans la documentation Didit
+        Vérifie le code OTP avec Didit.
+        phone_number en E.164
         """
-        # À ADAPTER selon la documentation réelle de vérification
-        # Ceci est une implémentation hypothétique
-        
         payload = {
-            "request_id": request_id,
-            "code": code
+            "phone_number": phone_number,
+            "code": code,
+            "duplicate_phone_action": "NO_ACTION",
+            "disposable_phone_action": "NO_ACTION",
+            "voip_phone_action": "NO_ACTION"
         }
-        
+
+        logger.info(
+            "didit_verify_attempt",
+            phone_number=self._mask_phone(phone_number),
+            code_length=len(code)
+        )
+
         try:
             response = requests.post(
                 self.VERIFY_CODE_URL,
@@ -176,73 +117,172 @@ class DiditVerificationService:
                 headers=self.headers,
                 timeout=10
             )
-            
-            if response.status_code == 200:
-                data = response.json()
-                verified = data.get("verified", False)
-                
-                return {
-                    "success": True,
-                    "verified": verified,
-                    "message": "Code vérifié" if verified else "Code invalide",
-                    "details": data
-                }
-            else:
+            response_data = response.json()
+
+            logger.info(
+                "didit_verify_response",
+                status_code=response.status_code,
+                phone_status=response_data.get("phone", {}).get("status")
+            )
+
+            if response.status_code != 200:
                 return {
                     "success": False,
                     "verified": False,
-                    "message": "Échec de vérification",
-                    "details": response.json()
+                    "status": "http_error",
+                    "message": "Erreur service Didit",
+                    "details": response_data
                 }
-                
+
+            phone_details = response_data.get("phone", {})
+            status = phone_details.get("status", "Unknown")
+            verified = (status == "Approved")
+
+            return {
+                "success": True,
+                "verified": verified,
+                "status": status,
+                "message": response_data.get("message", "Vérification traitée"),
+                "phone_details": {
+                    "status": phone_details.get("status"),
+                    "phone_number_prefix": phone_details.get("phone_number_prefix"),
+                    "full_number": phone_details.get("full_number"),
+                    "country_code": phone_details.get("country_code"),
+                    "country_name": phone_details.get("country_name"),
+                    "carrier": phone_details.get("carrier"),
+                    "is_disposable": phone_details.get("is_disposable", False),
+                    "is_virtual": phone_details.get("is_virtual", False),
+                    "verification_method": phone_details.get("verification_method"),
+                    "warnings": phone_details.get("warnings", [])
+                }
+            }
+
         except requests.exceptions.RequestException as e:
-            logger.error(f"Didit Verify Exception: {str(e)}")
+            logger.error("didit_verify_network_error", error=str(e))
+            return {"success": False, "verified": False, "message": "Erreur réseau"}
+        except ValueError:
+            logger.error("didit_verify_json_error")
+            return {"success": False, "verified": False, "message": "Réponse invalide"}
+
+    def resend_code(self, request_id):
+        payload = {"request_id": request_id}
+
+        try:
+            response = requests.post(
+                self.RESEND_CODE_URL,
+                json=payload,
+                headers=self.headers,
+                timeout=self.timeout
+            )
+            response_data = response.json()
+
+            if response.status_code == 200:
+                return {
+                    "success": True,
+                    "request_id": response_data.get("request_id", request_id),
+                    "message": "Code renvoyé avec succès"
+                }
+            else:
+                logger.warning("didit_resend_failed", status=response.status_code)
+                return {"success": False, "message": "Échec renvoi"}
+
+        except requests.exceptions.RequestException as e:
+            logger.error("didit_resend_error", error=str(e))
+            return {"success": False, "message": "Erreur réseau"}
+
+    # === Méthodes utilitaires ===
+
+    def _handle_success_send(self, data):
+        status = data.get("status")
+        if status == "Success":
+            return {
+                "success": True,
+                "request_id": data.get("request_id"),
+                "status": status,
+                "message": "Code envoyé avec succès"
+            }
+        else:
+            reason = data.get("reason", "unknown")
             return {
                 "success": False,
-                "verified": False,
-                "message": "Erreur lors de la vérification"
+                "request_id": data.get("request_id"),
+                "status": status,
+                "reason": reason,
+                "message": self._friendly_message(status, reason)
             }
-    
-    def _extract_signals(self, request_meta):
-        """Extrait les signaux de fraude de la requête"""
-        signals = {}
-        
-        mapping = {
-            "ip": "REMOTE_ADDR",
-            "user_agent": "HTTP_USER_AGENT",
-            "device_id": "HTTP_X_DEVICE_ID",  # Header personnalisé
-            "app_version": "HTTP_X_APP_VERSION",
-        }
-        
-        for signal_key, meta_key in mapping.items():
-            if meta_key in request_meta:
-                signals[signal_key] = request_meta[meta_key]
-        
-        return signals if signals else None
-    
-    def _get_user_friendly_message(self, status, reason):
-        """Convertit les status/reason Didit en messages utilisateur"""
-        messages = {
-            "Blocked": {
-                "spam": "Ce numéro a été bloqué pour spam",
-                "fraud": "Numéro suspect détecté",
-                "default": "Numéro temporairement bloqué"
-            },
-            "Invalid": {
-                "default": "Numéro de téléphone invalide"
-            },
-            "Undeliverable": {
-                "default": "Impossible d'envoyer au numéro fourni"
-            }
-        }
-        
-        if status in messages and reason in messages[status]:
-            return messages[status][reason]
-        elif status in messages:
-            return messages[status]["default"]
+
+    def _handle_error_send(self, status_code, data):
+        if status_code == 400:
+            msg = data.get("detail") or data.get("message") or "Requête invalide"
+            return self._error_response("BadRequest", "invalid_request", msg)
+        elif status_code == 401:
+            return self._error_response("Unauthorized", "invalid_key", "Clé API invalide")
+        elif status_code == 403:
+            return self._error_response("Forbidden", "permission_denied", "Accès refusé")
+        elif status_code == 429:
+            return self._error_response("RateLimited", "rate_limited", "Trop de requêtes")
         else:
-            return "Échec d'envoi du code de vérification"
+            return self._error_response("ServerError", "unexpected", "Erreur technique")
+
+    def _error_response(self, status, reason, message):
+        return {
+            "success": False,
+            "status": status,
+            "reason": reason,
+            "message": message
+        }
+
+    def _extract_signals(self, request_meta):
+        signals = {}
+        mapping = {
+            'ip': 'REMOTE_ADDR',
+            'user_agent': 'HTTP_USER_AGENT',
+            'device_id': 'HTTP_X_DEVICE_ID',
+            'app_version': 'HTTP_X_APP_VERSION',
+        }
+
+        for key, meta_key in mapping.items():
+            value = request_meta.get(meta_key, '').strip()
+            if not value:
+                if key == 'device_id':
+                    value = f"web_{uuid.uuid4().hex[:8]}"
+                elif key == 'app_version':
+                    value = "1.0.0"
+                elif key == 'ip':
+                    value = "0.0.0.0"
+                elif key == 'user_agent':
+                    value = "Unknown"
+
+            if value:
+                signals[key] = value
+
+        return signals
+
+    def _are_signals_valid(self, signals):
+        required = ['device_id', 'app_version']
+        for field in required:
+            if field not in signals or not signals[field]:
+                return False
+        return True
+
+    def _get_missing_signal_fields(self, signals):
+        required = ['device_id', 'app_version']
+        return [f for f in required if not signals.get(f)]
+
+    def _friendly_message(self, status, reason):
+        messages = {
+            "Blocked": "Numéro temporairement bloqué",
+            "Invalid": "Numéro invalide ou non supporté",
+            "Undeliverable": "Impossible d'envoyer le SMS",
+            "TooManyAttempts": "Trop de tentatives, réessayez plus tard"
+        }
+        return messages.get(status, f"Échec envoi ({reason})")
+
+    def _mask_phone(self, phone_number):
+        if len(phone_number or "") > 10:
+            return phone_number[:6] + "****" + phone_number[-2:]
+        return "****"
 
 
-# Instance globale du service
+# Instance unique
 didit_service = DiditVerificationService()

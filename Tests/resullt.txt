@@ -1,0 +1,65 @@
+Verifyotp
+{
+    "success": true,
+    "action": "register",
+    "message": "Authentification réussie",
+    "user": {
+        "id": "79a1319a-c777-4b71-92dd-cac4db855ca0",
+        "phone_number": "+212660620565",
+        "country_code": "+212",
+        "kyc_status": "unverified",
+        "kyc_status_display": "Non vérifié",
+        "is_verified": false,
+        "has_kyc_documents": false,
+        "profile_complete": false,
+        "first_name": "",
+        "last_name": "",
+        "email": null,
+        "date_joined": "2025-12-28T11:53:28.981416Z",
+        "last_login": "2025-12-28T11:53:29.000691Z"
+    },
+    "auth": {
+        "token": "usr_79a1319a-c777-4b71-92dd-cac4db855ca0_4c0786eda6024fac",
+        "expires_in": 86400,
+        "type": "bearer"
+    },
+    "kyc_info": {
+        "status": "unverified",
+        "is_verified": false,
+        "required": true,
+        "next_step": "complete_profile"
+    },
+    "otp_verified": true,
+    "metadata": {
+        "verified_at": "2025-12-28T11:53:29.014309+00:00",
+        "verification_method": "sms"
+    },
+    "didit_details": {
+        "status": "Approved",
+        "message": "The verification code is correct.",
+        "phone": {
+            "country_code": "MA",
+            "country_name": "Morocco",
+            "carrier": {
+                "name": "MEDI TELECOM (Orange Maroc)",
+                "type": "mobile"
+            },
+            "is_disposable": false,
+            "is_virtual": false,
+            "warnings": [
+                {
+                    "feature": "PHONE",
+                    "risk": "DUPLICATED_PHONE_NUMBER",
+                    "additional_data": {
+                        "api_service": "PHONE_VERIFICATION",
+                        "duplicated_session_id": "550b514a-5733-4b25-b8bf-edd6bbe68384",
+                        "duplicated_session_number": 496
+                    },
+                    "log_type": "information",
+                    "short_description": "Duplicated phone number",
+                    "long_description": "The system detected that the phone number has been used in another verification process of another user."
+                }
+            ]
+        }
+    }
+}

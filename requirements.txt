@@ -21,3 +21,4 @@ gunicorn==23.0.0
 django-cors-headers==4.7.0
 python-dotenv==1.1.0
 requests==2.32.5
+structlog==22.1.0
