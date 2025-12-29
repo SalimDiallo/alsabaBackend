@@ -33,6 +33,7 @@ from django.core.cache import cache
 
 from .serializers import PhoneAuthSerializer, DiditVerifySerializer
 from .services import DiditPhoneService
+
 class CheckPhoneNumberView(APIView):
     """Vérifie si un numéro de téléphone existe déjà"""
     permission_classes = [AllowAny]

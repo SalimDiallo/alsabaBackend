@@ -23,7 +23,7 @@ class DiditVerificationService:
         self.headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",  # Format d'authorization
+            "x-api-key": self.api_key, 
         }
     
     def send_verification_code(self, phone_number, request_meta=None, vendor_data=None):
