@@ -1,0 +1,64 @@
+### Configuration
+@base_url = http://localhost:8000/api
+@test_phone = +33612345678
+@test_country = +33
+
+### Créer des variables dynamiques
+# La réponse du premier call va définir ces variables
+# @name sendCode
+POST {{base_url}}/auth/phone/
+Content-Type: application/json
+
+{
+  "phone_number": "{{test_phone}}",
+  "country_code": "{{test_country}}"
+}
+
+> {%
+  // Extraire la session_key de la réponse
+  client.global.set("session_key", response.body.session_key);
+  client.global.set("action", response.body.action);
+  client.log("Session key stockée: " + client.global.get("session_key"));
+  client.log("Action: " + client.global.get("action"));
+%}
+
+### Vérifier avec le code (manuel - à remplir)
+# Copier le code reçu par SMS ici
+@otp_code = 123456  # ← REMPLACER avec le VRAI code SMS
+
+POST {{base_url}}/auth/verify/
+Content-Type: application/json
+
+{
+  "phone_number": "{{test_phone}}",
+  "code": "{{otp_code}}",
+  "session_key": "{{session_key}}"
+}
+
+### TEST: Essayer de vérifier sans session_key (erreur)
+POST {{base_url}}/auth/verify/
+Content-Type: application/json
+
+{
+  "phone_number": "{{test_phone}}",
+  "code": "{{otp_code}}"
+  // Pas de session_key !
+}
+
+### TEST: Données invalides
+POST {{base_url}}/auth/phone/
+Content-Type: application/json
+
+{
+  "phone_number": "0612345678",  # Format invalide (manque +)
+  "country_code": "33"
+}
+
+### TEST: Numéro invalide
+POST {{base_url}}/auth/phone/
+Content-Type: application/json
+
+{
+  "phone_number": "+33000000000",  # Numéro qui n'existe pas
+  "country_code": "+33"
+}

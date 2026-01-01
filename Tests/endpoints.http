@@ -6,6 +6,7 @@
 ### ===========================================
 
 ### Variables globales
+
 @baseUrl = http://localhost:8000/api
 @contentType = application/json
 

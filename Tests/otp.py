@@ -1,11 +1,10 @@
 from twilio.rest import Client
-
+import os
 # Récupère ces valeurs depuis ta console Twilio
-ACCOUNT_SID = ''
-AUTH_TOKEN = ''
+
 
 # Initialise le client Twilio
-client = Client(ACCOUNT_SID, AUTH_TOKEN)
+client = Client(os.getenv('ACCOUNT_SID'), os.getenv('AUTH_TOKEN'))
 
 # Envoie un message via WhatsApp sandbox
 message = client.messages.create(

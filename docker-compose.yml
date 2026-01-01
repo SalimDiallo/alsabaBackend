@@ -1,5 +1,5 @@
 # ===================================
-# Docker Compose - Django + PostgreSQL
+# Docker Compose - Django + PostgreSQL + pgAdmin
 # ===================================
 
 services:
@@ -13,7 +13,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-alsaba_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alsaba_password}
     ports:
-      - "5432:5432"
+      - "5432:5432"  # À retirer en production
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d
@@ -42,11 +42,11 @@ services:
       - DATABASE_USER=${POSTGRES_USER:-alsaba_user}
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-alsaba_password}
       - DATABASE_HOST=db
-      - DATABASE_PORT=5432
+      - DATABASE_PORT=5432°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°         °                                                                                                                                                                                                                                                                                     
     ports:
       - "8000:8000"
     volumes:
-      - ./Project:/app
+      - ./Project:/app  # Montage du code pour dev (hot reload)
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     depends_on:
@@ -55,7 +55,7 @@ services:
     networks:
       - alsaba_network
 
-  # Service pgAdmin (interface web pour PostgreSQL)
+  # Service pgAdmin
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: alsaba_pgadmin
@@ -74,14 +74,12 @@ services:
     networks:
       - alsaba_network
 
-# Volumes persistants
 volumes:
   postgres_data:
   static_volume:
   media_volume:
   pgadmin_data:
 
-# Réseau
 networks:
   alsaba_network:
     driver: bridge
