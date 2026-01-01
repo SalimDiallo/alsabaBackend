@@ -10,36 +10,38 @@ from phonenumbers import PhoneNumberFormat
 
 class UserManager(BaseUserManager):
     def create_user(self, phone_number, country_code="+33", password=None, **extra_fields):
-        if not phone_number:
-            raise ValueError("Le numéro de téléphone est obligatoire")
+            if not phone_number:
+                raise ValueError("Le numéro de téléphone est obligatoire")
 
-        # Normalisation du numéro complet
-        full_phone = f"{country_code}{phone_number.lstrip('+')}"
-        try:
-            parsed = phonenumbers.parse(full_phone)
-            if not phonenumbers.is_valid_number(parsed):
-                raise ValueError("Numéro de téléphone invalide")
+            # Normalisation complète
+            full_phone = f"{country_code}{phone_number}"
+            try:
+                parsed = phonenumbers.parse(full_phone, None)
+                if not phonenumbers.is_valid_number(parsed):
+                    raise ValueError("Numéro de téléphone invalide")
+                
+                country_code = f"+{parsed.country_code}"
+                # ← CORRECTION ICI : on prend le national_number pur, sans le code pays
+                national_number = str(parsed.national_number)
+                
+                full_phone_e164 = phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
+            except phonenumbers.NumberParseException:
+                raise ValueError("Format de numéro invalide")
+
+            user = self.model(
+                country_code=country_code,
+                phone_number=national_number,  # ← Numéro national pur
+                full_phone_number=full_phone_e164,
+                **extra_fields,
+            )
+
+            if password:
+                user.set_password(password)
+            else:
+                user.set_unusable_password()
             
-            country_code = f"+{parsed.country_code}"
-            national_number = str(parsed.national_number)
-            full_phone_e164 = phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
-        except phonenumbers.NumberParseException as e:
-            raise ValueError(f"Format de numéro invalide : {e}")
-
-        user = self.model(
-            country_code=country_code,
-            phone_number=national_number,
-            full_phone_number=full_phone_e164,
-            **extra_fields,
-        )
-
-        if password:
-            user.set_password(password)
-        else:
-            user.set_unusable_password()
-        
-        user.save(using=self._db)
-        return user
+            user.save(using=self._db)
+            return user
 
     def create_superuser(self, phone_number, country_code="+33", password=None, **extra_fields):
         extra_fields.setdefault("is_staff", True)

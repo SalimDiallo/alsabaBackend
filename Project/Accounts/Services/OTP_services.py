@@ -35,7 +35,9 @@ class DiditVerificationService:
         """
         payload = {
             "phone_number": phone_number,
-            "options": {"code_size": 6}
+            "options": {"code_size": 6,
+                        "locale": "fr-FR",
+                        "preferred_channel": "sms"}
         }
 
         # Ajout des signaux anti-fraude si disponibles et valides
@@ -99,9 +101,10 @@ class DiditVerificationService:
         payload = {
             "phone_number": phone_number,
             "code": code,
-            "duplicate_phone_action": "NO_ACTION",
-            "disposable_phone_action": "NO_ACTION",
-            "voip_phone_action": "NO_ACTION"
+        #     "duplicated_phone_number_action": "NO_ACTION",
+        #     "disposable_number_action": "NO_ACTION",
+        #     "voip_number_action": "NO_ACTION"
+        # 
         }
 
         logger.info(

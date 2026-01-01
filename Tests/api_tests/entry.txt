@@ -1,0 +1,29 @@
+{
+"phone_number" : "0660620565",
+"country_code" : "+212"
+}
+
+
+
+{
+    "success": true,
+    "action": "register",
+    "message": "Code envoyé avec succès",
+    "session_key": "auth_7cfbb9dd3ab74f18",
+    "request_id": "42b17c20-d1bb-45b3-baa3-74d47db131c6",
+    "phone_number": "+212660620565",
+    "user_exists": false,
+    "expires_in": 300,
+    "metadata": {
+        "code_size": 6,
+        "channel": "sms",
+        "max_attempts": 3
+    }
+}
+
+
+{
+  "phone_number": "+212628852135",
+  "code": "744780",
+  "session_key": "auth_974ee974c71749f9"
+}

@@ -25,7 +25,7 @@ logger = structlog.get_logger(__name__)
 
 class PhoneAuthView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [AnonRateThrottle]
+    #throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
         logger.info(
@@ -209,7 +209,7 @@ class PhoneAuthView(APIView):
 
 class VerifyOTPView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [AnonRateThrottle]
+    #throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
         serializer = VerifyOTPSerializer(data=request.data)
@@ -291,7 +291,7 @@ class VerifyOTPView(APIView):
             # Création si inscription
             if action == 'register':
                 # Extraire le numéro national depuis phone_details ou fallback
-                national_number = full_phone_number.lstrip(country_code.lstrip('+'))
+                national_number = full_phone_number.replace(country_code, "", 1)  # Plus fiable
                 user = User.objects.create_user(
                     phone_number=national_number,
                     country_code=country_code,
@@ -368,7 +368,7 @@ class VerifyOTPView(APIView):
 
 class ResendOTPView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [AnonRateThrottle]
+    #throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
         serializer = ResendOTPSerializer(data=request.data)
