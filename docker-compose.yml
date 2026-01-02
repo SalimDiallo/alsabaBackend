@@ -37,12 +37,13 @@ services:
       - DEBUG=${DEBUG:-True}
       - SECRET_KEY=${SECRET_KEY:-django-insecure-change-me-in-production}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - DIDIT_API_KEY=${DIDIT_API_KEY}
       - DATABASE_ENGINE=django.db.backends.postgresql
       - DATABASE_NAME=${POSTGRES_DB:-alsaba_db}
       - DATABASE_USER=${POSTGRES_USER:-alsaba_user}
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-alsaba_password}
       - DATABASE_HOST=db
-      - DATABASE_PORT=5432°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°         °                                                                                                                                                                                                                                                                                     
+      - DATABASE_PORT=5432
     ports:
       - "8000:8000"
     volumes:
