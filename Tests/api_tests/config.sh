@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Configuration commune à tous les tests
-BASE_URL="http://127.0.0.1:8000/api"
-TEST_PHONE="0612345678"           # À CHANGER avec ton numéro réel
-COUNTRY_CODE="+33"
-TEST_PHONE_E164="+33612345678"
+BASE_URL="http://127.0.0.1:8000/api/accounts"
+TEST_PHONE="0684499227"           # À CHANGER avec ton numéro réel
+COUNTRY_CODE="+212"
+TEST_PHONE_E164="+212684499227"
 
 # Chemins images KYC (adapte selon ton PC)
 FRONT_IMAGE="../test_images/carte_identite_recto.jpg"
