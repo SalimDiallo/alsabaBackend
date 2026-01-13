@@ -10,6 +10,7 @@ urlpatterns = [
     # OTP avec Didit
     path('auth/phone/', PhoneAuthView.as_view(), name='phone_auth'),
     path('auth/verify/', VerifyOTPView.as_view(), name='verify_otp'),
+    path('resend/', ResendOTPView.as_view(), name='resend_otp'),
     path('auth/status/', AuthStatusView.as_view(), name='auth_status'),
     # JWT Token refresh
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
