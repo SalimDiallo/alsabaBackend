@@ -1,0 +1,437 @@
+# =====================================================
+# ALSABA Backend - Tests API Complets pour Accounts
+# =====================================================
+# Utilise l'extension REST Client pour VS Code
+# Exécutez les requêtes dans l'ordre pour un flow complet
+# =====================================================
+
+### =====================================================
+### VARIABLES GLOBALES
+### =====================================================
+
+@baseUrl = http://127.0.0.1:8000/api/accounts
+@contentType = application/json
+
+# Numéro de test (modifiez selon vos besoins)
+@phoneNumber = 684499227
+@countryCode = +212
+@phoneNumberE164 = +212684499227
+
+# Token stocké après vérification OTP (sera rempli automatiquement)
+@authToken = {{verifyOtp.response.body.auth.access_token}}
+@refreshToken = {{verifyOtp.response.body.auth.refresh_token}}
+
+### =====================================================
+### 1. AUTHENTIFICATION - Phone Auth (Demande OTP)
+### =====================================================
+
+### 1.1 Demande OTP - Nouveau utilisateur (inscription)
+# @name requestOtp
+POST {{baseUrl}}/auth/phone/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "{{phoneNumber}}",
+    "country_code": "{{countryCode}}"
+}
+
+### 1.2 Demande OTP - Format E.164 complet
+POST {{baseUrl}}/auth/phone/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "+33612345678",
+    "country_code": "+33"
+}
+
+### 1.3 Demande OTP - Numéro français
+POST {{baseUrl}}/auth/phone/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "612345678",
+    "country_code": "+33"
+}
+
+### 1.4 Test - Numéro invalide (doit échouer)
+POST {{baseUrl}}/auth/phone/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "123",
+    "country_code": "+33"
+}
+
+### 1.5 Test - Champs manquants (doit échouer)
+POST {{baseUrl}}/auth/phone/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "612345678"
+}
+
+### 1.6 Test - Country code invalide (doit échouer)
+POST {{baseUrl}}/auth/phone/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "612345678",
+    "country_code": "33"
+}
+
+### =====================================================
+### 2. AUTHENTIFICATION - Verify OTP
+### =====================================================
+
+### 2.1 Vérification OTP - Succès
+# @prompt otpCode Enter the OTP code received via SMS
+# @name verifyOtp
+POST {{baseUrl}}/auth/verify/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "{{phoneNumberE164}}",
+    "code": "{{otpCode}}",
+    "session_key": "{{requestOtp.response.body.session_key}}"
+}
+
+### 2.2 Test - Code OTP invalide (doit échouer)
+POST {{baseUrl}}/auth/verify/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "{{phoneNumberE164}}",
+    "code": "000000",
+    "session_key": "{{requestOtp.response.body.session_key}}"
+}
+
+### 2.3 Test - Session expirée (doit échouer)
+POST {{baseUrl}}/auth/verify/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "{{phoneNumberE164}}",
+    "code": "123456",
+    "session_key": "auth_expired_session_key"
+}
+
+### 2.4 Test - Numéro incohérent avec session (doit échouer)
+POST {{baseUrl}}/auth/verify/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "+33699999999",
+    "code": "123456",
+    "session_key": "{{requestOtp.response.body.session_key}}"
+}
+
+### 2.5 Test - Champs manquants (doit échouer)
+POST {{baseUrl}}/auth/verify/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "{{phoneNumberE164}}"
+}
+
+### =====================================================
+### 3. AUTHENTIFICATION - Auth Status
+### =====================================================
+
+### 3.1 Vérifier le statut de la session
+GET {{baseUrl}}/auth/status/?session_key={{requestOtp.response.body.session_key}}
+
+### 3.2 Test - Session non fournie
+GET {{baseUrl}}/auth/status/
+
+### 3.3 Test - Session invalide
+GET {{baseUrl}}/auth/status/?session_key=invalid_session_key
+
+### =====================================================
+### 4. AUTHENTIFICATION - Token Refresh
+### =====================================================
+
+### 4.1 Rafraîchir le token d'accès
+POST {{baseUrl}}/auth/refresh/
+Content-Type: {{contentType}}
+
+{
+    "refresh": "{{refreshToken}}"
+}
+
+### 4.2 Test - Refresh token invalide (doit échouer)
+POST {{baseUrl}}/auth/refresh/
+Content-Type: {{contentType}}
+
+{
+    "refresh": "invalid_refresh_token"
+}
+
+### 4.3 Test - Champs manquants (doit échouer)
+POST {{baseUrl}}/auth/refresh/
+Content-Type: {{contentType}}
+
+{}
+
+### =====================================================
+### 5. PROFIL UTILISATEUR
+### =====================================================
+
+### 5.1 Obtenir le profil utilisateur
+GET {{baseUrl}}/profile/
+Authorization: Bearer {{authToken}}
+
+### 5.2 Test - Sans authentification (doit échouer 401)
+GET {{baseUrl}}/profile/
+
+### 5.3 Test - Token invalide (doit échouer 401)
+GET {{baseUrl}}/profile/
+Authorization: Bearer invalid_token_here
+
+### 5.4 Test - Token expiré (doit échouer 401)
+GET {{baseUrl}}/profile/
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNjAwMDAwMDAwfQ.expired
+
+### =====================================================
+### 6. KYC - Vérification d'identité
+### =====================================================
+
+### 6.1 Soumettre une vérification KYC (Carte d'identité)
+# NOTE: Assurez-vous que les fichiers images existent
+POST {{baseUrl}}/kyc/verify/
+Authorization: Bearer {{authToken}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="document_type"
+
+id_card
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="front_image"; filename="carte_identite_recto.jpg"
+Content-Type: image/jpeg
+
+< ../test_images/carte_identite_recto.jpg
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="back_image"; filename="carte_identite_verso.jpg"
+Content-Type: image/jpeg
+
+< ../test_images/carte_identite_verso.jpg
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="perform_document_liveness"
+
+true
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="min_age"
+
+18
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### 6.2 Soumettre une vérification KYC (Passeport - sans verso)
+POST {{baseUrl}}/kyc/verify/
+Authorization: Bearer {{authToken}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="document_type"
+
+passport
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="front_image"; filename="passport.jpg"
+Content-Type: image/jpeg
+
+< ../test_images/passport.jpg
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="perform_document_liveness"
+
+true
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### 6.3 Soumettre une vérification KYC (Permis de conduire)
+POST {{baseUrl}}/kyc/verify/
+Authorization: Bearer {{authToken}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="document_type"
+
+drivers_license
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="front_image"; filename="permis_recto.jpg"
+Content-Type: image/jpeg
+
+< ../test_images/permis_recto.jpg
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="back_image"; filename="permis_verso.jpg"
+Content-Type: image/jpeg
+
+< ../test_images/permis_verso.jpg
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### 6.4 Test - Sans authentification (doit échouer 401)
+POST {{baseUrl}}/kyc/verify/
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="document_type"
+
+id_card
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### 6.5 Test - Type de document invalide (doit échouer)
+POST {{baseUrl}}/kyc/verify/
+Authorization: Bearer {{authToken}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="document_type"
+
+invalid_type
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="front_image"; filename="test.jpg"
+Content-Type: image/jpeg
+
+< ../test_images/carte_identite_recto.jpg
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### 6.6 Test - Sans image frontale (doit échouer)
+POST {{baseUrl}}/kyc/verify/
+Authorization: Bearer {{authToken}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="document_type"
+
+id_card
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### =====================================================
+### 7. SUPPRESSION DE COMPTE
+### =====================================================
+
+### 7.1 Demander la suppression du compte
+# @name requestDelete
+POST {{baseUrl}}/account/delete/
+Authorization: Bearer {{authToken}}
+Content-Type: {{contentType}}
+
+{
+    "reason": "Je ne souhaite plus utiliser ce service"
+}
+
+### 7.2 Demander la suppression (sans raison)
+POST {{baseUrl}}/account/delete/
+Authorization: Bearer {{authToken}}
+Content-Type: {{contentType}}
+
+{}
+
+### 7.3 Test - Sans authentification (doit échouer 401)
+POST {{baseUrl}}/account/delete/
+Content-Type: {{contentType}}
+
+{
+    "reason": "Test sans auth"
+}
+
+### 7.4 Confirmer la suppression du compte
+# @prompt deleteOtp Enter the OTP code received for account deletion
+POST {{baseUrl}}/account/delete/confirm/
+Authorization: Bearer {{authToken}}
+Content-Type: {{contentType}}
+
+{
+    "code": "{{deleteOtp}}",
+    "session_key": "{{requestDelete.response.body.session_key}}"
+}
+
+### 7.5 Test - Code OTP invalide pour suppression
+POST {{baseUrl}}/account/delete/confirm/
+Authorization: Bearer {{authToken}}
+Content-Type: {{contentType}}
+
+{
+    "code": "000000",
+    "session_key": "{{requestDelete.response.body.session_key}}"
+}
+
+### 7.6 Test - Session expirée pour suppression
+POST {{baseUrl}}/account/delete/confirm/
+Authorization: Bearer {{authToken}}
+Content-Type: {{contentType}}
+
+{
+    "code": "123456",
+    "session_key": "delete_expired_session"
+}
+
+### 7.7 Test - Sans authentification (doit échouer 401)
+POST {{baseUrl}}/account/delete/confirm/
+Content-Type: {{contentType}}
+
+{
+    "code": "123456",
+    "session_key": "some_session_key"
+}
+
+### =====================================================
+### 8. TESTS DE SÉCURITÉ
+### =====================================================
+
+### 8.1 Test - Injection SQL dans phone_number
+POST {{baseUrl}}/auth/phone/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "612345678'; DROP TABLE users;--",
+    "country_code": "+33"
+}
+
+### 8.2 Test - XSS dans phone_number
+POST {{baseUrl}}/auth/phone/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "<script>alert('xss')</script>",
+    "country_code": "+33"
+}
+
+### 8.3 Test - Très long numéro de téléphone
+POST {{baseUrl}}/auth/phone/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "123456789012345678901234567890123456789012345678901234567890",
+    "country_code": "+33"
+}
+
+### 8.4 Test - Country code avec caractères spéciaux
+POST {{baseUrl}}/auth/phone/
+Content-Type: {{contentType}}
+
+{
+    "phone_number": "612345678",
+    "country_code": "+33<script>"
+}
+
+### 8.5 Test - Requête avec header malveillant
+POST {{baseUrl}}/auth/phone/
+Content-Type: {{contentType}}
+X-Forwarded-For: 127.0.0.1, <script>alert(1)</script>
+
+{
+    "phone_number": "612345678",
+    "country_code": "+33"
+}
+
+### =====================================================
+### 9. FLOW COMPLET DE TEST
+### =====================================================
+# 
+# Pour tester le flow complet :
+# 1. Exécutez "1.1 Demande OTP"
+# 2. Notez le code OTP reçu par SMS
+# 3. Exécutez "2.1 Vérification OTP" avec le code
+# 4. Exécutez "5.1 Obtenir le profil" pour voir les infos
+# 5. (Optionnel) Exécutez les tests KYC
+# 6. (Optionnel) Testez la suppression de compte
+#
+### =====================================================

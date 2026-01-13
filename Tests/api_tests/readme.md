@@ -1,62 +1,137 @@
-# Tests API Django – Flux complet utilisateur
+# Tests API - ALSABA Backend
 
-Ce dossier contient une suite de scripts Bash modulaires pour tester **l’ensemble du flux utilisateur** de ton application Django :
+Ce dossier contient les tests pour l'API backend ALSABA.
 
-1. Authentification par téléphone (OTP Didit)
-2. Récupération du profil
-3. Vérification KYC (Didit ID Verification)
-4. Profil mis à jour après KYC
-5. Demande de suppression de compte
-6. Confirmation de suppression (soft delete)
+## 📁 Structure
 
-Les tests sont **séparés en 7 étapes** pour faciliter le debug, les tests unitaires manuels et l’automatisation future.
-
-## Prérequis
-
-- Django serveur lancé en local : `python manage.py runserver`
-- `jq` installé (pour parser le JSON)  
-  → macOS : `brew install jq`  
-  → Ubuntu/Debian : `sudo apt install jq`  
-  → Windows (WSL ou Git Bash) : `apt install jq` ou télécharger depuis https://stedolan.github.io/jq/
-- `curl` installé (généralement présent par défaut)
-
-## Structure des fichiers
-api_tests/
-├── config.sh                     # Configuration commune (URL, numéro test, chemins images)
-├── 01_request_otp.sh             # Demande d'envoi OTP
-├── 02_verify_otp.sh              # Vérification OTP + récupération token
-├── 03_get_profile.sh             # Affichage profil initial
-├── 04_kyc_verify.sh              # Vérification KYC avec upload document
-├── 05_profile_after_kyc.sh       # Profil après KYC (vérifie les données extraites)
-├── 06_request_delete.sh          # Demande suppression (envoi OTP de confirmation)
-├── 07_confirm_delete.sh          # Confirmation suppression avec OTP
-
-## Configuration
-
-1. Édite le fichier `config.sh` :
-nano config.sh
-Modifie ces lignes :
-BashTEST_PHONE="0612345678"           # ← Ton numéro réel pour recevoir les SMS
-TEST_PHONE_E164="+33612345678"     # ← Même numéro au format E.164
-FRONT_IMAGE="../test_images/recto.jpg"    # ← Chemin vers photo recto
-BACK_IMAGE="../test_images/verso.jpg"     # ← Chemin vers photo verso (optionnel)
-
-2. Crée le dossier test_images/ à la racine du projet et place-y tes photos de test :
-
-textproject/
-├── test_images/
-│   ├── recto.jpg
-│   └── verso.jpg
+```
+Tests/
 ├── api_tests/
-└── manage.py
+│   ├── tests.http      # Tests REST Client (VS Code)
+│   ├── test_flow.py    # Tests Python automatisés
+│   └── readme.md       # Ce fichier
+└── test_images/        # Images pour tests KYC
+    ├── carte_identite_recto.jpg
+    ├── carte_identite_verso.jpg
+    ├── passport.jpg
+    ├── permis_recto.jpg
+    └── permis_verso.jpg
+```
 
-3. Entre dans le dossier :
-cd api_tests
-Puis lance les scripts dans l’ordre :
-./01_request_otp.sh
-./02_verify_otp.sh          # ← Saisis le code OTP reçu par SMS
-./03_get_profile.sh
-./04_kyc_verify.sh          # ← Envoi du document KYC
-./05_profile_after_kyc.sh
-./06_request_delete.sh      # ← Demande suppression
-./07_confirm_delete.sh      # ← Saisis le code OTP de confirmation
+## 🧪 Tests REST Client (.http)
+
+### Prérequis
+
+1. **VS Code** avec l'extension [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.REST-Client)
+2. **Serveur Django** en cours d'exécution sur `http://127.0.0.1:8000`
+
+### Utilisation
+
+1. Ouvrez `tests.http` dans VS Code
+2. Cliquez sur "Send Request" au-dessus de chaque requête
+3. Les variables sont automatiquement chaînées entre les requêtes
+
+### Endpoints testés
+
+| # | Endpoint | Méthode | Description |
+|---|----------|---------|-------------|
+| 1 | `/auth/phone/` | POST | Demande d'OTP |
+| 2 | `/auth/verify/` | POST | Vérification OTP |
+| 3 | `/auth/status/` | GET | Statut de session |
+| 4 | `/auth/refresh/` | POST | Rafraîchir token JWT |
+| 5 | `/profile/` | GET | Profil utilisateur |
+| 6 | `/kyc/verify/` | POST | Vérification KYC |
+| 7 | `/account/delete/` | POST | Demande suppression |
+| 8 | `/account/delete/confirm/` | POST | Confirmer suppression |
+
+### Flow de test complet
+
+```
+1. POST /auth/phone/           → Reçoit session_key
+2. POST /auth/verify/          → Reçoit access_token + refresh_token
+3. GET /profile/               → Vérifie le profil
+4. POST /kyc/verify/           → Soumet documents KYC
+5. GET /profile/               → Vérifie statut KYC
+6. POST /account/delete/       → Demande suppression
+7. POST /account/delete/confirm/ → Confirme suppression
+```
+
+## 🖼️ Images de test pour KYC
+
+Pour tester les endpoints KYC, placez des images dans `Tests/test_images/` :
+
+- `carte_identite_recto.jpg` - Recto carte d'identité
+- `carte_identite_verso.jpg` - Verso carte d'identité
+- `passport.jpg` - Page passeport
+- `permis_recto.jpg` - Recto permis de conduire
+- `permis_verso.jpg` - Verso permis de conduire
+
+> ⚠️ **Note**: Utilisez des images de test, pas de vrais documents !
+
+## 📋 Variables
+
+Les variables sont définies en haut du fichier `tests.http` :
+
+```http
+@baseUrl = http://127.0.0.1:8000/api/accounts
+@phoneNumber = 684499227
+@countryCode = +212
+@phoneNumberE164 = +212684499227
+```
+
+Modifiez ces valeurs selon vos besoins de test.
+
+## 🔐 Authentification
+
+Après la vérification OTP réussie, le token est automatiquement stocké :
+
+```http
+@authToken = {{verifyOtp.response.body.auth.access_token}}
+```
+
+Ce token est utilisé dans toutes les requêtes authentifiées via :
+
+```http
+Authorization: Bearer {{authToken}}
+```
+
+## ✅ Tests inclus
+
+### Tests fonctionnels
+- ✅ Inscription nouveau utilisateur
+- ✅ Connexion utilisateur existant
+- ✅ Vérification OTP valide/invalide
+- ✅ Gestion des sessions
+- ✅ Rafraîchissement de token
+- ✅ Récupération profil
+- ✅ Vérification KYC (carte, passeport, permis)
+- ✅ Suppression de compte
+
+### Tests d'erreur
+- ✅ Numéro de téléphone invalide
+- ✅ Code OTP incorrect
+- ✅ Session expirée
+- ✅ Token invalide/expiré
+- ✅ Champs manquants
+- ✅ Types de document invalides
+
+### Tests de sécurité
+- ✅ Injection SQL
+- ✅ XSS
+- ✅ Overflow (données trop longues)
+- ✅ Headers malveillants
+
+## 🚀 Lancer le serveur
+
+```bash
+cd /home/salim/Projets/ALSABA/alsabaBackend
+source venv/bin/activate
+cd Project
+python manage.py runserver
+```
+
+## 📝 Notes
+
+- Les OTP sont envoyés via Didit en production
+- En développement, vérifiez les logs pour voir les codes
+- Le rate limiting est désactivé par défaut (commenté)

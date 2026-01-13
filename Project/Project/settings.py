@@ -31,10 +31,10 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-4)-5heqax82y=3l8w1b+qxscems9i@xhir!v6^)-nw#r+e+bn&')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
 DEBUG = True
-# Hosts autorisés
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+
+# Hosts autorisés (inclut 10.0.2.2 pour l'émulateur Android)
+ALLOWED_HOSTS = ['*']  # En dev uniquement, restreindre en production
 
 
 # Application definition
@@ -81,6 +81,7 @@ SIMPLE_JWT = {
 }
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',  # AVANT CommonMiddleware
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -113,11 +114,15 @@ WSGI_APPLICATION = 'Project.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-# Utiliser PostgreSQL si DATABASE_ENGINE est défini, sinon SQLite pour le développement local
-if not os.getenv('DATABASE_ENGINE'):
+# Utiliser SQLite par défaut pour le développement local
+# PostgreSQL sera utilisé si DATABASE_ENGINE est explicitement défini (ex: via Docker)
+DATABASE_ENGINE = os.getenv('DATABASE_ENGINE')
+
+if DATABASE_ENGINE and DATABASE_ENGINE != 'sqlite3':
+    # Configuration PostgreSQL (production/Docker)
     DATABASES = {
         'default': {
-            'ENGINE': os.getenv('DATABASE_ENGINE', 'django.db.backends.postgresql'),
+            'ENGINE': DATABASE_ENGINE,
             'NAME': os.getenv('DATABASE_NAME', 'alsaba_db'),
             'USER': os.getenv('DATABASE_USER', 'alsaba_user'),
             'PASSWORD': os.getenv('DATABASE_PASSWORD', 'alsaba_password'),
@@ -126,7 +131,7 @@ if not os.getenv('DATABASE_ENGINE'):
         }
     }
 else:
-    # SQLite pour le développement local sans Docker
+    # SQLite pour le développement local (par défaut)
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -201,3 +206,14 @@ LOGGING = {
         'level': 'INFO',
     },
 }
+
+# CORS Configuration
+# Pour le développement, autoriser toutes les origines
+CORS_ALLOW_ALL_ORIGINS = True
+
+# OU pour être plus restrictif (décommenter si nécessaire) :
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:8081",
+#     "http://10.0.2.2:8081",  # Pour l'émulateur Android
+#     "exp://10.16.24.147:8081",  # Votre IP Expo
+# ]

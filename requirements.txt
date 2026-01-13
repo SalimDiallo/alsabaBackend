@@ -8,8 +8,8 @@ twilio==9.9.0
 # Images (pour ImageField)
 Pillow==11.2.1
 
-# PostgreSQL
-psycopg2-binary==2.9.10
+# PostgreSQL (optionnel - uniquement si vous utilisez Docker/PostgreSQL)
+# psycopg2-binary==2.9.10
 
 # Environnement
 python-dotenv==1.1.0
