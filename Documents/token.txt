@@ -1,0 +1,7 @@
+{"phone_number" : "0660620565",
+ "country_code" : "+212"
+}
+
+{"phone_number" : "+212660620565",
+"code" : "",
+"session_key" : "",}

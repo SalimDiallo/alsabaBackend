@@ -202,6 +202,20 @@ class PhoneAuthView(APIView):
             }
 
         return response_data 
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from django.utils import timezone
+from django.core.cache import cache
+from ..models import User
+from ..Services.OTP_services import didit_service
+from ..utils import auth_utils
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+
 class VerifyOTPView(APIView):
     """
     Vue pour la vérification du code OTP
@@ -215,11 +229,13 @@ class VerifyOTPView(APIView):
         
         Flow:
         1. Validation des données
-        2. Vérification de la session
-        3. Appel à Didit pour vérification
-        4. Traitement selon résultat (succès/échec)
-        5. Création/connexion utilisateur
-        6. Génération des tokens JWT
+        2. Vérification de la session (si fournie)
+        3. Appel à Didit pour vérification OTP
+        4. Gestion succès/échec
+        5. Création ou récupération de l'utilisateur
+        6. Mise à jour utilisateur + session
+        7. Génération des tokens JWT
+        8. Réponse complète
         """
         serializer = VerifyOTPSerializer(data=request.data)
         if not serializer.is_valid():
@@ -230,17 +246,18 @@ class VerifyOTPView(APIView):
         code = serializer.validated_data['code']
         session_key = serializer.validated_data.get('session_key')
 
-        # 1. Récupération et validation de la session
+        # 1. Vérification de la session (si fournie)
         session_data = None
         if session_key:
             session_data = cache.get(session_key)
             if not session_data:
+                logger.warning("session_not_found", session_key=session_key)
                 return Response({
-                    "error": "Session expirée",
+                    "error": "Session expirée ou invalide",
                     "code": "session_expired"
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Vérification de la cohérence
+            # Vérification de cohérence (numéro téléphone)
             if session_data.get('full_phone_number') != full_phone_number:
                 logger.warning(
                     "session_mismatch",
@@ -252,7 +269,7 @@ class VerifyOTPView(APIView):
                     "code": "session_mismatch"
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Vérification du nombre de tentatives
+            # Limite de tentatives
             if session_data.get('attempts', 0) >= 3:
                 return Response({
                     "error": "Trop de tentatives échouées",
@@ -260,7 +277,7 @@ class VerifyOTPView(APIView):
                     "retry_after": 300
                 }, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
-        # 2. Vérification du code via Didit
+        # 2. Vérification OTP via Didit
         request_id = session_data.get('request_id') if session_data else None
         verify_result = didit_service.verify_code(full_phone_number, code, request_id)
 
@@ -271,17 +288,16 @@ class VerifyOTPView(APIView):
             verified=verify_result.get("verified", False)
         )
 
-        # 3. Gestion des échecs de vérification
-        if not verify_result["success"]:
+        # 3. Gestion des échecs
+        if not verify_result.get("success", False):
             if session_data:
                 auth_utils.update_session_attempt(session_key)
-            
             return Response({
                 "error": verify_result.get("message", "Échec de la vérification"),
                 "code": "verification_failed"
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        if not verify_result["verified"]:
+        if not verify_result.get("verified", False):
             if session_data:
                 auth_utils.update_session_attempt(session_key)
             
@@ -292,11 +308,11 @@ class VerifyOTPView(APIView):
                 "remaining_attempts": max(0, remaining)
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # === SUCCÈS DE LA VÉRIFICATION ===
+        # === SUCCÈS OTP ===
         phone_details = verify_result.get("phone_details", {})
         didit_status = verify_result.get("status")
 
-        # 4. Vérifications de sécurité supplémentaires
+        # 4. Sécurité : blocage numéros frauduleux
         if phone_details.get("is_disposable") or phone_details.get("is_virtual"):
             logger.warning(
                 "blocked_fraudulent_phone",
@@ -309,31 +325,27 @@ class VerifyOTPView(APIView):
                 "code": "fraudulent_phone"
             }, status=status.HTTP_403_FORBIDDEN)
 
-        # 5. Récupération des informations de session ou déduction
+        # 5. Déduction de l'action si pas dans la session
         action = session_data.get('action') if session_data else None
-        country_code = session_data.get('country_code') if session_data else phone_details.get("country_code", "+33")
-        
-        # Si pas d'action dans la session, on déduit
         if not action:
             action = 'login' if User.objects.filter(full_phone_number=full_phone_number).exists() else 'register'
 
-        # 6. Gestion de l'utilisateur (création ou récupération)
+        country_code = session_data.get('country_code') if session_data else phone_details.get("country_code", "+33")
+
+        # 6. Gestion utilisateur
         try:
             user = User.objects.get(full_phone_number=full_phone_number)
             logger.debug("user_found", user_id=str(user.id))
-            
         except User.DoesNotExist:
             if action == 'register':
-                # Création d'un nouvel utilisateur
-                # Extraction propre du numéro national
+                # Création propre sans passer full_phone_number (le manager s'en charge)
                 national_number = full_phone_number.replace(country_code, "").strip()
                 if national_number.startswith('0'):
                     national_number = national_number[1:]
                 
                 user = User.objects.create_user(
                     phone_number=national_number,
-                    country_code=country_code,
-                    full_phone_number=full_phone_number
+                    country_code=country_code
                 )
                 logger.info("user_created_via_otp", user_id=str(user.id))
             else:
@@ -342,7 +354,7 @@ class VerifyOTPView(APIView):
                     "code": "user_not_found"
                 }, status=status.HTTP_404_NOT_FOUND)
 
-        # 7. Mise à jour des informations utilisateur avec les données Didit
+        # 7. Mise à jour utilisateur avec données Didit
         user.carrier = phone_details.get("carrier", "")
         user.is_disposable = phone_details.get("is_disposable", False)
         user.is_voip = phone_details.get("is_virtual", False)
@@ -351,15 +363,14 @@ class VerifyOTPView(APIView):
         user.last_login = timezone.now()
         user.save()
 
-        # 8. Mise à jour de la session (au lieu de suppression)
+        # 8. Mise à jour session (prolongation)
         if session_key and session_data:
             session_data['user_id'] = str(user.id)
             session_data['verified'] = True
             session_data['auth_completed_at'] = timezone.now().isoformat()
-            # Prolonger la session pour les appels suivants
-            cache.set(session_key, session_data, timeout=600)
+            cache.set(session_key, session_data, timeout=600)  # 10 min supplémentaires
 
-        # 9. Génération des tokens JWT
+        # 9. Tokens JWT
         from rest_framework_simplejwt.tokens import RefreshToken
         refresh = RefreshToken.for_user(user)
         tokens = {
@@ -367,11 +378,11 @@ class VerifyOTPView(APIView):
             'refresh': str(refresh),
         }
 
-        # 10. Sérialisation de l'utilisateur
+        # 10. Sérialisation utilisateur
         from ..Serializers.OTP_serializers import UserSerializer
         user_serializer = UserSerializer(user)
 
-        # 11. Préparation de la réponse finale
+        # 11. Réponse finale
         response_data = {
             "success": True,
             "action": action,
@@ -403,7 +414,7 @@ class VerifyOTPView(APIView):
             phone_verified=True
         )
 
-        return Response(response_data, status=status.HTTP_200_OK)  
+        return Response(response_data, status=status.HTTP_200_OK)
 class ResendOTPView(APIView):
     """
     Vue pour renvoyer un code OTP.

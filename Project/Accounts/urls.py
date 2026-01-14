@@ -19,7 +19,7 @@ urlpatterns = [
     #Didit KYC
     path('kyc/verify/', KYCVerifyView.as_view(), name='kyc_verify'),
     # Delete Account
-    path('account/delete/', AccountDeleteRequestView.as_view(), name='account_delete_request'),
-    path('account/delete/confirm/', AccountDeleteConfirmView.as_view(), name='account_delete_confirm'),
+    path('delete/', AccountDeleteRequestView.as_view(), name='account_delete_request'),
+    path('delete/confirm/', AccountDeleteConfirmView.as_view(), name='account_delete_confirm'),
 
 ]

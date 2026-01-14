@@ -8,7 +8,10 @@ from ..models import User
 from ..Services.OTP_services import didit_service
 from ..utils import AuthUtils as auth_utils
 import structlog
+from datetime import datetime
+
 logger = structlog.get_logger(__name__)
+
 class AccountDeleteRequestView(APIView):
     """
     POST /api/account/delete/
@@ -38,7 +41,20 @@ class AccountDeleteRequestView(APIView):
         existing_session_key = f"delete_pending_{user.id}"
         existing_session = cache.get(existing_session_key)
         if existing_session:
-            expires_in = cache.ttl(existing_session_key)
+            # Calcul manuel du temps restant (solution sans ttl)
+            expires_at_str = existing_session.get('expires_at')
+            expires_in = 0
+            if expires_at_str:
+                try:
+                    expires_at = datetime.fromisoformat(expires_at_str)
+                    if timezone.is_naive(expires_at):
+                        expires_at = timezone.make_aware(expires_at)
+                    now = timezone.now()
+                    expires_in = max(0, int((expires_at - now).total_seconds()))
+                except (ValueError, TypeError) as e:
+                    logger.warning("expires_at_parse_error", error=str(e))
+                    expires_in = 0  # Considéré comme expiré si parsing échoue
+            
             return Response({
                 "success": True,
                 "message": "Une demande de suppression est déjà en cours",
@@ -66,7 +82,7 @@ class AccountDeleteRequestView(APIView):
             "ip_address": auth_utils.get_client_ip(request),
             "user_agent": request.META.get('HTTP_USER_AGENT', '')[:200],
             "created_at": timezone.now().isoformat(),
-            "expires_at": expires_at.isoformat(),
+            "expires_at": expires_at.isoformat(),  # Format ISO pour calcul futur
             "attempts": 0,
             "confirmed": False
         }
@@ -126,6 +142,8 @@ class AccountDeleteRequestView(APIView):
             "next_step": "enter_code",
             "warning": "Cette action est irréversible. Votre compte et toutes les données associées seront supprimés."
         })
+
+
 class AccountDeleteConfirmView(APIView):
     """
     POST /api/account/delete/confirm/
@@ -203,7 +221,7 @@ class AccountDeleteConfirmView(APIView):
             # Incrémenter les tentatives
             session_data['attempts'] = session_data.get('attempts', 0) + 1
             session_data['last_attempt'] = timezone.now().isoformat()
-            cache.set(session_key, session_data, timeout=cache.ttl(session_key) or 600)
+            cache.set(session_key, session_data, timeout=cache.ttl(session_key) or 600)  # ← Note: ici ttl() est optionnel, tu peux le remplacer par 600
             
             remaining = 3 - session_data['attempts']
             logger.warning(
