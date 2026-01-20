@@ -177,6 +177,7 @@ CACHES = {
     }
 }
 DIDIT_API_KEY = os.environ.get('DIDIT_API_KEY', 'your-key-here')
+DIDIT_USE_PLACEHOLDER = True
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 

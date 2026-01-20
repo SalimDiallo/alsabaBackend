@@ -23,7 +23,7 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/accounts/', include('Accounts.urls')), 
-    path('wallet/', include('Wallet.urls')),
+    path('api/wallet/', include('Wallet.urls')),
 ]
 
 # Pour servir les fichiers médias en développement

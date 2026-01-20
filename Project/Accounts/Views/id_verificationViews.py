@@ -9,7 +9,12 @@ from datetime import datetime
 from ..utils import auth_utils
 from ..models import User, KYCDocument
 from ..Serializers.KYC_serializers import KYCVerifySerializer
-from ..Services.KYC_services import kyc_service
+#from ..Services.KYC_services import kyc_service
+from Project.settings import DIDIT_USE_PLACEHOLDER
+if DIDIT_USE_PLACEHOLDER:
+    from ..Services.placeholders.KYC import kyc_service
+else:
+    from ..Services.KYC_services import kyc_service
 
 logger = structlog.get_logger(__name__)
 

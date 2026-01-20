@@ -9,7 +9,12 @@ import structlog
 from rest_framework.permissions import IsAuthenticated
 from ..utils import auth_utils
 from ..Serializers.OTP_serializers import PhoneAuthSerializer, VerifyOTPSerializer
-from ..Services.OTP_services import didit_service
+#from ..Services.OTP_services import didit_service
+from Project.settings import DIDIT_USE_PLACEHOLDER
+if DIDIT_USE_PLACEHOLDER:
+    from ..Services.placeholders.OTP import didit_service
+else:
+    from ..Services.OTP_services import didit_service
 from ..models import User
 
 logger = structlog.get_logger(__name__)
