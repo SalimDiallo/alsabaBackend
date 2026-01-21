@@ -55,7 +55,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',  
     'Accounts',
-    'Wallet', 
+    'Wallet.apps.WalletConfig', 
 ]
 
 REST_FRAMEWORK = {
@@ -208,3 +208,66 @@ LOGGING = {
         'level': 'INFO',
     },
 }
+
+# settings.py - Ajouter cette configuration
+import structlog
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'json_formatter': {
+            '()': structlog.stdlib.ProcessorFormatter,
+            'processor': structlog.processors.JSONRenderer(),
+        },
+        'console_formatter': {
+            '()': structlog.stdlib.ProcessorFormatter,
+            'processor': structlog.processors.KeyValueRenderer(
+                key_order=['timestamp', 'level', 'event', 'logger']
+            ),
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'console_formatter',
+        },
+        'json_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': 'logs/structlog.json',
+            'formatter': 'json_formatter',
+            'maxBytes': 10485760,  # 10MB
+            'backupCount': 5,
+        },
+    },
+    'loggers': {
+        '': {
+            'handlers': ['console', 'json_file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'wallet': {
+            'handlers': ['console', 'json_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+# Configuration structlog
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.filter_by_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+    ],
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)

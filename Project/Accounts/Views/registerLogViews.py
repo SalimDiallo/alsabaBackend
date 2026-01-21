@@ -367,13 +367,6 @@ class VerifyOTPView(APIView):
         user.phone_verified_at = timezone.now()
         user.last_login = timezone.now()
         user.save()
-        # Création du wallet si nécessaire
-        from Wallet.models import Wallet
-        try:
-            Wallet.create_for_user(user)
-            logger.info("wallet_created_on_verify", user_id=str(user.id))
-        except Exception as e:
-            logger.error("wallet_creation_failed", user_id=str(user.id), error=str(e))
             
         # 8. Mise à jour session (prolongation)
         if session_key and session_data:
