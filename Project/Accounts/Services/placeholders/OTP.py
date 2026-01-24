@@ -1,10 +1,13 @@
 # apps/auth/Services/OTP_services.py
-import requests
-import structlog
-from django.conf import settings
-from ..utils import auth_utils
+import random
 import uuid
-
+import time
+import structlog
+from datetime import datetime
+from django.conf import settings
+from ...utils import auth_utils
+from django.utils import timezone
+import requests
 logger = structlog.get_logger(__name__)
 
 
@@ -17,8 +20,7 @@ class DiditVerificationService:
     BASE_URL = "https://verification.didit.me/v2"
     SEND_CODE_URL = f"{BASE_URL}/phone/send"
     VERIFY_CODE_URL = f"{BASE_URL}/phone/check"
-    # PAS de RESEND_CODE_URL - Didit ne propose pas cette fonctionnalité
-
+    
     def __init__(self):
         if not settings.DIDIT_API_KEY:
             raise ValueError("DIDIT_API_KEY n'est pas configurée dans settings")
@@ -27,13 +29,28 @@ class DiditVerificationService:
         self.headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "x-api-key": self.api_key, 
+            "x-api-key": self.api_key,
         }
         self.timeout = 15
+        
+        # Mode placeholder (peut être configuré dans les settings)
+        self.use_placeholder = getattr(settings, 'DIDIT_USE_PLACEHOLDER', True)
+        
+        # Stockage local pour les codes (en mode placeholder)
+        self._verification_store = {}
+        
+        # Formats de numéros test pour les différents scénarios
+        self._test_numbers = {
+            'success': ['+33612345678', '+33798765432', '+33611223344'],
+            'blocked': ['+33699999999', '+33788888888'],
+            'invalid': ['+33600000000', 'invalid_number'],
+            'undeliverable': ['+33611111111'],
+            'timeout': ['+33622222222']
+        }
 
     def send_verification_code(self, phone_number, request_meta=None, vendor_data=None):
         """
-        Envoie un code OTP via Didit.
+        Envoie un code OTP via Didit (ou placeholder).
         
         Args:
             phone_number: Format E.164 (ex: +33612345678)
@@ -52,6 +69,193 @@ class DiditVerificationService:
                 "Format de numéro invalide"
             )
         
+        # Si le placeholder est activé, simuler l'envoi
+        if self.use_placeholder:
+            return self._simulate_send_code(phone_number, request_meta, vendor_data)
+        
+        # Sinon, utiliser l'implémentation réelle
+        return self._real_send_code(phone_number, request_meta, vendor_data)
+
+    def verify_code(self, phone_number, code, request_id=None):
+        """
+        Vérifie un code OTP avec Didit (ou placeholder).
+        
+        Args:
+            phone_number: Format E.164
+            code: Code OTP (6 chiffres)
+            request_id: Optionnel - ID de la requête Didit pour tracking
+        
+        Returns:
+            dict: Résultat de la vérification avec détails
+        """
+        # Validation des entrées
+        if not auth_utils.validate_e164_format(phone_number):
+            return {
+                "success": False,
+                "verified": False,
+                "message": "Format de numéro invalide",
+                "code": "invalid_phone_format"
+            }
+        
+        if not code or not code.isdigit() or len(code) != 6:
+            return {
+                "success": False,
+                "verified": False,
+                "message": "Code OTP invalide (6 chiffres requis)",
+                "code": "invalid_otp_format"
+            }
+
+        # Si le placeholder est activé, simuler la vérification
+        if self.use_placeholder:
+            return self._simulate_verify_code(phone_number, code, request_id)
+        
+        # Sinon, utiliser l'implémentation réelle
+        return self._real_verify_code(phone_number, code, request_id)
+
+    # ==================== SIMULATION MODE ====================
+
+    def _simulate_send_code(self, phone_number, request_meta=None, vendor_data=None):
+        """Simule l'envoi d'un code OTP."""
+        # Simuler un délai réseau
+        time.sleep(random.uniform(0.5, 1.5))
+        
+        # Générer un request_id
+        request_id = f"didit_sim_{uuid.uuid4().hex[:16]}"
+        
+        # Déterminer le scénario basé sur le numéro de téléphone
+        scenario = self._determine_send_scenario(phone_number)
+        
+        logger.info(
+            "didit_placeholder_send_attempt",
+            phone_number=auth_utils.mask_phone(phone_number),
+            scenario=scenario,
+            request_id=request_id
+        )
+        
+        # Traiter selon le scénario
+        if scenario == 'blocked':
+            return self._simulate_blocked_response(phone_number, request_id)
+        elif scenario == 'invalid':
+            return self._simulate_invalid_response(phone_number, request_id)
+        elif scenario == 'undeliverable':
+            return self._simulate_undeliverable_response(phone_number, request_id)
+        elif scenario == 'timeout':
+            return self._simulate_timeout_response()
+        else:
+            # Cas normal - générer et stocker un code
+            otp_code = self._generate_otp_code()
+            expires_at = time.time() + 300  # 5 minutes
+            
+            self._verification_store[phone_number] = {
+                'code': otp_code,
+                'expires_at': expires_at,
+                'request_id': request_id,
+                'attempts': 0,
+                'vendor_data': vendor_data
+            }
+            
+            # Pour les numéros spécifiques, forcer le code à 123456 pour les tests
+            if phone_number in ['+33612345678', '+336000000']:
+                otp_code = '123456'
+                self._verification_store[phone_number]['code'] = otp_code
+            
+            logger.info(
+                "didit_placeholder_code_generated",
+                phone_number=auth_utils.mask_phone(phone_number),
+                code=otp_code,
+                request_id=request_id
+            )
+            
+            return {
+                "success": True,
+                "request_id": request_id,
+                "status": "Success",
+                "message": "Code de vérification envoyé par SMS (simulé)"
+            }
+
+    def _simulate_verify_code(self, phone_number, code, request_id=None):
+        """Simule la vérification d'un code OTP."""
+        # Simuler un délai
+        time.sleep(random.uniform(0.3, 0.8))
+        
+        # Vérifier si le numéro existe dans le store
+        if phone_number not in self._verification_store:
+            logger.warning(
+                "didit_placeholder_no_code_found",
+                phone_number=auth_utils.mask_phone(phone_number)
+            )
+            return {
+                "success": False,
+                "verified": False,
+                "message": "Aucun code trouvé pour ce numéro",
+                "code": "no_pending_verification"
+            }
+        
+        stored_data = self._verification_store[phone_number]
+        
+        # Vérifier l'expiration
+        if time.time() > stored_data['expires_at']:
+            del self._verification_store[phone_number]
+            return {
+                "success": False,
+                "verified": False,
+                "message": "Le code a expiré",
+                "code": "code_expired"
+            }
+        
+        # Incrémenter les tentatives
+        stored_data['attempts'] += 1
+        
+        # Vérifier le code
+        if code == stored_data['code']:
+            # Code correct
+            phone_details = self._generate_phone_details(phone_number)
+            
+            # Nettoyer le store
+            del self._verification_store[phone_number]
+            
+            logger.info(
+                "didit_placeholder_verification_success",
+                phone_number=auth_utils.mask_phone(phone_number),
+                request_id=request_id
+            )
+            
+            return {
+                "success": True,
+                "verified": True,
+                "status": "Approved",
+                "message": "Vérification réussie (simulée)",
+                "phone_details": phone_details
+            }
+        else:
+            # Code incorrect
+            if stored_data['attempts'] >= 3:
+                del self._verification_store[phone_number]
+                return {
+                    "success": False,
+                    "verified": False,
+                    "message": "Trop de tentatives échouées",
+                    "code": "max_attempts_exceeded"
+                }
+            
+            logger.warning(
+                "didit_placeholder_wrong_code",
+                phone_number=auth_utils.mask_phone(phone_number),
+                attempts=stored_data['attempts']
+            )
+            
+            return {
+                "success": False,
+                "verified": False,
+                "message": "Code incorrect",
+                "code": "wrong_code",
+                "attempts_remaining": 3 - stored_data['attempts']
+            }
+
+    # ==================== REAL MODE ====================
+
+    def _real_send_code(self, phone_number, request_meta=None, vendor_data=None):
+        """Implémentation réelle de l'envoi de code (votre code original)."""
         payload = {
             "phone_number": phone_number,
             "options": {
@@ -126,35 +330,8 @@ class DiditVerificationService:
                 "Réponse invalide du service"
             )
 
-    def verify_code(self, phone_number, code, request_id=None):
-        """
-        Vérifie un code OTP avec Didit.
-        
-        Args:
-            phone_number: Format E.164
-            code: Code OTP (6 chiffres)
-            request_id: Optionnel - ID de la requête Didit pour tracking
-        
-        Returns:
-            dict: Résultat de la vérification avec détails
-        """
-        # Validation des entrées
-        if not auth_utils.validate_e164_format(phone_number):
-            return {
-                "success": False,
-                "verified": False,
-                "message": "Format de numéro invalide",
-                "code": "invalid_phone_format"
-            }
-        
-        if not code or not code.isdigit() or len(code) != 6:
-            return {
-                "success": False,
-                "verified": False,
-                "message": "Code OTP invalide (6 chiffres requis)",
-                "code": "invalid_otp_format"
-            }
-
+    def _real_verify_code(self, phone_number, code, request_id=None):
+        """Implémentation réelle de la vérification de code (votre code original)."""
         payload = {
             "phone_number": phone_number,
             "code": code,
@@ -208,7 +385,103 @@ class DiditVerificationService:
             logger.error("didit_verify_json_error", error=str(e))
             return {"success": False, "verified": False, "message": "Réponse invalide"}
 
-    # === Méthodes utilitaires privées ===
+    # ==================== UTILITY METHODS ====================
+
+    def _determine_send_scenario(self, phone_number):
+        """Détermine le scénario de test basé sur le numéro."""
+        for scenario, numbers in self._test_numbers.items():
+            if phone_number in numbers:
+                return scenario
+        
+        # Par défaut, retourner un scénario aléatoire avec probabilités
+        rand = random.random()
+        if rand < 0.70:  # 70% de succès
+            return 'success'
+        elif rand < 0.75:  # 5% bloqué
+            return 'blocked'
+        elif rand < 0.80:  # 5% invalide
+            return 'invalid'
+        elif rand < 0.85:  # 5% non délivrable
+            return 'undeliverable'
+        elif rand < 0.90:  # 5% timeout
+            return 'timeout'
+        else:  # 10% succès
+            return 'success'
+
+    def _generate_otp_code(self):
+        """Génère un code OTP aléatoire."""
+        return ''.join([str(random.randint(0, 9)) for _ in range(6)])
+
+    def _generate_phone_details(self, phone_number):
+        """Génère des détails de téléphone réalistes."""
+        carriers = ['Orange', 'SFR', 'Bouygues', 'Free', 'O2', 'Vodafone', 'T-Mobile']
+        countries = {
+            '+33': {'code': 'FR', 'name': 'France'},
+            '+44': {'code': 'GB', 'name': 'United Kingdom'},
+            '+49': {'code': 'DE', 'name': 'Germany'},
+            '+34': {'code': 'ES', 'name': 'Spain'},
+            '+39': {'code': 'IT', 'name': 'Italy'},
+        }
+        
+        prefix = phone_number[:3]
+        country_info = countries.get(prefix, {'code': 'FR', 'name': 'France'})
+        
+        return {
+            "status": "Approved",
+            "phone_number_prefix": prefix,
+            "full_number": phone_number,
+            "country_code": country_info['code'],
+            "country_name": country_info['name'],
+            "carrier": random.choice(carriers),
+            "is_disposable": random.random() < 0.05,  # 5% de chances
+            "is_virtual": random.random() < 0.1,  # 10% de chances
+            "verification_method": "sms",
+            "warnings": [] if random.random() < 0.9 else ["number_flagged_for_review"],
+            "recommendation": "Accept" if random.random() < 0.95 else "Review",
+            "risk_score": random.randint(0, 30),
+        }
+
+    def _simulate_blocked_response(self, phone_number, request_id):
+        """Simule une réponse bloquée."""
+        return {
+            "success": False,
+            "request_id": request_id,
+            "status": "Blocked",
+            "reason": "TooManyAttempts",
+            "message": "Ce numéro est temporairement bloqué (simulé)"
+        }
+
+    def _simulate_invalid_response(self, phone_number, request_id):
+        """Simule une réponse de numéro invalide."""
+        return {
+            "success": False,
+            "request_id": request_id,
+            "status": "Invalid",
+            "reason": "InvalidNumber",
+            "message": "Numéro de téléphone invalide (simulé)"
+        }
+
+    def _simulate_undeliverable_response(self, phone_number, request_id):
+        """Simule une réponse non délivrable."""
+        return {
+            "success": False,
+            "request_id": request_id,
+            "status": "Undeliverable",
+            "reason": "CarrierFailure",
+            "message": "Impossible d'envoyer le SMS à ce numéro (simulé)"
+        }
+
+    def _simulate_timeout_response(self):
+        """Simule un timeout."""
+        return {
+            "success": False,
+            "status": "Timeout",
+            "reason": "request_timeout",
+            "message": "Le service est temporairement indisponible (simulé)"
+        }
+
+    # Les méthodes suivantes sont les mêmes que dans votre code original
+    # Je les conserve pour éviter les erreurs de référence
 
     def _handle_success_send(self, data):
         """Traite une réponse réussie d'envoi de code."""

@@ -1,5 +1,3 @@
-# apps/users/models.py (ou où tu places tes modèles)
-
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
@@ -10,38 +8,35 @@ from phonenumbers import PhoneNumberFormat
 
 class UserManager(BaseUserManager):
     def create_user(self, phone_number, country_code="+33", password=None, **extra_fields):
-            if not phone_number:
-                raise ValueError("Le numéro de téléphone est obligatoire")
+        if not phone_number:
+            raise ValueError("Le numéro de téléphone est obligatoire")
 
-            # Normalisation complète
-            full_phone = f"{country_code}{phone_number}"
-            try:
-                parsed = phonenumbers.parse(full_phone, None)
-                if not phonenumbers.is_valid_number(parsed):
-                    raise ValueError("Numéro de téléphone invalide")
-                
-                country_code = f"+{parsed.country_code}"
-                # ← CORRECTION ICI : on prend le national_number pur, sans le code pays
-                national_number = str(parsed.national_number)
-                
-                full_phone_e164 = phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
-            except phonenumbers.NumberParseException:
-                raise ValueError("Format de numéro invalide")
-
-            user = self.model(
-                country_code=country_code,
-                phone_number=national_number,  # ← Numéro national pur
-                full_phone_number=full_phone_e164,
-                **extra_fields,
-            )
-
-            if password:
-                user.set_password(password)
-            else:
-                user.set_unusable_password()
+        full_phone = f"{country_code}{phone_number}"
+        try:
+            parsed = phonenumbers.parse(full_phone, None)
+            if not phonenumbers.is_valid_number(parsed):
+                raise ValueError("Numéro de téléphone invalide")
             
-            user.save(using=self._db)
-            return user
+            country_code = f"+{parsed.country_code}"
+            national_number = str(parsed.national_number)
+            full_phone_e164 = phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
+        except phonenumbers.NumberParseException:
+            raise ValueError("Format de numéro invalide")
+
+        user = self.model(
+            country_code=country_code,
+            phone_number=national_number,
+            full_phone_number=full_phone_e164,
+            **extra_fields,
+        )
+
+        if password:
+            user.set_password(password)
+        else:
+            user.set_unusable_password()
+        
+        user.save(using=self._db)
+        return user
 
     def create_superuser(self, phone_number, country_code="+33", password=None, **extra_fields):
         extra_fields.setdefault("is_staff", True)
@@ -53,7 +48,6 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    # Choix pour le statut KYC
     KYC_STATUS_CHOICES = (
         ("unverified", "Non vérifié"),
         ("pending", "En attente de vérification"),
@@ -63,11 +57,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    # Numéro national SANS le code pays (ex: 612345678)
-    phone_number = models.CharField(max_length=15, db_index=True)
-    # Code pays avec + (ex: +33)
+    phone_number = models.CharField(max_length=15, db_index=True, null=True, blank=True)
     country_code = models.CharField(max_length=4, db_index=True)
-    # Numéro complet au format E.164 (ex: +33612345678) → unicité forte
     full_phone_number = models.CharField(max_length=20, unique=True, db_index=True)
 
     email = models.EmailField(blank=True, null=True)
@@ -75,15 +66,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     last_name = models.CharField(max_length=100, blank=True)
     profile_updated_at = models.DateTimeField(null=True, blank=True)
 
-    # KYC - statut identité
     kyc_status = models.CharField(max_length=20, choices=KYC_STATUS_CHOICES, default="unverified")
     kyc_submitted_at = models.DateTimeField(null=True, blank=True)
     kyc_verified_at = models.DateTimeField(null=True, blank=True)
-    persona_inquiry_id = models.CharField(max_length=100, blank=True, null=True)
     kyc_request_id = models.CharField(max_length=100, blank=True, null=True)
     kyc_retry_count = models.IntegerField(default=0)
     
-    # Données extraites par Didit après vérification KYC
+    # Données extraites par Didit
     kyc_document_type = models.CharField(max_length=20, blank=True, null=True)
     kyc_document_number = models.CharField(max_length=100, blank=True, null=True)
     kyc_date_of_birth = models.DateField(null=True, blank=True)
@@ -92,47 +81,38 @@ class User(AbstractBaseUser, PermissionsMixin):
     kyc_nationality = models.CharField(max_length=100, blank=True, null=True)
     kyc_place_of_birth = models.CharField(max_length=200, blank=True, null=True)
     kyc_address = models.TextField(blank=True, null=True)
+    
+    # Champs supplémentaires extraits de Didit
+    kyc_issuing_country = models.CharField(max_length=100, blank=True, null=True)
+    kyc_personal_number = models.CharField(max_length=100, blank=True, null=True)
+    kyc_date_of_issue = models.DateField(null=True, blank=True)
+    kyc_full_name = models.CharField(max_length=200, blank=True, null=True)
+    kyc_marital_status = models.CharField(max_length=50, blank=True, null=True)
 
-    # Infos enrichies par Didit (anti-fraude)
+    # Autres champs existants
     carrier = models.CharField(max_length=100, blank=True)
     is_disposable = models.BooleanField(default=False)
     is_voip = models.BooleanField(default=False)
 
-    # Flags
     is_staff = models.BooleanField(default=False)
-    phone_verified = models.BooleanField(default=False)        # OTP réussi
+    phone_verified = models.BooleanField(default=False)
     phone_verified_at = models.DateTimeField(null=True, blank=True)
 
-    # Session Didit temporaire
     didit_session_uuid = models.CharField(max_length=100, blank=True, null=True)
     didit_session_expires = models.DateTimeField(null=True, blank=True)
 
-    # Dates
     date_joined = models.DateTimeField(default=timezone.now)
     last_login = models.DateTimeField(null=True, blank=True)
     
-    # Gestion de compte supprimé (soft delete)
     is_active = models.BooleanField(default=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
-    deleted_reason = models.CharField(max_length=100, blank=True)  # ex: "user_requested"
-    
-    # Pour empêcher réutilisation du numéro
+    deleted_reason = models.CharField(max_length=100, blank=True)
     deleted_phone_number = models.CharField(max_length=20, blank=True, null=True)
     
-    def soft_delete(self, reason="user_requested"):
-        self.is_active = False
-        self.deleted_at = timezone.now()
-        self.deleted_reason = reason
-        self.deleted_phone_number = self.full_phone_number
-        self.full_phone_number = f"deleted_{self.full_phone_number}"
-        self.phone_number = None
-        self.save()
-    # KYC avec Didit
-
     objects = UserManager()
 
     USERNAME_FIELD = "full_phone_number"
-    REQUIRED_FIELDS = []  # country_code et phone_number gérés dans create_user
+    REQUIRED_FIELDS = []
 
     class Meta:
         db_table = "users"
@@ -152,19 +132,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.full_phone_number
 
-    @property
-    def full_phone(self):
-        return self.full_phone_number
-
-    def save(self, *args, **kwargs):
-        # Garantir la cohérence du full_phone_number à chaque sauvegarde
-        if self.country_code and self.phone_number:
-            try:
-                parsed = phonenumbers.parse(f"{self.country_code}{self.phone_number}")
-                self.full_phone_number = phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
-            except phonenumbers.NumberParseException:
-                pass  # Ne pas bloquer si déjà cohérent
-        super().save(*args, **kwargs)
+    def soft_delete(self, reason="user_requested"):
+        self.is_active = False
+        self.deleted_at = timezone.now()
+        self.deleted_reason = reason
+        self.deleted_phone_number = self.full_phone_number
+        self.full_phone_number = f"deleted_{self.full_phone_number}"
+        self.phone_number = None
+        self.save()
 
 
 class KYCDocument(models.Model):
@@ -172,6 +147,7 @@ class KYCDocument(models.Model):
         ("id_card", "Carte d'identité"),
         ("passport", "Passeport"),
         ("drivers_license", "Permis de conduire"),
+        ("residence_permit", "Titre de séjour"),
     )
 
     VERIFICATION_STATUS = (
@@ -188,14 +164,16 @@ class KYCDocument(models.Model):
     back_image = models.ImageField(upload_to="kyc_documents/", blank=True, null=True)
     selfie_image = models.ImageField(upload_to="kyc_selfies/", blank=True, null=True)
 
-    # Statut de vérification plus précis
     verification_status = models.CharField(max_length=20, choices=VERIFICATION_STATUS, default="pending")
     verification_note = models.TextField(blank=True)
     verified_at = models.DateTimeField(null=True, blank=True)
-
     created_at = models.DateTimeField(auto_now_add=True)
     
-    # Didit KYC
+    # Champs Didit spécifiques
+    didit_request_id = models.CharField(max_length=100, blank=True, null=True)
+    vendor_data = models.CharField(max_length=100, blank=True, null=True)
+    raw_id_verification = models.JSONField(default=dict, blank=True, null=True)
+
     class Meta:
         db_table = "kyc_documents"
         verbose_name = "Document KYC"
@@ -209,7 +187,3 @@ class KYCDocument(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.get_document_type_display()} ({self.get_verification_status_display()})"
-    
-    
-class OTPCode(models.Model):
-    pass

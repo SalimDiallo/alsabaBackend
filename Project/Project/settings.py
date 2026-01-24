@@ -34,7 +34,11 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-4)-5heqax82y=3l8w1b+qxscem
 # DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
 DEBUG = True
 # Hosts autorisés
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# En développement/tests on autorise toutes les origines pour simplifier l'exécution locale
+if DEBUG:
+    ALLOWED_HOSTS = ['*']
+else:
+    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -50,11 +54,13 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',  
-    'Accounts', 
+    'Accounts',
+    'Wallet', 
 ]
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
+        # 'Accounts.authentication.SessionKeyAuthentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
@@ -171,6 +177,7 @@ CACHES = {
     }
 }
 DIDIT_API_KEY = os.environ.get('DIDIT_API_KEY', 'your-key-here')
+DIDIT_USE_PLACEHOLDER = True
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 

@@ -22,7 +22,8 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/accounts/', include('Accounts.urls')),  # <-- Tes endpoints API
+    path('api/accounts/', include('Accounts.urls')), 
+    path('api/wallet/', include('Wallet.urls')),
 ]
 
 # Pour servir les fichiers médias en développement

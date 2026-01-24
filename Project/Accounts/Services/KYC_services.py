@@ -1,167 +1,145 @@
-# apps/auth/Services/kyc_services.py
-
 import requests
 import structlog
 from django.conf import settings
 
 logger = structlog.get_logger(__name__)
 
-
 class DiditKYCService:
-    """
-    Service pour l'API ID Verification Standalone de Didit
-    Documentation officielle : https://docs.didit.me/reference/id-verification-standalone-api
-    Endpoint unique : POST https://verification.didit.me/v2/id-verification/
-    Traitement synchrone, réponse immédiate avec résultats.
-    """
-    BASE_URL = "https://verification.didit.me/v2/id-verification/"
+    BASE_URL = "https://verification.didit.me/v3/id-verification/"
 
     def __init__(self):
         if not settings.DIDIT_API_KEY:
-            raise ValueError("DIDIT_API_KEY n'est pas configurée dans settings")
-        
+            raise ValueError("DIDIT_API_KEY manquante")
         self.api_key = settings.DIDIT_API_KEY
-        self.headers = {
-            "accept": "application/json",
-            "x-api-key": self.api_key,
-            "content-type": "multipart/form-data"
-        }
-        self.timeout = 60  # Upload + traitement peuvent prendre du temps
+        self.timeout = 60
 
     def verify_id_document(
         self,
         front_image,
         back_image=None,
-        perform_document_liveness=True,   # Fortement recommandé
-        min_age=None,
-        expiration_action="DECLINE",
-        mrz_failure_action="DECLINE",
-        viz_consistency_action="DECLINE",
-        preferred_charset="latin",
-        save_request=True,
-        external_id=None,
+        perform_document_liveness=False,
+        minimum_age=None,
+        expiration_date_not_detected_action="DECLINE",
+        invalid_mrz_action="DECLINE",
+        inconsistent_data_action="DECLINE",
+        preferred_characters="latin",
+        save_api_request=True,
+        vendor_data=None,
     ):
-        """
-        Envoie les images du document et récupère le résultat de vérification immédiatement.
+        # Validation locale simplifiée (sans magic)
+        front_valid, front_msg = self.validate_image_before_upload(front_image)
+        if not front_valid:
+            return {"success": False, "message": f"Recto invalide: {front_msg}", "code": "invalid_front_image"}
 
-        Args:
-            front_image: fichier image du recto (obligatoire)
-            back_image: fichier image du verso (optionnel)
-            perform_document_liveness: détection copie d'écran / manipulation portrait
-            min_age: âge minimum requis (ex: 18)
-            expiration_action: "DECLINE" ou "NO_ACTION" si document expiré
-            mrz_failure_action: "DECLINE" ou "NO_ACTION" si MRZ invalide
-            viz_consistency_action: "DECLINE" ou "NO_ACTION" si incohérence VIS/MRZ
-            preferred_charset: "latin" ou "non_latin"
-            save_request: conserver la requête chez Didit pour support
-            external_id: ton ID interne pour tracking (ex: user.id)
-
-        Returns:
-            dict avec success, request_id, status (Approved/Declined), données extraites
-        """
-        # Préparation des fichiers
-        files = {
-            'file': ('front.jpg', front_image, 'image/jpeg')
-        }
         if back_image:
-            files['file'] = ('back.jpg', back_image, 'image/jpeg')  # Didit accepte plusieurs 'file'
+            back_valid, back_msg = self.validate_image_before_upload(back_image)
+            if not back_valid:
+                return {"success": False, "message": f"Verso invalide: {back_msg}", "code": "invalid_back_image"}
 
-        # Préparation des paramètres form-data
+        # Préparation multipart
+        files = []
+        front_mime = getattr(front_image, 'content_type', 'image/jpeg')
+        front_name = getattr(front_image, 'name', 'front.jpg')
+        front_file = self._prepare_file(front_image)
+        files.append(('front_image', (front_name, front_file, front_mime)))
+
+        if back_image:
+            back_mime = getattr(back_image, 'content_type', 'image/jpeg')
+            back_name = getattr(back_image, 'name', 'back.jpg')
+            back_file = self._prepare_file(back_image)
+            files.append(('back_image', (back_name, back_file, back_mime)))
+
+        # Paramètres exacts Didit
         data = {
             'perform_document_liveness': str(perform_document_liveness).lower(),
-            'expiration_action': expiration_action,
-            'mrz_failure_action': mrz_failure_action,
-            'viz_consistency_action': viz_consistency_action,
-            'preferred_charset': preferred_charset,
-            'save_request': str(save_request).lower(),
+            'expiration_date_not_detected_action': expiration_date_not_detected_action,
+            'invalid_mrz_action': invalid_mrz_action,
+            'inconsistent_data_action': inconsistent_data_action,
+            'preferred_characters': preferred_characters,
+            'save_api_request': str(save_api_request).lower(),
         }
 
-        if min_age is not None:
-            data['min_age'] = str(min_age)
+        if minimum_age is not None:
+            data['minimum_age'] = str(minimum_age)
 
-        if external_id:
-            data['external_id'] = str(external_id)
+        if vendor_data:
+            data['vendor_data'] = str(vendor_data)[:100]
 
-        logger.info(
-            "didit_kyc_verify_attempt",
-            external_id=external_id,
-            perform_liveness=perform_document_liveness,
-            min_age=min_age,
-            has_back_image=back_image is not None
-        )
+        logger.info("didit_request", vendor_data=vendor_data[:50] if vendor_data else None)
 
         try:
             response = requests.post(
                 self.BASE_URL,
-                headers=self.headers,
                 files=files,
                 data=data,
+                headers={
+                    "accept": "application/json",
+                    "X-Api-Key": self.api_key,
+                },
                 timeout=self.timeout
             )
 
-            # Log brut pour debug si besoin
-            logger.debug(
-                "didit_kyc_raw_response",
-                status_code=response.status_code,
-                response_text=response.text[:500]
-            )
-
             if response.status_code == 200:
-                result = response.json()
-                request_id = result.get("request_id")
-                id_verification = result.get("id_verification", {})
-                status = id_verification.get("status", "Unknown")
-
-                logger.info(
-                    "didit_kyc_success",
-                    request_id=request_id,
-                    status=status,
-                    external_id=external_id
-                )
-
+                res = response.json()
                 return {
                     "success": True,
-                    "request_id": request_id,
-                    "status": status,  # Approved / Declined / etc.
-                    "id_verification": id_verification,
-                    "raw_response": result
+                    "request_id": res.get("request_id"),
+                    "status": res.get("id_verification", {}).get("status", "Unknown"),
+                    "id_verification": res.get("id_verification", {}),
+                    "raw": res
                 }
 
             else:
-                # Erreur HTTP
-                error_msg = response.text or "Erreur inconnue"
-                logger.warning(
-                    "didit_kyc_http_error",
-                    status_code=response.status_code,
-                    response=error_msg,
-                    external_id=external_id
-                )
+                error_msg = response.text or "Erreur Didit inconnue"
+                logger.warning("didit_http_error", status_code=response.status_code, error=error_msg[:200])
                 return {
                     "success": False,
                     "status_code": response.status_code,
-                    "message": f"Erreur Didit ({response.status_code})",
-                    "details": error_msg
+                    "message": error_msg,
                 }
 
         except requests.exceptions.Timeout:
-            logger.error("didit_kyc_timeout", external_id=external_id)
-            return {
-                "success": False,
-                "message": "Timeout : le service Didit a mis trop de temps à répondre"
-            }
+            logger.error("didit_timeout")
+            return {"success": False, "message": "Timeout du service Didit", "code": "timeout"}
+
         except requests.exceptions.RequestException as e:
-            logger.error("didit_kyc_network_error", error=str(e), external_id=external_id)
-            return {
-                "success": False,
-                "message": "Erreur réseau lors de la communication avec Didit"
-            }
+            logger.error("didit_network_error", error=str(e))
+            return {"success": False, "message": "Erreur réseau avec Didit", "code": "network_error"}
+
         except Exception as e:
-            logger.error("didit_kyc_unexpected_error", error=str(e))
-            return {
-                "success": False,
-                "message": "Erreur inattendue lors de la vérification KYC"
+            logger.error("didit_unexpected_error", error=str(e))
+            return {"success": False, "message": f"Erreur technique : {str(e)}", "code": "exception"}
+
+    def validate_image_before_upload(self, image):
+        """
+        Validation simple sans magic : taille + présence
+        """
+        if not image:
+            return False, "Image absente"
+
+        if hasattr(image, 'size'):
+            if image.size == 0:
+                return False, "Le fichier est vide (0 octet)"
+            if image.size > 5 * 1024 * 1024:
+                return False, "Taille > 5MB"
+
+        # Optionnel : vérifier content_type indiqué par le client
+        if hasattr(image, 'content_type'):
+            allowed_content_types = {
+                'image/jpeg', 'image/jpg', 'image/png',
+                'image/webp', 'image/tiff', 'application/pdf'
             }
+            if image.content_type not in allowed_content_types:
+                return False, f"Type indiqué non supporté : {image.content_type}"
 
+        return True, "OK"
 
-# Instance singleton à importer partout
+    def _prepare_file(self, f):
+        """
+        Prépare le fichier et remet le curseur à 0
+        """
+        if hasattr(f, 'seek'):
+            f.seek(0)
+        return f.file if hasattr(f, 'file') else f
+
 kyc_service = DiditKYCService()
