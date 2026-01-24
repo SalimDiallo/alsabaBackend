@@ -3,7 +3,7 @@ import json
 import time
 
 BASE_URL = "http://127.0.0.1:8000/api/accounts"
-TEST_PHONE = "0660620565"  # Votre numéro
+TEST_PHONE = "0684499227"  # Votre numéro
 COUNTRY_CODE = "+212"
 
 def print_step(msg):
@@ -73,5 +73,4 @@ if __name__ == "__main__":
     
     if session_key and full_phone:
         verify_otp(session_key, full_phone)
-    
     print("\n=== FIN DU TEST ===")

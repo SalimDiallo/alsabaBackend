@@ -1,9 +1,9 @@
-@baseUrl = http://127.0.0.1:8000/api/accounts
-@phoneNumber = 684499227
-@countryCode = +212
-@phoneNumberE164 = +212684499227
 
-### 1. Request OTP
+@baseUrl = http://127.0.0.1:8000/api/accounts
+@phoneNumber = 0684499227
+@countryCode = +212
+
+### 1. Demande d'envoi OTP
 # @name requestOtp
 POST {{baseUrl}}/auth/phone/
 Content-Type: application/json
@@ -13,75 +13,86 @@ Content-Type: application/json
     "country_code": "{{countryCode}}"
 }
 
-### 2. Verify OTP
-# @prompt otpCode Enter the OTP code received
+### 2. Vérification OTP
+# @prompt otpCode Entrez le code reçus par SMS
 # @name verifyOtp
 POST {{baseUrl}}/auth/verify/
 Content-Type: application/json
 
 {
-    "phone_number": "{{phoneNumberE164}}",
+    "phone_number": "{{requestOtp.response.body.phone_number}}",
     "code": "{{otpCode}}",
     "session_key": "{{requestOtp.response.body.session_key}}"
 }
 
-@authToken = {{verifyOtp.response.body.auth.token}}
+@authToken = {{verifyOtp.response.body.auth.access_token}}
 
-### 3. Get Profile
+### 3. GET Profil utilisateur
 GET {{baseUrl}}/profile/
 Authorization: Bearer {{authToken}}
 
-### 4. KYC Verify
-# NOTE: Ensure these image files exist relative to this file or update the paths.
+### 4. PATCH Profil utilisateur
+PATCH {{baseUrl}}/profile/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "first_name": "Jean",
+    "last_name": "Dupont",
+    "email": "jean.dupont@example.com"
+}
+
+### 5. POST document KYC (id_verificationViews)
+# Note: multipart/form-data requests should be sent as a single body block, 
+# and boundaries must be handled by your HTTP client, not inlined in the request.
+# Remove manual boundaries, put fields in standard multipart form-data syntax instead:
 POST {{baseUrl}}/kyc/verify/
 Authorization: Bearer {{authToken}}
-Content-Type: multipart/form-data; boundary=boundary
+Content-Type: multipart/form-data
 
---boundary
-Content-Disposition: form-data; name="document_type"
+# form fields:
+# document_type: id_card
+# front_image: (binary file: ./files/front.jpeg)
+# back_image: (binary file: ./files/back.jpeg)
+# Example syntax for most HTTP client tools:
 
-id_card
---boundary
-Content-Disposition: form-data; name="front_image"; filename="carte_identite_recto.jpg"
-Content-Type: image/jpeg
+--form 'document_type=id_card' \
+--form 'front_image=@./files/front.jpeg;type=image/jpeg' \
+--form 'back_image=@./files/back.jpeg;type=image/jpeg'
 
-< ../test_images/carte_identite_recto.jpg
---boundary
-Content-Disposition: form-data; name="back_image"; filename="carte_identite_verso.jpg"
-Content-Type: image/jpeg
-
-< ../test_images/carte_identite_verso.jpg
---boundary
-Content-Disposition: form-data; name="perform_document_liveness"
-
-true
---boundary
-Content-Disposition: form-data; name="min_age"
-
-18
---boundary--
-
-### 5. Get Profile After KYC
-GET {{baseUrl}}/profile/
+### 6. GET statut KYC (id_verificationViews)
+GET {{baseUrl}}/kyc/status/
 Authorization: Bearer {{authToken}}
 
-### 6. Request Account Delete
+### 7. Lister documents KYC (id_verificationViews)
+GET {{baseUrl}}/kyc/documents/
+Authorization: Bearer {{authToken}}
+
+### 8. Tester endpoints techniques (optionnels)
+GET {{baseUrl}}/debug-otp/
+
+### 9. Demande suppression de compte
 # @name requestDelete
 POST {{baseUrl}}/account/delete/
 Authorization: Bearer {{authToken}}
 Content-Type: application/json
 
 {
-    "reason": "Test de suppression"
+    "confirmation": "SUPPRIMER MON COMPTE"
 }
 
-### 7. Confirm Account Delete
-# @prompt deleteOtp Enter the OTP code received for deletion
+### 10. Confirmation suppression (OTP)
+# @prompt deleteOtp Entrez le code reçu pour suppression
 POST {{baseUrl}}/account/delete/confirm/
 Authorization: Bearer {{authToken}}
 Content-Type: application/json
 
 {
-    "code": "{{deleteOtp}}",
-    "session_key": "{{requestDelete.response.body.session_key}}"
+    "otp": "{{deleteOtp}}",
+    "session_uuid": "{{requestDelete.response.body.session_uuid}}"
 }
+
+### 11. Déconnexion utilisateur (logout)
+POST {{baseUrl}}/logout/
+Authorization: Bearer {{authToken}}
+

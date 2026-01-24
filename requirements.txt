@@ -1,4 +1,4 @@
-Django==6.0
+pip install python-magic-binDjango==6.0
 djangorestframework==3.16.1
 phonenumbers==9.0.21
 rest_framework_simplejwt==0.0.2
