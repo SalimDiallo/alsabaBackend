@@ -19,12 +19,6 @@ class ProfileView(APIView):
     def get(self, request):
         """
         Récupère et retourne le profil de l'utilisateur authentifié.
-        
-        Inclut:
-        - Informations de base
-        - Statut de vérification
-        - État KYC
-        - Prochaines étapes recommandées
         """
         user = request.user
         
@@ -37,12 +31,64 @@ class ProfileView(APIView):
                 "next_step": "verify_phone"
             }, status=status.HTTP_403_FORBIDDEN)
 
-        # Sérialisation du profil
+        profile_data = self._get_profile_data(user)
+        
+        logger.info("profile_viewed", user_id=str(user.id))
+
+        return Response({
+            "success": True,
+            "profile": profile_data,
+            "metadata": {
+                "retrieved_at": timezone.now().isoformat(),
+                "requires_kyc": user.kyc_status != 'verified'
+            }
+        }, status=status.HTTP_200_OK)
+
+    def patch(self, request):
+        """
+        Mise à jour partielle du profil
+        """
+        user = request.user
+        from ..Serializers.profile import ProfileUpdateSerializer
+        
+        serializer = ProfileUpdateSerializer(
+            user, 
+            data=request.data, 
+            partial=True,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            user = serializer.save()
+            user.profile_updated_at = timezone.now()
+            user.save(update_fields=['profile_updated_at'])
+            
+            # Retourner le profil complet mis à jour via le helper
+            profile_data = self._get_profile_data(user)
+            
+            logger.info("profile_updated", user_id=str(user.id))
+            
+            return Response({
+                "success": True,
+                "message": "Profil mis à jour avec succès",
+                "profile": profile_data
+            }, status=status.HTTP_200_OK)
+            
+        return Response({
+            "success": False,
+            "error": "Données invalides",
+            "details": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    def _get_profile_data(self, user):
+        """
+        Prépare les données enrichies du profil
+        """
         from ..Serializers.profile import ProfileSerializer
         serializer = ProfileSerializer(user)
         profile_data = serializer.data
         
-        # Ajout d'informations contextuelles
+        # Enrichissement
         profile_data['completion_percentage'] = self._calculate_profile_completion(user)
         profile_data['next_steps'] = self._get_profile_next_steps(user)
         profile_data['verification_status'] = {
@@ -57,17 +103,9 @@ class ProfileView(APIView):
                 'retry_count': user.kyc_retry_count
             }
         }
+        return profile_data
 
-        logger.info("profile_viewed", user_id=str(user.id))
 
-        return Response({
-            "success": True,
-            "profile": profile_data,
-            "metadata": {
-                "retrieved_at": timezone.now().isoformat(),
-                "requires_kyc": user.kyc_status != 'verified'
-            }
-        }, status=status.HTTP_200_OK)
 
     def _calculate_profile_completion(self, user):
         """
@@ -82,6 +120,9 @@ class ProfileView(APIView):
             (user.kyc_status == 'verified', 2),  # KYC + date de naissance
             (user.kyc_document_number, 0.5),  # Bonus
             (user.kyc_address, 0.5),  # Bonus
+            (user.city, 0.5),  # Bonus
+            (user.postal_code, 0.5),  # Bonus
+            (user.state, 0.5),  # Bonus
         ]
         
         total_possible = sum(weight for _, weight in fields)
@@ -108,6 +149,14 @@ class ProfileView(APIView):
                 "priority": "high",
                 "message": "Complétez votre nom et prénom"
             })
+
+        if not user.city or not user.postal_code or not user.state:
+            next_steps.append({
+                "action": "complete_address",
+                "priority": "medium",
+                "message": "Complétez vos informations d'adresse pour faciliter vos paiements"
+            })
+
         
         if user.kyc_status == 'unverified':
             next_steps.append({

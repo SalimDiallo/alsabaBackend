@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',  
     'Accounts',
+    'Wallet',
 ]
 
 REST_FRAMEWORK = {
@@ -88,6 +89,7 @@ SIMPLE_JWT = {
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -118,11 +120,11 @@ WSGI_APPLICATION = 'Project.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-# Utiliser PostgreSQL si DATABASE_ENGINE est défini, sinon SQLite pour le développement local
-if not os.getenv('DATABASE_ENGINE'):
+# Database logic
+if os.getenv('DATABASE_URL') or os.getenv('DATABASE_ENGINE') == 'django.db.backends.postgresql':
     DATABASES = {
         'default': {
-            'ENGINE': os.getenv('DATABASE_ENGINE', 'django.db.backends.postgresql'),
+            'ENGINE': 'django.db.backends.postgresql',
             'NAME': os.getenv('DATABASE_NAME', 'alsaba_db'),
             'USER': os.getenv('DATABASE_USER', 'alsaba_user'),
             'PASSWORD': os.getenv('DATABASE_PASSWORD', 'alsaba_password'),
@@ -131,7 +133,6 @@ if not os.getenv('DATABASE_ENGINE'):
         }
     }
 else:
-    # SQLite pour le développement local sans Docker
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -176,6 +177,35 @@ CACHES = {
     }
 }
 DIDIT_API_KEY = os.environ.get('DIDIT_API_KEY', 'your-key-here')
+
+# Flutterwave Configuration
+# Environnement (sandbox ou production)
+FLUTTERWAVE_ENVIRONMENT = os.environ.get('FLUTTERWAVE_ENVIRONMENT', 'sandbox')  # 'sandbox' ou 'production'
+
+# Configuration Sandbox
+FLUTTERWAVE_SANDBOX_CLIENT_ID = os.environ.get('FLUTTERWAVE_SANDBOX_CLIENT_ID', '')
+FLUTTERWAVE_SANDBOX_CLIENT_SECRET = os.environ.get('FLUTTERWAVE_SANDBOX_CLIENT_SECRET', '')
+FLUTTERWAVE_SANDBOX_ENCRYPTION_KEY = os.environ.get('FLUTTERWAVE_SANDBOX_ENCRYPTION_KEY', '')
+FLUTTERWAVE_SANDBOX_BASE_URL = 'https://developersandbox-api.flutterwave.com'
+FLUTTERWAVE_SANDBOX_AUTH_URL = 'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token'
+
+# Configuration Production
+FLUTTERWAVE_PRODUCTION_CLIENT_ID = os.environ.get('FLUTTERWAVE_PRODUCTION_CLIENT_ID', '')
+FLUTTERWAVE_PRODUCTION_CLIENT_SECRET = os.environ.get('FLUTTERWAVE_PRODUCTION_CLIENT_SECRET', '')
+FLUTTERWAVE_PRODUCTION_ENCRYPTION_KEY = os.environ.get('FLUTTERWAVE_PRODUCTION_ENCRYPTION_KEY', '')
+FLUTTERWAVE_PRODUCTION_BASE_URL = 'https://api.flutterwave.com'
+FLUTTERWAVE_PRODUCTION_AUTH_URL = 'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token'
+
+# URLs communes
+FLUTTERWAVE_REDIRECT_URL = os.environ.get('FLUTTERWAVE_REDIRECT_URL', 'https://yourapp.com/wallet/payment/callback')
+FLUTTERWAVE_WEBHOOK_SECRET = os.environ.get('FLUTTERWAVE_WEBHOOK_SECRET', '')
+
+# Timeout pour les requêtes API (en secondes)
+FLUTTERWAVE_TIMEOUT = int(os.environ.get('FLUTTERWAVE_TIMEOUT', '30'))
+
+# Retry configuration
+FLUTTERWAVE_MAX_RETRIES = int(os.environ.get('FLUTTERWAVE_MAX_RETRIES', '3'))
+FLUTTERWAVE_RETRY_DELAY = int(os.environ.get('FLUTTERWAVE_RETRY_DELAY', '2'))  # secondes
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
@@ -193,21 +223,6 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-        },
-    },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
-    },
-}
-
-# settings.py - Ajouter cette configuration
 import structlog
 
 LOGGING = {
@@ -220,9 +235,7 @@ LOGGING = {
         },
         'console_formatter': {
             '()': structlog.stdlib.ProcessorFormatter,
-            'processor': structlog.processors.KeyValueRenderer(
-                key_order=['timestamp', 'level', 'event', 'logger']
-            ),
+            'processor': structlog.dev.ConsoleRenderer(colors=True),
         },
     },
     'handlers': {
@@ -257,7 +270,7 @@ structlog.configure(
     processors=[
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.filter_by_level,
-        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.PositionalArgumentsFormatter(),

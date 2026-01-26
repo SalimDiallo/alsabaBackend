@@ -6,7 +6,17 @@ import phonenumbers
 from phonenumbers import PhoneNumberFormat
 
 
+class UserQuerySet(models.QuerySet):
+    def active(self):
+        return self.filter(is_active=True, deleted_at__isnull=True)
+
 class UserManager(BaseUserManager):
+    def get_queryset(self):
+        return UserQuerySet(self.model, using=self._db).active()
+
+    def with_deleted(self):
+        return UserQuerySet(self.model, using=self._db)
+
     def create_user(self, phone_number, country_code="+33", password=None, **extra_fields):
         if not phone_number:
             raise ValueError("Le numéro de téléphone est obligatoire")
@@ -64,6 +74,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(blank=True, null=True)
     first_name = models.CharField(max_length=100, blank=True)
     last_name = models.CharField(max_length=100, blank=True)
+    
+    # Adresse structurée (utile pour les processeurs de paiement comme Flutterwave)
+    city = models.CharField(max_length=100, blank=True, null=True)
+    postal_code = models.CharField(max_length=20, blank=True, null=True)
+    state = models.CharField(max_length=100, blank=True, null=True)
+    
     profile_updated_at = models.DateTimeField(null=True, blank=True)
 
     kyc_status = models.CharField(max_length=20, choices=KYC_STATUS_CHOICES, default="unverified")
@@ -187,12 +203,6 @@ class KYCDocument(models.Model):
         db_table = "kyc_documents"
         verbose_name = "Document KYC"
         verbose_name_plural = "Documents KYC"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["user", "document_type"],
-                name="unique_user_document_type"
-            )
-        ]
 
     def __str__(self):
         return f"{self.user} - {self.get_document_type_display()} ({self.get_verification_status_display()})"
