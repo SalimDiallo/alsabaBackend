@@ -7,7 +7,7 @@ from django.db.models import Q
 import structlog
 
 from ..models import Wallet, Transaction
-from ..utils import auth_utils
+from Accounts.utils import auth_utils
 from ..Services.wallet_service import wallet_service, WalletService
 from ..Serializers.wallet_serializers import (
     WalletSerializer,

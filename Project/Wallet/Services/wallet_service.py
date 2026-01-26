@@ -404,16 +404,16 @@ class WalletService:
         transaction.save()
 
 
-            logger.info(
-                "withdrawal_initiated",
-                user_id=str(user.id),
-                transaction_id=str(transaction.id),
-                amount=amount,
-                payment_method=payment_method,
-                flutterwave_ref=flutterwave_result["reference"]
-            )
+        logger.info(
+            "withdrawal_initiated",
+            user_id=str(user.id),
+            transaction_id=str(transaction.id),
+            amount=amount,
+            payment_method=payment_method,
+            flutterwave_ref=flutterwave_result["reference"]
+        )
 
-            return {
+        return {
                 "success": True,
                 "transaction": transaction,
                 "reference": flutterwave_result["reference"],
