@@ -55,7 +55,6 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',  
     'Accounts',
-    'Wallet.apps.WalletConfig', 
 ]
 
 REST_FRAMEWORK = {
@@ -177,7 +176,6 @@ CACHES = {
     }
 }
 DIDIT_API_KEY = os.environ.get('DIDIT_API_KEY', 'your-key-here')
-DIDIT_USE_PLACEHOLDER = True
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
@@ -271,3 +269,11 @@ structlog.configure(
     logger_factory=structlog.stdlib.LoggerFactory(),
     cache_logger_on_first_use=True,
 )
+
+
+FLUTTERWAVE_SECRET_KEY="sk_live_xxxxxxxxxxxxx_xxxxxxx"
+FLUTTERWAVE_PUBLIC_KEY="pk_live_xxxxxxxxxxxxx_xxxxxxx"
+FLUTTERWAVE_ENCRYPTION_KEY="ek_live_xxxxxxxxxxxxx_xxxxxxx"
+FLUTTERWAVE_WEBHOOK_SECRET="whsec_xxxxxxxxxxxxx_xxxxxxx"
+
+# Didit settings

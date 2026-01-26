@@ -71,8 +71,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     kyc_verified_at = models.DateTimeField(null=True, blank=True)
     kyc_request_id = models.CharField(max_length=100, blank=True, null=True)
     kyc_retry_count = models.IntegerField(default=0)
-    
-    # Données extraites par Didit
+    kyc_last_attempt = models.DateTimeField(null=True, blank=True)
+    kyc_vendor_data = models.CharField(max_length=100, blank=True, null=True)
     kyc_document_type = models.CharField(max_length=20, blank=True, null=True)
     kyc_document_number = models.CharField(max_length=100, blank=True, null=True)
     kyc_date_of_birth = models.DateField(null=True, blank=True)
@@ -128,6 +128,15 @@ class User(AbstractBaseUser, PermissionsMixin):
             models.Index(fields=["full_phone_number"]),
             models.Index(fields=["country_code", "phone_number"]),
         ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        from datetime import date
+        if self.kyc_date_of_birth:
+            today = date.today()
+            age = today.year - self.kyc_date_of_birth.year - ((today.month, today.day) < (self.kyc_date_of_birth.month, self.kyc_date_of_birth.day))
+            if age < 18:
+                raise ValidationError("L'utilisateur doit avoir au moins 18 ans pour la vérification KYC.")
 
     def __str__(self):
         return self.full_phone_number

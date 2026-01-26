@@ -73,33 +73,21 @@ class ProfileView(APIView):
         """
         Calcule le pourcentage de complétion du profil.
         """
-        total_fields = 8
-        completed_fields = 0
+        # Liste des champs avec leur poids
+        fields = [
+            (user.phone_verified, 2),  # Téléphone vérifié + numéro
+            (user.first_name, 1),
+            (user.last_name, 1),
+            (user.email, 1),
+            (user.kyc_status == 'verified', 2),  # KYC + date de naissance
+            (user.kyc_document_number, 0.5),  # Bonus
+            (user.kyc_address, 0.5),  # Bonus
+        ]
         
-        # Champs obligatoires
-        if user.phone_verified:
-            completed_fields += 2  # Téléphone vérifié + numéro
+        total_possible = sum(weight for _, weight in fields)
+        completed = sum(weight for condition, weight in fields if condition)
         
-        if user.first_name:
-            completed_fields += 1
-        
-        if user.last_name:
-            completed_fields += 1
-        
-        if user.email:
-            completed_fields += 1
-        
-        if user.kyc_status == 'verified':
-            completed_fields += 2  # KYC + date de naissance
-        
-        # Champs bonus
-        if user.kyc_document_number:
-            completed_fields += 0.5
-        
-        if user.kyc_address:
-            completed_fields += 0.5
-        
-        return min(100, int((completed_fields / total_fields) * 100))
+        return min(100, int((completed / total_possible) * 100)) if total_possible > 0 else 0
 
     def _get_profile_next_steps(self, user):
         """

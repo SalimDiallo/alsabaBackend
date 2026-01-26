@@ -10,11 +10,8 @@ from ..utils import auth_utils
 from ..models import User, KYCDocument
 from ..Serializers.KYC_serializers import KYCVerifySerializer
 #from ..Services.KYC_services import kyc_service
-from Project.settings import DIDIT_USE_PLACEHOLDER
-if DIDIT_USE_PLACEHOLDER:
-    from ..Services.placeholders.KYC import kyc_service
-else:
-    from ..Services.KYC_services import kyc_service
+
+from ..Services.KYC_services import kyc_service
 
 logger = structlog.get_logger(__name__)
 
@@ -55,6 +52,16 @@ class KYCVerifyView(APIView):
                 "message": "Votre identité est déjà vérifiée.",
                 "kyc_status": "verified"
             }, status=status.HTTP_200_OK)
+
+        # Rate limiting global par IP : 10 tentatives par heure
+        client_ip = auth_utils.get_client_ip(request)
+        global_limit_key = f"kyc_global_{client_ip}"
+        if auth_utils.is_rate_limited(global_limit_key, limit=10, window_seconds=3600):
+            return Response({
+                "error": "Trop de tentatives KYC depuis cette adresse IP (limite : 10 par heure)",
+                "code": "kyc_global_rate_limited",
+                "retry_after": 3600
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         # Rate limiting : 3 tentatives par heure
         kyc_limit_key = f"kyc_attempts_{user.id}"
