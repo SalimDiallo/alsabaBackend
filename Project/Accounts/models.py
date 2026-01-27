@@ -117,6 +117,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     didit_session_uuid = models.CharField(max_length=100, blank=True, null=True)
     didit_session_expires = models.DateTimeField(null=True, blank=True)
 
+    # Identifiant unique Flutterwave pour ce client
+    flutterwave_customer_id = models.CharField(max_length=100, blank=True, null=True, db_index=True)
+
     date_joined = models.DateTimeField(default=timezone.now)
     last_login = models.DateTimeField(null=True, blank=True)
     
@@ -158,11 +161,19 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.full_phone_number
 
     def soft_delete(self, reason="user_requested"):
+        """
+        Désactive l'utilisateur sans supprimer les données.
+        Le numéro est préfixé pour libérer les contraintes d'unicité sur le numéro original.
+        """
         self.is_active = False
         self.deleted_at = timezone.now()
         self.deleted_reason = reason
         self.deleted_phone_number = self.full_phone_number
-        self.full_phone_number = f"deleted_{self.full_phone_number}"
+        
+        # On ajoute un préfixe temporel pour garantir l'unicité même après plusieurs suppressions
+        # du même numéro historique.
+        timestamp = int(self.deleted_at.timestamp())
+        self.full_phone_number = f"deleted_{timestamp}_{self.full_phone_number}"
         self.phone_number = None
         self.save()
 

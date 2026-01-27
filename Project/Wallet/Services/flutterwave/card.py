@@ -46,15 +46,20 @@ class FlutterwaveCardService(FlutterwaveBaseService):
         token = self.get_access_token()
         endpoint = "/customers"
         
-        # Adresse par défaut si non fournie
+        # Adresse par défaut ou complétion de l'adresse fournie
+        # Flutterwave requiert impérativement "country" (ISO 2)
+        default_country = country_code[-2:] if len(country_code) > 2 else "FR"
+        
         if not address:
             address = {
                 "city": "Unknown",
-                "country": country_code[-2:] if len(country_code) > 2 else "FR",
+                "country": default_country,
                 "line1": "Address not provided",
                 "postal_code": "00000",
                 "state": "Unknown"
             }
+        elif "country" not in address or not address["country"]:
+            address["country"] = default_country
         
         json_data = {
             "address": address,
@@ -76,6 +81,11 @@ class FlutterwaveCardService(FlutterwaveBaseService):
                        email=email)
             return customer_id
         except Exception as e:
+            # Gestion du conflit si le customer existe déjà (Erreur 409)
+            if "10409" in str(e) or "already exists" in str(e).lower():
+                logger.info("flutterwave_customer_conflict_detected", email=email)
+                return self.get_customer_id_by_email(email)
+                
             logger.error("flutterwave_customer_creation_failed",
                         error=str(e),
                         email=email)
@@ -98,16 +108,37 @@ class FlutterwaveCardService(FlutterwaveBaseService):
         token = self.get_access_token()
         endpoint = "/payment-methods"
         
+        # S'assurer que les données sont des chaînes pour l'encryption (.encode)
+        card_number_str = str(card_number).replace(" ", "")
+        
+        # Formattage mois (MM) et année (YY) requis par Flutterwave
+        try:
+            m = int(exp_month)
+            exp_month_str = f"{m:02d}"
+        except (ValueError, TypeError):
+            exp_month_str = str(exp_month)
+            
+        try:
+            y = int(exp_year)
+            # Si c'est 4 chiffres (ex: 2026), on prend les deux derniers (26)
+            if y > 100:
+                y = y % 100
+            exp_year_str = f"{y:02d}"
+        except (ValueError, TypeError):
+            exp_year_str = str(exp_year)
+            
+        cvv_str = str(cvv)
+        
         # Encryption AES-256-GCM
         nonce_bytes = EncryptionUtils.generate_nonce()
         enc_number, nonce_b64 = EncryptionUtils.encrypt_aes(
-            card_number, self.encryption_key, nonce_bytes)
+            card_number_str, self.encryption_key, nonce_bytes)
         enc_month, _ = EncryptionUtils.encrypt_aes(
-            exp_month, self.encryption_key, nonce_bytes)
+            exp_month_str, self.encryption_key, nonce_bytes)
         enc_year, _ = EncryptionUtils.encrypt_aes(
-            exp_year, self.encryption_key, nonce_bytes)
+            exp_year_str, self.encryption_key, nonce_bytes)
         enc_cvv, _ = EncryptionUtils.encrypt_aes(
-            cvv, self.encryption_key, nonce_bytes)
+            cvv_str, self.encryption_key, nonce_bytes)
         
         json_data = {
             "type": "card",
@@ -135,22 +166,25 @@ class FlutterwaveCardService(FlutterwaveBaseService):
             raise
     
     def charge_card(self, customer_id: str, payment_method_id: str, 
-                   amount: int, reference: Optional[str] = None,
+                   amount: float, reference: Optional[str] = None,
                    currency: Optional[str] = None,
-                   meta: Optional[Dict] = None) -> Dict[str, Any]:
+                   meta: Optional[Dict] = None, **kwargs) -> Dict[str, Any]:
         """
-        Effectue un paiement par carte (charge)
+        Effectue un paiement par carte (charge) - CONFORME FLUTTERWAVE V3
+        
+        Documentation: https://developer.flutterwave.com/docs
+        Endpoint: POST /charges
         
         Args:
-            customer_id: ID du customer
+            customer_id: ID du customer Flutterwave
             payment_method_id: ID de la méthode de paiement
-            amount: Montant en centimes
-            reference: Référence unique (générée si None)
-            currency: Devise (utilise self.currency si None)
+            amount: Montant en unités monétaires (10.54 pour 10.54 EUR, PAS en centimes)
+            reference: Référence unique de transaction
+            currency: Code devise (EUR, USD, NGN, etc.)
             meta: Métadonnées additionnelles
             
         Returns:
-            dict: Réponse de l'API avec les détails du charge
+            dict: Réponse Flutterwave avec charge_id et statut
         """
         if reference is None:
             reference = str(uuid.uuid4())
@@ -158,35 +192,139 @@ class FlutterwaveCardService(FlutterwaveBaseService):
         token = self.get_access_token()
         endpoint = "/charges"
         
+        # Validation stricte du redirect_url selon V3
+        raw_redirect = kwargs.get('redirect_url') or self.redirect_url or "https://google.com"
+        clean_redirect = str(raw_redirect).strip().strip('"').strip("'")
+        
+        is_valid, error_msg = self.validate_redirect_url(clean_redirect)
+        if not is_valid:
+            logger.error("invalid_redirect_url", url=clean_redirect, reason=error_msg)
+            # Fallback sécurisé
+            clean_redirect = "https://google.com"
+            logger.warning("using_fallback_redirect_url", url=clean_redirect)
+
+        # Payload conforme Flutterwave V3
         json_data = {
-            "reference": reference,
+            "reference": reference,  # V3 utilise "reference" (pas "tx_ref")
             "currency": currency or self.currency,
             "customer_id": customer_id,
             "payment_method_id": payment_method_id,
-            "redirect_url": self.redirect_url,
-            "amount": amount,
+            "redirect_url": clean_redirect,
+            "amount": str(amount),  # String pour éviter problèmes de float dans le JSON chiffré
             "meta": meta or {"source": "wallet_deposit"}
         }
-        
+
+        # DIAGNOSTIC LOG (TEMPORAIRE)
+        # On loggue le payload en clair pour debug
+        masked_key = self.encryption_key[:4] + "..." + self.encryption_key[-4:] if self.encryption_key else "MISSING"
+        logger.info("DIAGNOSTIC_PAYLOAD", 
+                   payload=json_data, 
+                   encryption_key_masked=masked_key,
+                   key_length=len(self.encryption_key) if self.encryption_key else 0)
+        #Fin du diagnostic log
         headers = {
             "X-Idempotency-Key": str(uuid.uuid4())
         }
         
-        # Ajouter X-Scenario-Key pour sandbox uniquement
+        # Sandbox Scenario pour tests automatiques
         if self.environment == 'sandbox':
-            headers["X-Scenario-Key"] = "scenario:auth_3ds&issuer:approved"
+            scenario = kwargs.get('scenario', 'scenario:successful')
+            headers["X-Scenario-Key"] = scenario
+        
+        logger.info("flutterwave_charge_initiated", 
+                   reference=reference, 
+                   amount=amount,
+                   currency=currency or self.currency,
+                   redirect_url=clean_redirect)
         
         try:
             response = self._make_request("POST", endpoint, token=token,
                                          json_data=json_data, headers=headers)
-            logger.info("flutterwave_charge_initiated",
-                       charge_id=response["data"]["id"],
-                       amount=amount,
-                       reference=reference)
             return response
         except Exception as e:
             logger.error("flutterwave_charge_failed", error=str(e), reference=reference)
             raise
+    
+    def handle_authorization_response(self, charge_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Gère les différents types d'autorisation requis par Flutterwave V3
+        
+        Documentation: https://developer.flutterwave.com/docs
+        
+        Args:
+            charge_data: Réponse du charge (data field)
+            
+        Returns:
+            dict: Instructions pour le frontend sur l'action à prendre
+        """
+        charge_id = charge_data.get("id")
+        status = charge_data.get("status")
+        
+        # Cas 1: Paiement réussi immédiatement (rare)
+        if status == "successful":
+            return {
+                "requires_action": False,
+                "status": "successful",
+                "charge_id": charge_id
+            }
+        
+        # Cas 2: Autorisation requise (3DS, PIN, OTP)
+        if "next_action" in charge_data:
+            next_action = charge_data["next_action"]
+            action_type = next_action.get("type")
+            
+            if action_type == "redirect":
+                # 3D Secure - Redirection vers la banque
+                return {
+                    "requires_action": True,
+                    "action_type": "redirect",
+                    "redirect_url": next_action.get("redirect_url"),
+                    "charge_id": charge_id,
+                    "message": "Authentification 3D Secure requise"
+                }
+            
+            elif action_type == "authorize":
+                # PIN requis (cartes africaines principalement)
+                return {
+                    "requires_action": True,
+                    "action_type": "pin",
+                    "charge_id": charge_id,
+                    "message": "Code PIN requis"
+                }
+            
+            elif action_type == "otp":
+                # OTP requis
+                return {
+                    "requires_action": True,
+                    "action_type": "otp",
+                    "charge_id": charge_id,
+                    "message": "Code OTP requis"
+                }
+        
+        # Cas 3: En attente (processing)
+        if status in ["pending", "processing"]:
+            return {
+                "requires_action": False,
+                "status": "processing",
+                "charge_id": charge_id,
+                "message": "Paiement en cours de traitement"
+            }
+        
+        # Cas 4: Échec
+        if status == "failed":
+            return {
+                "requires_action": False,
+                "status": "failed",
+                "charge_id": charge_id,
+                "error": charge_data.get("processor_response", "Paiement refusé")
+            }
+        
+        # Cas par défaut
+        return {
+            "requires_action": False,
+            "status": status or "unknown",
+            "charge_id": charge_id
+        }
     
     def authorize_with_pin(self, charge_id: str, pin: str = "12345") -> Dict[str, Any]:
         """
@@ -382,7 +520,9 @@ class FlutterwaveCardService(FlutterwaveBaseService):
                         customer_email: str, customer_phone: str,
                         customer_name: str, card_details: Dict[str, str],
                         address: Optional[Dict] = None,
-                        country_code: str = "33") -> Dict[str, Any]:
+                        country_code: str = "33",
+                        customer_id: Optional[str] = None,
+                        **kwargs) -> Dict[str, Any]:
         """
         Initie un dépôt complet par carte (flux complet)
         
@@ -394,6 +534,7 @@ class FlutterwaveCardService(FlutterwaveBaseService):
             customer_name: Nom complet du client
             card_details: Détails de la carte (number, exp_month, exp_year, cvv)
             country_code: Code pays
+            customer_id: ID Flutterwave du client (si déjà connu)
             
         Returns:
             dict: Résultat avec reference, charge_id, status, payment_link
@@ -402,13 +543,14 @@ class FlutterwaveCardService(FlutterwaveBaseService):
             # 1. Obtenir token
             token = self.get_access_token()
             
-            # 2. Créer customer
-            name_parts = customer_name.split(maxsplit=1)
-            first_name = name_parts[0] if name_parts else customer_name
-            last_name = name_parts[1] if len(name_parts) > 1 else ""
-            customer_id = self.create_customer(
-                customer_email, first_name, last_name, customer_phone, 
-                country_code, address=address)
+            # 2. Obtenir ou créer customer
+            if not customer_id:
+                name_parts = customer_name.split(maxsplit=1)
+                first_name = name_parts[0] if name_parts else customer_name
+                last_name = name_parts[1] if len(name_parts) > 1 else ""
+                customer_id = self.create_customer(
+                    customer_email, first_name, last_name, customer_phone, 
+                    country_code, address=address)
             
             # 3. Créer payment method
             pm_id = self.create_card_payment_method(
@@ -419,28 +561,41 @@ class FlutterwaveCardService(FlutterwaveBaseService):
             )
             
             # 4. Créer charge
+            logger.info("flutterwave_attempting_charge", customer_id=customer_id, pm_id=pm_id, amount=amount)
             charge = self.charge_card(
-                customer_id, pm_id, int(amount * 100),
-                currency=currency
+                customer_id, pm_id, float(amount),
+                currency=currency,
+                redirect_url=kwargs.get('redirect_url')
             )
             
             charge_data = charge["data"]
             charge_id = charge_data["id"]
             
-            # 5. Vérifier si PIN requis
-            if "next_action" in charge_data:
-                next_action = charge_data["next_action"]
-                if next_action.get("type") == "authorize":
-                    logger.info("pin_authorization_required", charge_id=charge_id)
-                    # Pour sandbox, on autorise automatiquement
-                    if self.environment == 'sandbox':
-                        self.authorize_with_pin(charge_id)
-                    # En production, l'utilisateur devra autoriser via 3DS
+            # 5. Gérer l'autorisation (3DS, PIN, OTP) selon V3
+            auth_result = self.handle_authorization_response(charge_data)
             
+            # Si autorisation requise, retourner les instructions au frontend
+            if auth_result.get("requires_action"):
+                logger.info("authorization_required", 
+                           charge_id=charge_id,
+                           action_type=auth_result.get("action_type"))
+                
+                return {
+                    "success": True,
+                    "reference": charge_data["reference"],
+                    "charge_id": charge_id,
+                    "customer_id": customer_id,
+                    "status": "requires_authorization",
+                    "authorization": auth_result,
+                    "payment_link": auth_result.get("redirect_url")  # Pour compatibilité
+                }
+            
+            # Paiement réussi ou en cours
             return {
                 "success": True,
                 "reference": charge_data["reference"],
                 "charge_id": charge_id,
+                "customer_id": customer_id,
                 "status": charge_data.get("status", "pending"),
                 "payment_link": charge_data.get("authorization", {}).get("redirect_url"),
                 "next_action": charge_data.get("next_action")

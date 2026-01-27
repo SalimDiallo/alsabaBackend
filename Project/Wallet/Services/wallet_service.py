@@ -48,7 +48,8 @@ class WalletService:
 
     @staticmethod
     def initiate_deposit(user, amount, payment_method, card_details=None, request_meta=None,
-                        payment_method_id=None, save_payment_method=False, payment_method_label=None):
+                        payment_method_id=None, save_payment_method=False, 
+                        payment_method_label=None, redirect_url=None):
         """
         Initie un dépôt sur le wallet
 
@@ -138,30 +139,48 @@ class WalletService:
 
             # Préparer l'adresse pour Flutterwave
             address_data = None
-            if user.city or user.postal_code or user.state:
+            # Mapper le code pays (ex: +33 -> FR)
+            # On essaie d'abord kyc_nationality, sinon on déduit du country_code
+            country_iso = user.kyc_nationality or "FR" 
+            if len(country_iso) > 2: # Si c'est un nom complet, on met un défaut ou on tronque
+                country_iso = "FR" # Idéalement utiliser une lib de mapping
+
+            if user.city or user.postal_code or user.state or user.kyc_address:
                 address_data = {
                     "city": user.city or "Unknown",
                     "postal_code": user.postal_code or "00000",
                     "state": user.state or "Unknown",
                     "line1": user.kyc_address or "Address not provided",
+                    "country": country_iso
                 }
+            elif country_iso:
+                # Flutterwave requiert au moins le pays pour le customer
+                address_data = {"country": country_iso}
 
-        # Initiation du paiement Flutterwave (Hors verrou)
         flutterwave_result = flutterwave_service.initiate_deposit(
-            amount=float(amount_dec + fee_amount),  # Montant total avec frais
+            amount=float(amount_dec + fee_amount),
             currency=wallet.currency,
             payment_method=payment_method,
             customer_email=user.email,
-            customer_phone=user.full_phone_number,
+            customer_phone=user.phone_number, # Numéro national (7-10 chiffres)
+            country_code=user.country_code.replace('+', ''), # Ex: 33
             customer_name=f"{user.first_name} {user.last_name}".strip() or user.full_phone_number,
             card_details=card_details,
             address=address_data,
+            customer_id=user.flutterwave_customer_id,
+            redirect_url=redirect_url, # Passer l'URL demandée
             meta={
                 "transaction_id": str(transaction.id),
                 "user_id": str(user.id),
                 "internal_reference": transaction.id.hex[:16]
             }
         )
+        
+        # Si un ID customer a été créé ou récupéré via 409 fallback, on le cache
+        flw_customer_id = flutterwave_result.get("customer_id") # Note: nécessite d'être retourné par les services
+        if not user.flutterwave_customer_id and flw_customer_id:
+            user.flutterwave_customer_id = flw_customer_id
+            user.save(update_fields=['flutterwave_customer_id'])
         
         with db_transaction.atomic():
             # Sauvegarder la méthode de paiement si demandé
@@ -369,9 +388,17 @@ class WalletService:
             if account_details.get('bank_country'):
                 recipient_details["bank_country"] = account_details['bank_country']
         elif payment_method == 'orange_money':
+            # Extraction du numéro national et du code pays séparément
+            # On prend soit le msisdn complet soit orange_money_number
+            full_phone = account_details.get('phone_number') or user.full_phone_number
+            # On réuitilise la même logique que pour le dépôt pour plus de sécurité
+            from Accounts.utils import AuthUtils
+            country_code, national_phone = AuthUtils.parse_phone_number(full_phone)
+            
             recipient_details = {
-                "phone": account_details.get('phone_number'),
-                "name": account_details.get('beneficiary_name')
+                "phone": national_phone,
+                "name": account_details.get('beneficiary_name') or f"{user.first_name} {user.last_name}".strip(),
+                "country_code": country_code.replace('+', '')
             }
         
         flutterwave_result = flutterwave_service.initiate_withdrawal(
@@ -675,7 +702,7 @@ class WalletService:
 
             with db_transaction.atomic():
                 # Calculer le montant à créditer
-                amount_to_credit = Decimal(transaction.amount_cents) / 100
+                amount_to_credit = Decimal(str(transaction.amount_cents)) / Decimal('100')
 
                 # Marquer la transaction comme terminée (cela crédite automatiquement le wallet)
                 transaction.mark_completed()
@@ -820,14 +847,14 @@ class WalletService:
                     "withdrawal_confirmed",
                     user_id=str(user.id),
                     transaction_id=str(transaction.id),
-                    amount=Decimal(transaction.amount_cents) / 100,
+                    amount=Decimal(str(transaction.amount_cents)) / Decimal('100'),
                     wallet_balance=wallet.balance
                 )
 
                 return {
                     "success": True,
                     "transaction": transaction,
-                    "amount_debited": Decimal(transaction.amount_cents) / 100,
+                    "amount_debited": Decimal(str(transaction.amount_cents)) / Decimal('100'),
                     "wallet_balance": wallet.balance
                 }
 
@@ -878,7 +905,7 @@ class WalletService:
 
             with db_transaction.atomic():
                 # Calculer le montant à rembourser (montant + frais)
-                total_amount = Decimal(transaction.amount_cents + transaction.fee_cents) / 100
+                total_amount = Decimal(str(transaction.amount_cents + transaction.fee_cents)) / Decimal('100')
 
                 # Rembourser le wallet
                 wallet.add_balance(total_amount)

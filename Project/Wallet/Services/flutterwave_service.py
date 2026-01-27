@@ -63,7 +63,9 @@ class FlutterwaveService(FlutterwaveBaseService):
                 amount, currency, customer_email, customer_phone,
                 customer_name, card_details,
                 address=kwargs.get('address'),
-                country_code=kwargs.get('country_code', '33')
+                country_code=kwargs.get('country_code', '33'),
+                customer_id=kwargs.get('customer_id'),
+                redirect_url=kwargs.get('redirect_url')
             )
         elif payment_method == "orange_money":
             if not all([customer_email, customer_phone, customer_name]):
@@ -73,7 +75,10 @@ class FlutterwaveService(FlutterwaveBaseService):
                     "code": "customer_info_required"
                 }
             return self.orange_service.initiate_deposit(
-                amount, currency, customer_email, customer_phone, customer_name
+                amount, currency, customer_email, customer_phone, 
+                customer_name, country_code=kwargs.get('country_code'),
+                customer_id=kwargs.get('customer_id'),
+                redirect_url=kwargs.get('redirect_url')
             )
         else:
             return {
@@ -168,7 +173,8 @@ class FlutterwaveService(FlutterwaveBaseService):
                 }
             
             return self.orange_service.initiate_withdrawal(
-                amount, currency, phone, name
+                amount, currency, phone, name,
+                country_code=recipient_details.get("country_code")
             )
         else:
             return {

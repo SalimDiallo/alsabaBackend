@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.utils import timezone
 from django.db.models import Q
 import structlog
@@ -114,7 +114,8 @@ class DepositView(APIView):
             request_meta=request_meta,
             payment_method_id=payment_method_id,
             save_payment_method=validated_data.get('save_payment_method', False),
-            payment_method_label=validated_data.get('payment_method_label')
+            payment_method_label=validated_data.get('payment_method_label'),
+            redirect_url=validated_data.get('redirect_url')
         )
 
         if not result["success"]:
@@ -418,7 +419,7 @@ class ConfirmDepositView(APIView):
     POST /api/wallet/deposit/{transaction_id}/confirm/
     Confirme un dépôt (généralement appelé par webhook ou admin)
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminUser]
 
     def post(self, request, transaction_id):
         serializer = TransactionConfirmSerializer(data=request.data)
@@ -507,7 +508,7 @@ class ConfirmWithdrawalView(APIView):
     POST /api/wallet/withdraw/{transaction_id}/confirm/
     Confirme un retrait (généralement appelé par admin ou système)
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminUser]
 
     def post(self, request, transaction_id):
         serializer = TransactionConfirmSerializer(data=request.data)
@@ -660,17 +661,9 @@ class UpdateTransactionStatusView(APIView):
     PATCH /api/wallet/transactions/{transaction_id}/status/
     Met à jour le statut d'une transaction (admin seulement)
     """
-    permission_classes = [IsAuthenticated]
-    # TODO: Ajouter permission IsAdminUser quand disponible
-
+    permission_classes = [IsAdminUser]
+    
     def patch(self, request, transaction_id):
-        # Vérification des permissions admin (temporaire)
-        if not request.user.is_staff:
-            return Response({
-                "success": False,
-                "error": "Permissions insuffisantes",
-                "code": "insufficient_permissions"
-            }, status=status.HTTP_403_FORBIDDEN)
 
         serializer = TransactionStatusUpdateSerializer(data=request.data)
         if not serializer.is_valid():
@@ -715,17 +708,9 @@ class WalletStatsView(APIView):
     GET /api/wallet/stats/
     Statistiques du portefeuille (admin seulement)
     """
-    permission_classes = [IsAuthenticated]
-    # TODO: Ajouter permission IsAdminUser quand disponible
-
+    permission_classes = [IsAdminUser]
+    
     def get(self, request):
-        # Vérification des permissions admin (temporaire)
-        if not request.user.is_staff:
-            return Response({
-                "success": False,
-                "error": "Permissions insuffisantes",
-                "code": "insufficient_permissions"
-            }, status=status.HTTP_403_FORBIDDEN)
 
         stats = wallet_service.get_wallet_statistics()
 

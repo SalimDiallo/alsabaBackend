@@ -1,6 +1,8 @@
 import base64
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
+import secrets
+import string
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -35,6 +37,16 @@ class EncryptionUtils:
             cipher = AES.new(key_bytes, AES.MODE_GCM, nonce=nonce)
             ciphertext, tag = cipher.encrypt_and_digest(plaintext.encode('utf-8'))
             full_enc = ciphertext + tag
+            
+            # Formattage du nonce pour Flutterwave (doit être exactement 12 chars)
+            # Si le nonce est déjà un string alpha-numérique de 12 (ASCII), on le garde tel quel
+            try:
+                nonce_str = nonce.decode('ascii')
+                if len(nonce_str) == 12:
+                    return base64.b64encode(full_enc).decode('utf-8'), nonce_str
+            except (UnicodeDecodeError, AttributeError):
+                pass
+                
             return base64.b64encode(full_enc).decode('utf-8'), base64.b64encode(nonce).decode('utf-8')
         except Exception as e:
             logger.error("encryption_error", error=str(e))
@@ -42,5 +54,11 @@ class EncryptionUtils:
 
     @staticmethod
     def generate_nonce() -> bytes:
-        """Génère un nonce de 12 bytes pour AES-GCM"""
-        return get_random_bytes(12)
+        """
+        Génère un nonce de 12 bytes pour AES-GCM.
+        Pour Flutterwave, on génère un string alphanumérique de 12 caractères
+        car ils valident la longueur du champ JSON à 12.
+        """
+        alphabet = string.ascii_letters + string.digits
+        nonce_str = ''.join(secrets.choice(alphabet) for _ in range(12))
+        return nonce_str.encode('ascii')

@@ -29,7 +29,7 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             raise ValueError("Configuration Flutterwave incomplète pour Orange Money")
     
     def create_customer(self, email: str, first_name: str, last_name: str, 
-                       phone: str) -> str:
+                       phone: str, country_code: Optional[str] = None) -> str:
         """
         Crée un customer Flutterwave pour Orange Money
         
@@ -38,6 +38,7 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             first_name: Prénom
             last_name: Nom
             phone: Numéro de téléphone (sans indicatif)
+            country_code: Code pays (optionnel)
             
         Returns:
             str: ID du customer créé
@@ -47,7 +48,7 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
         
         json_data = {
             "name": {"first": first_name, "last": last_name},
-            "phone": {"country_code": self.country_code, "number": phone},
+            "phone": {"country_code": country_code or self.country_code, "number": phone},
             "email": email
         }
         
@@ -64,6 +65,11 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
                        email=email)
             return customer_id
         except Exception as e:
+            # Gestion du conflit si le customer existe déjà (Erreur 409)
+            if "10409" in str(e) or "already exists" in str(e).lower():
+                logger.info("flutterwave_customer_conflict_detected", email=email)
+                return self.get_customer_id_by_email(email)
+                
             logger.error("flutterwave_customer_creation_failed",
                         error=str(e),
                         email=email)
@@ -106,7 +112,7 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             raise
     
     def charge_mobile_money(self, customer_id: str, payment_method_id: str,
-                           amount: int, reference: Optional[str] = None) -> str:
+                           amount: int, reference: Optional[str] = None, **kwargs) -> str:
         """
         Effectue un encaissement via Orange Money (dépôt)
         
@@ -125,13 +131,23 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
         token = self.get_access_token()
         endpoint = "/charges"
         
+        # Validation stricte du redirect_url selon V3
+        raw_redirect = kwargs.get('redirect_url') or self.redirect_url or "https://google.com"
+        clean_redirect = str(raw_redirect).strip().strip('"').strip("'")
+        
+        is_valid, error_msg = self.validate_redirect_url(clean_redirect)
+        if not is_valid:
+            logger.error("invalid_redirect_url", url=clean_redirect, reason=error_msg)
+            clean_redirect = "https://google.com"
+            logger.warning("using_fallback_redirect_url", url=clean_redirect)
+
         json_data = {
             "reference": reference,
             "currency": self.currency,
             "customer_id": customer_id,
             "payment_method_id": payment_method_id,
-            "amount": amount,
-            "redirect_url": self.redirect_url
+            "amount": float(amount),  # TOUJOURS float, jamais centimes
+            "redirect_url": clean_redirect
         }
         
         headers = {
@@ -139,7 +155,7 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
         }
         
         if self.environment == 'sandbox':
-            headers["X-Scenario-Key"] = "scenario:successful"
+            headers["X-Scenario-Key"] = kwargs.get('scenario', 'scenario:successful')
         
         try:
             response = self._make_request("POST", endpoint, token=token,
@@ -177,7 +193,7 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             raise
     
     def create_mobile_money_recipient(self, phone: str, first_name: str,
-                                     last_name: str) -> str:
+                                     last_name: str, country_code: Optional[str] = None) -> str:
         """
         Crée un recipient pour transfert Orange Money (retrait)
         
@@ -185,6 +201,7 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             phone: Numéro Orange Money (sans indicatif)
             first_name: Prénom du destinataire
             last_name: Nom du destinataire
+            country_code: Code pays (ex: 33, 221)
             
         Returns:
             str: ID du recipient
@@ -192,13 +209,17 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
         token = self.get_access_token()
         endpoint = "/transfers/recipients"
         
+        # Formatage du code pays
+        c_code = country_code or self.country_code
+        c_code = str(c_code).replace('+', '')
+        
         # Format international du numéro
-        msisdn = self.country_code + phone
+        msisdn = c_code + phone
         
         json_data = {
             "type": "mobile_money",
             "mobile_money": {
-                "country": self.country_code[-2:] if len(self.country_code) > 2 else "SN",
+                "country": c_code[-2:] if len(c_code) > 2 else "SN", # Déduction simplifiée
                 "network": self.network,
                 "msisdn": msisdn
             },
@@ -296,7 +317,9 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
     
     def initiate_deposit(self, amount: float, currency: str,
                        customer_email: str, customer_phone: str,
-                       customer_name: str) -> Dict[str, Any]:
+                       customer_name: str, country_code: Optional[str] = None,
+                       customer_id: Optional[str] = None,
+                       **kwargs) -> Dict[str, Any]:
         """
         Initie un dépôt complet via Orange Money (flux complet)
         
@@ -306,6 +329,8 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             customer_email: Email du client
             customer_phone: Téléphone Orange Money (sans indicatif)
             customer_name: Nom complet du client
+            country_code: Code pays (optionnel)
+            customer_id: ID Flutterwave du client (si déjà connu)
             
         Returns:
             dict: Résultat avec reference, charge_id, status
@@ -313,24 +338,28 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
         try:
             token = self.get_access_token()
             
-            # Créer customer
-            name_parts = customer_name.split(maxsplit=1)
-            first_name = name_parts[0] if name_parts else customer_name
-            last_name = name_parts[1] if len(name_parts) > 1 else ""
-            customer_id = self.create_customer(
-                customer_email, first_name, last_name, customer_phone)
+            # 2. Obtenir ou créer customer
+            if not customer_id:
+                name_parts = customer_name.split(maxsplit=1)
+                first_name = name_parts[0] if name_parts else customer_name
+                last_name = name_parts[1] if len(name_parts) > 1 else ""
+                customer_id = self.create_customer(
+                    customer_email, first_name, last_name, customer_phone, country_code=country_code)
             
             # Créer payment method
             pm_id = self.create_mobile_money_payment_method(customer_phone)
             
             # Créer charge
             charge_id = self.charge_mobile_money(
-                customer_id, pm_id, int(amount * 100))
+                customer_id, pm_id, int(amount * 100),
+                redirect_url=kwargs.get('redirect_url')
+            )
             
             return {
                 "success": True,
                 "reference": f"charge_{charge_id}",
                 "charge_id": charge_id,
+                "customer_id": customer_id,
                 "status": "pending"  # À vérifier via webhook
             }
         except Exception as e:
@@ -342,7 +371,8 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             }
     
     def initiate_withdrawal(self, amount: float, currency: str,
-                           recipient_phone: str, recipient_name: str) -> Dict[str, Any]:
+                           recipient_phone: str, recipient_name: str,
+                           country_code: Optional[str] = None) -> Dict[str, Any]:
         """
         Initie un retrait complet vers Orange Money (flux complet)
         
@@ -351,6 +381,7 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             currency: Devise
             recipient_phone: Numéro Orange Money du destinataire (sans indicatif)
             recipient_name: Nom complet du destinataire
+            country_code: Code pays (ex: 33, 221)
             
         Returns:
             dict: Résultat avec reference, transfer_id, status
@@ -363,7 +394,7 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             first_name = name_parts[0] if name_parts else recipient_name
             last_name = name_parts[1] if len(name_parts) > 1 else ""
             recipient_id = self.create_mobile_money_recipient(
-                recipient_phone, first_name, last_name)
+                recipient_phone, first_name, last_name, country_code=country_code)
             
             # Initier transfert
             transfer_id = self.initiate_mobile_money_transfer(

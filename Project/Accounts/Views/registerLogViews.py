@@ -340,10 +340,16 @@ class VerifyOTPView(APIView):
             logger.debug("user_found", user_id=str(user.id))
         except User.DoesNotExist:
             if action == 'register':
-                # Création propre sans passer full_phone_number (le manager s'en charge)
-                national_number = full_phone_number.replace(country_code, "").strip()
-                if national_number.startswith('0'):
-                    national_number = national_number[1:]
+                try:
+                    import phonenumbers
+                    parsed = phonenumbers.parse(full_phone_number, None)
+                    national_number = str(parsed.national_number)
+                    country_code = f"+{parsed.country_code}"
+                except Exception:
+                    # Fallback basique en cas d'erreur de parsing inattendue
+                    national_number = full_phone_number.replace(country_code, "").strip()
+                    if national_number.startswith('0'):
+                        national_number = national_number[1:]
                 
                 user = User.objects.create_user(
                     phone_number=national_number,

@@ -51,13 +51,13 @@ class Wallet(models.Model):
 
     @property
     def balance(self):
-        """Retourne le solde en euros (ou devise équivalente)"""
-        return self.balance_cents / 100
+        """Retourne le solde en euros (ou devise équivalente) sous forme de Decimal"""
+        return Decimal(str(self.balance_cents)) / Decimal('100')
 
     @balance.setter
     def balance(self, value):
         """Définit le solde en euros (ou devise équivalente)"""
-        self.balance_cents = int(value * 100)
+        self.balance_cents = int(Decimal(str(value)) * 100)
 
     def add_balance(self, amount):
         """Ajoute un montant au solde de manière atomique"""
@@ -84,48 +84,67 @@ class Wallet(models.Model):
     def get_currency_from_phone_number(phone_number):
         """
         Détermine la devise basée sur le pays du numéro de téléphone
-
+        
         Args:
             phone_number: Numéro de téléphone au format E.164
-
+            
         Returns:
-            str: Code devise (EUR, XAF, etc.)
+            str: Code devise (EUR, XAF, USD, etc.)
         """
+        from django.conf import settings
+        
         try:
             # Parse le numéro pour obtenir le code pays
             parsed = phonenumbers.parse(phone_number, None)
             
-            # Utiliser le code de région (ex: 'FR', 'CM') directement
+            # Utiliser le code de région (ex: 'FR', 'CM', 'MA') directement
             region_code = phonenumbers.region_code_for_number(parsed)
+            
+            # Mapping pays -> devise (COMPLET pour Afrique/Europe)
+            currency_map = {
+                # Afrique du Nord
+                'MA': 'MAD',  # Maroc
+                'DZ': 'DZD',  # Algérie
+                'TN': 'TND',  # Tunisie
+                'EG': 'EGP',  # Égypte
+                
+                # Zone Euro
+                'FR': 'EUR', 'DE': 'EUR', 'IT': 'EUR', 'ES': 'EUR', 
+                'BE': 'EUR', 'NL': 'EUR', 'PT': 'EUR', 'IE': 'EUR',
+                
+                # Afrique Francophone (XAF)
+                'CM': 'XAF', 'GA': 'XAF', 'CF': 'XAF', 'TD': 'XAF', 'CG': 'XAF',
+                
+                # Afrique Francophone (XOF)
+                'CI': 'XOF', 'SN': 'XOF', 'ML': 'XOF', 'BJ': 'XOF', 'BF': 'XOF',
+                
+                # Afrique Anglophone / Autres
+                'NG': 'NGN', 'GH': 'GHS', 'KE': 'KES', 'ZA': 'ZAR',
+                'US': 'USD', 'GB': 'GBP'
+            }
+            
+            detected_currency = currency_map.get(region_code, 'EUR')
+            
+            # Gestion SANDBOX
+            is_sandbox = getattr(settings, 'FLUTTERWAVE_ENVIRONMENT', 'sandbox') == 'sandbox'
+            
+            if is_sandbox:
+                # Liste des devises généralement supportées en sandbox sans restriction
+                sandbox_safe_currencies = ['NGN', 'USD', 'KES', 'GHS', 'ZAR', 'TZS', 'UGX']
+                
+                # Si la devise détectée n'est pas "safe" en sandbox (ex: MAD, EUR, XAF), on force USD
+                if detected_currency not in sandbox_safe_currencies:
+                    logger.info("sandbox_currency_fallback", 
+                                original=detected_currency, 
+                                fallback='USD', 
+                                reason="Currency not supported in sandbox")
+                    return 'USD'
 
-            if region_code:
-                # Mapping des pays vers leurs devises
-                currency_mapping = {
-                    # Zone Euro
-                    'FR': 'EUR', 'DE': 'EUR', 'IT': 'EUR', 'ES': 'EUR', 'NL': 'EUR',
-                    'BE': 'EUR', 'AT': 'EUR', 'PT': 'EUR', 'FI': 'EUR', 'IE': 'EUR',
-                    'LU': 'EUR', 'MT': 'EUR', 'CY': 'EUR', 'SK': 'EUR', 'SI': 'EUR',
-                    'EE': 'EUR', 'LV': 'EUR', 'LT': 'EUR', 'GR': 'EUR',
-
-                    # Afrique Francophone (XAF - Franc CFA)
-                    'CM': 'XAF', 'GA': 'XAF', 'CF': 'XAF', 'TD': 'XAF', 'GQ': 'XAF', 'CG': 'XAF',
-
-                    # Afrique Anglophone
-                    'NG': 'NGN', 'GH': 'GHS', 'KE': 'KES', 'ZA': 'ZAR', 'TZ': 'TZS',
-                    'UG': 'UGX', 'RW': 'RWF', 'BI': 'BIF', 'ZM': 'ZMW', 'ZW': 'ZWD',
-
-                    # Côte d'Ivoire (XOF - Franc CFA BCEAO)
-                    'CI': 'XOF', 'SN': 'XOF', 'ML': 'XOF', 'BJ': 'XOF', 'BF': 'XOF',
-                    'TG': 'XOF', 'NE': 'XOF', 'GW': 'XOF',
-                }
-
-                return currency_mapping.get(region_code, 'EUR')  # EUR par défaut
-
-            return 'EUR'  # Devise par défaut
-
-        except (phonenumbers.NumberParseException, AttributeError) as e:
+            return detected_currency
+            
+        except Exception as e:
             logger.warning("currency_detection_failed", phone_number=phone_number, error=str(e))
-            return 'EUR'  # Devise par défaut
+            return 'EUR'
 
     def save(self, *args, **kwargs):
         # Détermine automatiquement la devise si elle n'est pas définie
