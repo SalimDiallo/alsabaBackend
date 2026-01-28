@@ -233,7 +233,8 @@ class WalletService:
                 "reference": flutterwave_result["reference"],
                 "amount": amount,
                 "fee": fee_amount,
-                "total": amount + fee_amount
+                "total": amount + fee_amount,
+                "currency": wallet.currency
             }
 
     @staticmethod
@@ -517,10 +518,31 @@ class WalletService:
 
             if status == "successful":
                 transaction.mark_completed()
+                
+                # Sauvegarder les informations supplémentaires
+                proof = data.get("payment_information", {}).get("proof")
+                if proof:
+                    transaction.transfer_proof = proof
+                
+                # Construire extra_data avec les infos pertinentes
+                extra_info = {
+                    "bank": data.get("bank"),
+                    "debit_information": data.get("debit_information"),
+                    "webhook_meta": data.get("meta")
+                }
+                # Mettre à jour extra_data sans écraser l'existant si possible
+                if transaction.extra_data:
+                    transaction.extra_data.update(extra_info)
+                else:
+                    transaction.extra_data = extra_info
+                
+                transaction.save()
+
                 logger.info(
                     "withdrawal_completed_via_webhook",
                     transaction_id=str(transaction.id),
-                    reference=reference
+                    reference=reference,
+                    proof=proof
                 )
                 return {"success": True, "message": "Retrait traité avec succès"}
             else:

@@ -311,6 +311,10 @@ class Transaction(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
+    # Données additionnelles (Preuve de transfert, Détails banque, Taux, etc.)
+    transfer_proof = models.CharField(max_length=255, blank=True, null=True, help_text="Preuve de paiement (Flutterwave)")
+    extra_data = models.JSONField(default=dict, blank=True, help_text="Données supplémentaires (JSON)")
+
     class Meta:
         db_table = "transactions"
         verbose_name = "Transaction"

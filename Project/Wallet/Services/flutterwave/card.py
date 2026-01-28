@@ -68,9 +68,7 @@ class FlutterwaveCardService(FlutterwaveBaseService):
             "email": email
         }
         
-        headers = {
-            "X-Idempotency-Key": str(uuid.uuid4())
-        }
+        headers = None
         
         try:
             response = self._make_request("POST", endpoint, token=token, 
@@ -210,7 +208,7 @@ class FlutterwaveCardService(FlutterwaveBaseService):
             "customer_id": customer_id,
             "payment_method_id": payment_method_id,
             "redirect_url": clean_redirect,
-            "amount": str(amount),  # String pour éviter problèmes de float dans le JSON chiffré
+            "amount": amount,
             "meta": meta or {"source": "wallet_deposit"}
         }
 
@@ -228,7 +226,7 @@ class FlutterwaveCardService(FlutterwaveBaseService):
         
         # Sandbox Scenario pour tests automatiques
         if self.environment == 'sandbox':
-            scenario = kwargs.get('scenario', 'scenario:successful')
+            scenario = kwargs.get('scenario', 'scenario:auth_3ds&issuer:approved')
             headers["X-Scenario-Key"] = scenario
         
         logger.info("flutterwave_charge_initiated", 
@@ -394,7 +392,7 @@ class FlutterwaveCardService(FlutterwaveBaseService):
     
     def create_bank_transfer_recipient(self, account_number: str, bank_code: str,
                                       account_name: Optional[str] = None,
-                                      type_: str = "bank_account") -> str:
+                                      type_: str = "bank_ngn") -> str:
         """
         Crée un recipient pour transfert bancaire (retrait)
         
