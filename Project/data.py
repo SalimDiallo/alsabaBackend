@@ -42,7 +42,7 @@ def vider_toutes_les_tables():
         print("\nOpération terminée avec succès. La base est maintenant vide (tables conservées).")
 
     except sqlite3.Error as e:
-        print("Erreur SQLite :", e)
+        logger.error("sqlite_error", error=str(e), database=db_path)
     
     finally:
         if conn:

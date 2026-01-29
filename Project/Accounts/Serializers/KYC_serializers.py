@@ -1,7 +1,17 @@
 from rest_framework import serializers
-import magic
 from PIL import Image
 import io
+from django.core.exceptions import ValidationError
+
+def validate_file_size(value):
+    max_size = 5 * 1024 * 1024  # 5MB
+    if value.size > max_size:
+        raise ValidationError("Le fichier ne doit pas dépasser 5MB.")
+
+def validate_file_type(value):
+    allowed_types = ['image/jpeg', 'image/png', 'image/webp', 'image/tiff', 'application/pdf']
+    if hasattr(value, 'content_type') and value.content_type not in allowed_types:
+        raise ValidationError("Type de fichier non autorisé. Utilisez JPEG, PNG, WebP, TIFF ou PDF.")
 
 class KYCVerifySerializer(serializers.Serializer):
     DOCUMENT_TYPE_CHOICES = [
@@ -19,13 +29,15 @@ class KYCVerifySerializer(serializers.Serializer):
 
     front_image = serializers.FileField(  # ← Changé en FileField car Didit accepte aussi PDF
         required=True,
-        help_text="Recto du document (JPEG, PNG, WebP, TIFF, PDF - max 5MB)"
+        help_text="Recto du document (JPEG, PNG, WebP, TIFF, PDF - max 5MB)",
+        validators=[validate_file_size, validate_file_type]
     )
 
     back_image = serializers.FileField(
         required=False,
         allow_null=True,
-        help_text="Verso du document (requis pour documents recto-verso - JPEG, PNG, WebP, TIFF, PDF - max 5MB)"
+        help_text="Verso du document (requis pour documents recto-verso - JPEG, PNG, WebP, TIFF, PDF - max 5MB)",
+        validators=[validate_file_size, validate_file_type]
     )
 
     perform_document_liveness = serializers.BooleanField(
@@ -93,23 +105,14 @@ class KYCVerifySerializer(serializers.Serializer):
         if hasattr(image, 'size') and image.size > 5 * 1024 * 1024:
             errors.append("Taille maximale : 5 Mo")
 
-        # MIME réel
-        try:
-            pos = image.tell() if hasattr(image, 'tell') else 0
-            sample = image.read(2048)
-            if hasattr(image, 'seek'):
-                image.seek(pos)
-
-            mime = magic.from_buffer(sample, mime=True)
+        # MIME réel - validation simplifiée
+        if hasattr(image, 'content_type'):
             allowed = {
                 'image/jpeg', 'image/jpg', 'image/png',
-                'image/webp', 'image/tiff', 'image/x-tiff',
-                'application/pdf'
+                'image/webp', 'image/tiff', 'application/pdf'
             }
-            if mime not in allowed:
-                errors.append(f"Format non supporté : {mime} (JPEG, PNG, WebP, TIFF, PDF seulement)")
-        except Exception as e:
-            errors.append(f"Erreur détection format : {str(e)}")
+            if image.content_type not in allowed:
+                errors.append(f"Format non supporté : {image.content_type} (JPEG, PNG, WebP, TIFF, PDF seulement)")
 
         # PIL (seulement pour images, pas PDF)
         try:

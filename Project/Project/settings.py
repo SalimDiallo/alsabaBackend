@@ -15,11 +15,33 @@ from datetime import timedelta
 import os
 from dotenv import load_dotenv
 
-# Charger les variables d'environnement
-load_dotenv()
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Charger les variables d'environnement (.env à la racine du projet)
+# Le dossier racine est un niveau au-dessus de BASE_DIR (APPLICATION/)
+env_path = os.path.join(BASE_DIR.parent, '.env')
+if os.path.exists(env_path):
+    load_dotenv(env_path)
+else:
+    # Fallback si lancé depuis le dossier Project
+    load_dotenv(os.path.join(BASE_DIR, '.env'))
+
+# ===================================
+# VALIDATION DES VARIABLES CRITIQUES
+# ===================================
+def get_required_env(key: str, default=None):
+    """
+    Récupère une variable d'environnement.
+    Si default=None, lève une erreur si la variable n'existe pas.
+    """
+    value = os.getenv(key, default)
+    if value is None:
+        raise ValueError(
+            f"Variable d'environnement manquante: {key}\n"
+            f"Vérifiez que votre fichier .env contient cette variable."
+        )
+    return value
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
@@ -28,17 +50,14 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-4)-5heqax82y=3l8w1b+qxscems9i@xhir!v6^)-nw#r+e+bn&')
+SECRET_KEY = get_required_env('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
 # Hosts autorisés
 # En développement/tests on autorise toutes les origines pour simplifier l'exécution locale
-if DEBUG:
-    ALLOWED_HOSTS = ['*']
-else:
-    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -55,7 +74,9 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',  
     'Accounts',
-    'Wallet', 
+    'Wallet',
+    'Offer',
+    'Suggestions',
 ]
 
 REST_FRAMEWORK = {
@@ -67,8 +88,8 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
     'DEFAULT_THROTTLE_CLASSES': [
-        # 'rest_framework.throttling.AnonRateThrottle',
-        # 'rest_framework.throttling.UserRateThrottle'
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '10/hour',  # 10 tentatives par heure pour les anonymes
@@ -89,6 +110,7 @@ SIMPLE_JWT = {
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -119,20 +141,19 @@ WSGI_APPLICATION = 'Project.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-# Utiliser PostgreSQL si DATABASE_ENGINE est défini, sinon SQLite pour le développement local
-if not os.getenv('DATABASE_ENGINE'):
+# Database logic
+if os.getenv('DATABASE_URL') or os.getenv('DATABASE_ENGINE') == 'django.db.backends.postgresql':
     DATABASES = {
         'default': {
-            'ENGINE': os.getenv('DATABASE_ENGINE', 'django.db.backends.postgresql'),
-            'NAME': os.getenv('DATABASE_NAME', 'alsaba_db'),
-            'USER': os.getenv('DATABASE_USER', 'alsaba_user'),
-            'PASSWORD': os.getenv('DATABASE_PASSWORD', 'alsaba_password'),
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': get_required_env('DATABASE_NAME'),
+            'USER': get_required_env('DATABASE_USER'),
+            'PASSWORD': get_required_env('DATABASE_PASSWORD'),
             'HOST': os.getenv('DATABASE_HOST', 'localhost'),
             'PORT': os.getenv('DATABASE_PORT', '5432'),
         }
     }
 else:
-    # SQLite pour le développement local sans Docker
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -177,7 +198,30 @@ CACHES = {
     }
 }
 DIDIT_API_KEY = os.environ.get('DIDIT_API_KEY', 'your-key-here')
-DIDIT_USE_PLACEHOLDER = True
+
+# Flutterwave Configuration
+FLUTTERWAVE_ENVIRONMENT = os.getenv('FLUTTERWAVE_ENVIRONMENT', 'sandbox')
+
+# Configuration Sandbox
+FLUTTERWAVE_SANDBOX_CLIENT_ID = os.getenv('FLUTTERWAVE_SANDBOX_CLIENT_ID', '')
+FLUTTERWAVE_SANDBOX_CLIENT_SECRET = os.getenv('FLUTTERWAVE_SANDBOX_CLIENT_SECRET', '')
+FLUTTERWAVE_SANDBOX_ENCRYPTION_KEY = os.getenv('FLUTTERWAVE_SANDBOX_ENCRYPTION_KEY', '')
+FLUTTERWAVE_SANDBOX_BASE_URL = os.getenv('FLUTTERWAVE_SANDBOX_BASE_URL', 'https://developersandbox-api.flutterwave.com')
+FLUTTERWAVE_SANDBOX_AUTH_URL = os.getenv('FLUTTERWAVE_SANDBOX_AUTH_URL', 'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token')
+
+# Configuration Production
+FLUTTERWAVE_PRODUCTION_CLIENT_ID = os.getenv('FLUTTERWAVE_PRODUCTION_CLIENT_ID', '')
+FLUTTERWAVE_PRODUCTION_CLIENT_SECRET = os.getenv('FLUTTERWAVE_PRODUCTION_CLIENT_SECRET', '')
+FLUTTERWAVE_PRODUCTION_ENCRYPTION_KEY = os.getenv('FLUTTERWAVE_PRODUCTION_ENCRYPTION_KEY', '')
+FLUTTERWAVE_PRODUCTION_BASE_URL = os.getenv('FLUTTERWAVE_PRODUCTION_BASE_URL', 'https://api.flutterwave.com')
+FLUTTERWAVE_PRODUCTION_AUTH_URL = os.getenv('FLUTTERWAVE_PRODUCTION_AUTH_URL', 'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token')
+
+# URLs et Secrets communs
+FLUTTERWAVE_REDIRECT_URL = os.getenv('FLUTTERWAVE_REDIRECT_URL', 'https://google.com')
+FLUTTERWAVE_WEBHOOK_SECRET = os.getenv('FLUTTERWAVE_WEBHOOK_SECRET', '')
+FLUTTERWAVE_TIMEOUT = int(os.getenv('FLUTTERWAVE_TIMEOUT', '30'))
+FLUTTERWAVE_MAX_RETRIES = int(os.getenv('FLUTTERWAVE_MAX_RETRIES', '3'))
+FLUTTERWAVE_RETRY_DELAY = int(os.getenv('FLUTTERWAVE_RETRY_DELAY', '2'))
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
@@ -195,16 +239,70 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+import structlog
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'json_formatter': {
+            '()': structlog.stdlib.ProcessorFormatter,
+            'processor': structlog.processors.JSONRenderer(),
+        },
+        'console_formatter': {
+            '()': structlog.stdlib.ProcessorFormatter,
+            'processor': structlog.dev.ConsoleRenderer(colors=True),
+        },
+    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
+            'formatter': 'console_formatter',
+        },
+        'json_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': 'logs/structlog.json',
+            'formatter': 'json_formatter',
+            'maxBytes': 10485760,  # 10MB
+            'backupCount': 5,
         },
     },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
+    'loggers': {
+        '': {
+            'handlers': ['console', 'json_file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'wallet': {
+            'handlers': ['console', 'json_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
     },
 }
+
+# Configuration structlog
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.filter_by_level,
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+    ],
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
+
+FLUTTERWAVE_SECRET_KEY = os.getenv("FLUTTERWAVE_SECRET_KEY")
+FLUTTERWAVE_PUBLIC_KEY = os.getenv("FLUTTERWAVE_PUBLIC_KEY")
+FLUTTERWAVE_ENCRYPTION_KEY = os.getenv("FLUTTERWAVE_ENCRYPTION_KEY")
+FLUTTERWAVE_WEBHOOK_SECRET = os.getenv("FLUTTERWAVE_WEBHOOK_SECRET")
+
+# Didit settings

@@ -1,0 +1,909 @@
+type: collection.insomnia.rest/5.0
+schema_version: "5.1"
+name: ALSABA 2
+meta:
+  id: wrk_8c38339d2576430f82211f9be4fa00b5
+  created: 1769510827888
+  modified: 1769510827888
+  description: ""
+collection:
+  - url: http://127.0.0.1:8000/api/accounts/auth/phone/
+    name: PhoneAuth
+    meta:
+      id: req_440f78fd434f4bdca3d3c9c6449db25d
+      created: 1769511236536
+      modified: 1769514084423
+      isPrivate: false
+      description: ""
+      sortKey: -1769511236536
+    method: POST
+    body:
+      mimeType: application/json
+      text: |-
+        {
+          "phone_number": "0660620565",
+          "country_code": "+212"
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/accounts/auth/verify/
+    name: PhoneVerify
+    meta:
+      id: req_d46de2df75854543a67c76e582fa149f
+      created: 1769511532409
+      modified: 1769517974066
+      isPrivate: false
+      description: ""
+      sortKey: -1769511532409
+    method: POST
+    body:
+      mimeType: application/json
+      text: |-
+        {
+          "phone_number": "+212660620565",
+          "code": "261703",
+          "session_key": "auth_9c464a3cb82342c5"
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/accounts/auth/resend/
+    name: PhoneResend
+    meta:
+      id: req_1dc22dc5b8304bf6b2477d8d84e24124
+      created: 1769511629283
+      modified: 1769517936182
+      isPrivate: false
+      description: ""
+      sortKey: -1769511629283
+    method: POST
+    body:
+      mimeType: application/json
+      text: |-
+        {
+          "session_key": "auth_9c464a3cb82342c5"
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/accounts/auth/status/?session_key=auth_9c464a3cb82342c5
+    name: AuthStatus
+    meta:
+      id: req_af20d5ed42fc406b90fe2f030a01f744
+      created: 1769511755660
+      modified: 1769517996094
+      isPrivate: false
+      description: ""
+      sortKey: -1769511755660
+    method: GET
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/accounts/auth/refresh/
+    name: RefreshToken
+    meta:
+      id: req_5d451766fd33421a82977fe1dd8b7e95
+      created: 1769511797192
+      modified: 1769561357866
+      isPrivate: false
+      description: ""
+      sortKey: -1769511797192
+    method: POST
+    body:
+      mimeType: application/json
+      text: >-
+        {
+          "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc3MDE2NDk3OCwiaWF0IjoxNzY5NTYwMTc4LCJqdGkiOiI5OGUxNDIwOTY1OGU0OGExOGEwMTBlMmJmZjVmMzdkNyIsInVzZXJfaWQiOiJmODk1MjliZC1hNjMwLTQwYmQtYjdkNC03MzlkZDI2YmU1Y2IifQ.qYPr_6Jq0XXUPJMpzXGXMBFpugtWiKSEe1THFzuSLtM"
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/accounts/profile/
+    name: ProfilleSummary
+    meta:
+      id: req_051e631820874464b87128eb8b07d18f
+      created: 1769511895998
+      modified: 1769518085977
+      isPrivate: false
+      description: ""
+      sortKey: -1769511895998
+    method: GET
+    headers:
+      - name: Authorization
+        value: Bearer
+          eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY5NTIxNjI1LCJpYXQiOjE3Njk1MTc5NzcsImp0aSI6IjhmNTYzYzdjOTFlOTQzYjg5YmQyY2VkODg4NzJkNGNhIiwidXNlcl9pZCI6ImY4OTUyOWJkLWE2MzAtNDBiZC1iN2Q0LTczOWRkMjZiZTVjYiJ9.oxxUFPhoFYtJf9aGB490TRb5706RDm1z6SGGWloNuQM
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/accounts/profile/
+    name: ProfileUpdate
+    meta:
+      id: req_19042802c6974c1695334a74f4597c03
+      created: 1769511980260
+      modified: 1769518273593
+      isPrivate: false
+      description: ""
+      sortKey: -1769511980260
+    method: PATCH
+    body:
+      mimeType: application/json
+      text: |-
+        {
+          "first_name": "Matthania",
+          "last_name": "ADJOH",
+          "email": "matth@example.com",
+          "city": "Rabat",
+        	"postal_code": "40000",
+        	"state": "Morocco"
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: Authorization
+        value: Bearer
+          eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY5NTIxNjI1LCJpYXQiOjE3Njk1MTc5NzcsImp0aSI6IjhmNTYzYzdjOTFlOTQzYjg5YmQyY2VkODg4NzJkNGNhIiwidXNlcl9pZCI6ImY4OTUyOWJkLWE2MzAtNDBiZC1iN2Q0LTczOWRkMjZiZTVjYiJ9.oxxUFPhoFYtJf9aGB490TRb5706RDm1z6SGGWloNuQM
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/accounts/kyc/verify/
+    name: KYC
+    meta:
+      id: req_723bf6b083d74c88a8d7a67a4cb63a3d
+      created: 1769512058415
+      modified: 1769518555379
+      isPrivate: false
+      description: ""
+      sortKey: -1769512058415
+    method: POST
+    body:
+      mimeType: multipart/form-data
+      params:
+        - name: document_type
+          value: id_card
+          description: ""
+          disabled: false
+          multiline: false
+          type: text
+        - name: front_image
+          value: ""
+          description: ""
+          disabled: false
+          fileName: C:\Users\HP\Desktop\APPLICATION\Project\media\kyc_documents\front.jpg
+          type: file
+        - name: back_image
+          value: ""
+          description: ""
+          disabled: false
+          fileName: C:\Users\HP\Desktop\APPLICATION\Project\media\kyc_documents\back.jpg
+          type: file
+    headers:
+      - name: Content-Type
+        value: multipart/form-data
+      - name: Authorization
+        value: Bearer
+          eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY5NTIxNjI1LCJpYXQiOjE3Njk1MTc5NzcsImp0aSI6IjhmNTYzYzdjOTFlOTQzYjg5YmQyY2VkODg4NzJkNGNhIiwidXNlcl9pZCI6ImY4OTUyOWJkLWE2MzAtNDBiZC1iN2Q0LTczOWRkMjZiZTVjYiJ9.oxxUFPhoFYtJf9aGB490TRb5706RDm1z6SGGWloNuQM
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/accounts/delete/
+    name: Delete
+    meta:
+      id: req_0b51b2eca0034107922228f0c3f8c32d
+      created: 1769512122880
+      modified: 1769514806822
+      isPrivate: false
+      description: ""
+      sortKey: -1769512122880
+    method: POST
+    body:
+      mimeType: application/json
+      text: "{ \"reason\": \"Droit à l'oubli\" }"
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: Authorization
+        value: Bearer
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/accounts/delete/confirm/
+    name: DeleteConfirm
+    meta:
+      id: req_34f29c245743438fa50fd771b8f0070f
+      created: 1769512186346
+      modified: 1769514864374
+      isPrivate: false
+      description: ""
+      sortKey: -1769512186346
+    method: POST
+    body:
+      mimeType: application/json
+      text: |-
+        {
+          "session_key": "",
+          "code": ""
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: Authorization
+        value: Bearer
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/
+    name: Wallet
+    meta:
+      id: req_f3a3b2ba72ae4909817c11c755d0a97f
+      created: 1769512239999
+      modified: 1769529766614
+      isPrivate: false
+      description: ""
+      sortKey: -1769512239999
+    method: GET
+    headers:
+      - name: Authorization
+        value: Bearer
+          eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY5NTMzMjM0LCJpYXQiOjE3Njk1MjU5NDUsImp0aSI6ImRmYjM4ZmZmMWQxNDQ5ZGNhZTFiZTE0NjEzOTFkNjZmIiwidXNlcl9pZCI6ImY4OTUyOWJkLWE2MzAtNDBiZC1iN2Q0LTczOWRkMjZiZTVjYiJ9.lnOaSsELmR7_o95t4kfqxrO0ckBMi53wLqiKy1zB9Vs
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/deposit/
+    name: WalletDeposit
+    meta:
+      id: req_18aa3ee514e24effa31f6f85021bfe9c
+      created: 1769512314900
+      modified: 1769562078279
+      isPrivate: false
+      description: ""
+      sortKey: -1769512213172.5
+    method: POST
+    body:
+      mimeType: application/json
+      text: |-
+        {
+            "amount": 2500,
+            "payment_method": "card",
+            "card_number": "4242 4242 4242 4242",
+            "card_expiry_month": "09",
+            "card_expiry_year": "2032",
+            "card_cvv": "123",
+            "save_payment_method": false,
+            "redirect_url": "https://google.com"
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: Authorization
+        value: Bearer
+          eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY5NTY0OTU5LCJpYXQiOjE3Njk1NjAxNzgsImp0aSI6ImMzMzhjY2U2NTZkNjQyODdiNDU2MzgyZWEyMzY1NGUzIiwidXNlcl9pZCI6ImY4OTUyOWJkLWE2MzAtNDBiZC1iN2Q0LTczOWRkMjZiZTVjYiJ9.1KR82M8arl5rpom4IXclEKUqPVhWi45Ho5G9VffCvmg
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/deposit//confirm/
+    name: WalletDepositConfirm
+    meta:
+      id: req_8bd3570cdb074ef58c7d97a8646e7977
+      created: 1769512355266
+      modified: 1769516231496
+      isPrivate: false
+      description: ""
+      sortKey: -1769512199759.25
+    method: POST
+    body:
+      mimeType: application/json
+      text: '{ "notes": "Vérification manuelle effectuée" }'
+    headers:
+      - name: Content-Type
+        value: application/json
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/deposit//cancel/
+    name: WalletDepositCancel
+    meta:
+      id: req_008edcc8bf524c52ba543bc4fc5ee9d7
+      created: 1769512449857
+      modified: 1769515277960
+      isPrivate: false
+      description: ""
+      sortKey: -1769512193052.625
+    method: POST
+    body:
+      mimeType: application/json
+      text: '{ "reason": "Erreur de montant" }'
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: "Authorization "
+        value: Bearer
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/withdraw/
+    name: WalletWithdrawal
+    meta:
+      id: req_dfcbd01d8f124e7a92d70a16abf66979
+      created: 1769512523379
+      modified: 1769515198316
+      isPrivate: false
+      description: ""
+      sortKey: -1769512206465.875
+    method: POST
+    body:
+      mimeType: application/json
+      text: |-
+        {
+          "amount": 20.00,
+          "payment_method": "card",
+          "account_number": "123456789",
+          "bank_code": "001",
+          "account_name": "Salim Diallo"
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: Authorization
+        value: Bearer
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/withdraw//confirm/
+    name: WalletWithdrawalConfirm
+    meta:
+      id: req_3555961fb15d4563a84fd17861913195
+      created: 1769512557781
+      modified: 1769512566607
+      isPrivate: false
+      description: ""
+      sortKey: -1769512196405.9375
+    method: POST
+    headers:
+      - name: User-Agent
+        value: insomnia/12.3.0
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/withdraw//cancel/
+    name: WalletWithdrawalCancel
+    meta:
+      id: req_8175db55ca064e21ad1869dad1e713be
+      created: 1769512607165
+      modified: 1769512616901
+      isPrivate: false
+      description: ""
+      sortKey: -1769512189699.3125
+    method: POST
+    headers:
+      - name: User-Agent
+        value: insomnia/12.3.0
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/transactions/?status=
+    name: TransactionListPerStatus
+    meta:
+      id: req_048b45418bc64f5d9c83354213c011ca
+      created: 1769512704517
+      modified: 1769515436348
+      isPrivate: false
+      description: ""
+      sortKey: -1769512704517
+    method: GET
+    headers:
+      - name: Authorization
+        value: Bearer
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/transactions/?transaction_type=
+    name: TransactionListPerType
+    meta:
+      id: req_bef1742f5ab94b688c4fa416310cd6ba
+      created: 1769512850922
+      modified: 1769515418971
+      isPrivate: false
+      description: ""
+      sortKey: -1769512472258
+    method: GET
+    headers:
+      - name: Authorization
+        value: Bearer
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/transactions/?date_from=
+    name: TransactionListPerDate
+    meta:
+      id: req_4bb8964892f84524a2a430517e738dd8
+      created: 1769512882723
+      modified: 1769515401668
+      isPrivate: false
+      description: ""
+      sortKey: -1769512356128.5
+    method: GET
+    headers:
+      - name: Authorization
+        value: Bearer
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/transactions/b49d953a-2b69-4719-b8f0-11f486a981f2/status/
+    name: TransactionStatus
+    meta:
+      id: req_389370e6d52b4cef9394e50e09fb747a
+      created: 1769513008637
+      modified: 1769560195419
+      isPrivate: false
+      description: ""
+      sortKey: -1769512298063.75
+    method: GET
+    headers:
+      - name: Authorization
+        value: Bearer
+          eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY5NTYzNzc4LCJpYXQiOjE3Njk1NTYyNzgsImp0aSI6IjAwMGZhNDM1NGQwZDRhY2I4ZTVhYzEyM2I2NGJiYTgwIiwidXNlcl9pZCI6ImY4OTUyOWJkLWE2MzAtNDBiZC1iN2Q0LTczOWRkMjZiZTVjYiJ9.MT33C8g2btrIZgGh_PZ0Ti6IncWhDaNjFiK1e0H-rnE
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/transactions//retry/
+    name: TransactionRetry
+    meta:
+      id: req_08b2ac7e9c8e46a38336dbc769d5cc84
+      created: 1769513089328
+      modified: 1769513265867
+      isPrivate: false
+      description: ""
+      sortKey: -1769512269031.375
+    method: POST
+    headers:
+      - name: User-Agent
+        value: insomnia/12.3.0
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/fees/estimate/
+    name: Fees
+    meta:
+      id: req_4f7f5446549c4ff4b983750cfbd0e4f2
+      created: 1769513220174
+      modified: 1769515000240
+      isPrivate: false
+      description: ""
+      sortKey: -1769512254515.1875
+    method: POST
+    body:
+      mimeType: application/json
+      text: |-
+        {
+          "amount": 100.00,
+          "transaction_type": "deposit",
+          "payment_method": "card"
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: Authorization
+        value: "Bearer "
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/payment-methods/
+    name: PaymentMethod
+    meta:
+      id: req_d6fdbfd4e52a4182aa9e12feb78a14e0
+      created: 1769513326926
+      modified: 1769515924083
+      isPrivate: false
+      description: ""
+      sortKey: -1769512247257.0938
+    method: POST
+    body:
+      mimeType: application/json
+      text: |-
+        {
+          "method_type": "orange_money",
+          "label": "Mon compte perso",
+          "orange_money_number": "0612345678",
+          "is_default": true
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: Authorization
+        value: Bearer
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/payment-methods/
+    name: PaymentMethodList
+    meta:
+      id: req_0f7280a22428425d88e0c718ee0650aa
+      created: 1769513387899
+      modified: 1769515969811
+      isPrivate: false
+      description: ""
+      sortKey: -1769512243628.0469
+    method: GET
+    headers:
+      - name: Authorization
+        value: Bearer
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/payment-methods//
+    name: PaymentMDetails
+    meta:
+      id: req_73245c30cddb457e92c9bfadd4f7856e
+      created: 1769513448894
+      modified: 1769513451263
+      isPrivate: false
+      description: ""
+      sortKey: -1769512241813.5234
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia/12.3.0
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/payment-methods//
+    name: PaymentMDetails
+    meta:
+      id: req_63ce0c8c890843cdbd83e84aa7ed5275
+      created: 1769513473543
+      modified: 1769513478148
+      isPrivate: false
+      description: ""
+      sortKey: -1769512240906.2617
+    method: POST
+    headers:
+      - name: User-Agent
+        value: insomnia/12.3.0
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/payment-methods//
+    name: PaymentMDelete
+    meta:
+      id: req_64647e6905cd40a3b9d6fd89120b4e41
+      created: 1769513501090
+      modified: 1769516071243
+      isPrivate: false
+      description: ""
+      sortKey: -1769512240452.6309
+    method: DELETE
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/payment-methods//set-default/
+    name: PaymentMSetDefault
+    meta:
+      id: req_c7b87ea68f6f49fd8f00d416360684b9
+      created: 1769513560557
+      modified: 1769516033791
+      isPrivate: false
+      description: ""
+      sortKey: -1769512240225.8154
+    method: POST
+    headers:
+      - name: Authorization
+        value: Bearer
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/webhook/
+    name: Webhook
+    meta:
+      id: req_f3c58e6f1167438a97d5b706b51f2615
+      created: 1769513630013
+      modified: 1769513650853
+      isPrivate: false
+      description: ""
+      sortKey: -1769512240339.2231
+    method: POST
+    headers:
+      - name: User-Agent
+        value: insomnia/12.3.0
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/transactions//update-status/
+    name: TransactionUpdateStatus
+    meta:
+      id: req_d01008c5cfc7486896a1f15c2b8f7dd4
+      created: 1769513704183
+      modified: 1769516374130
+      isPrivate: false
+      description: ""
+      sortKey: -1769512283547.5625
+    method: PATCH
+    body:
+      mimeType: application/json
+      text: |-
+        {
+          "status": "completed",
+          "notes": "Correction manuelle"
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/stats/
+    name: Stats
+    meta:
+      id: req_3c321c00daa74cef8490ad150f759343
+      created: 1769513777174
+      modified: 1769516527617
+      isPrivate: false
+      description: ""
+      sortKey: -1769512276289.4688
+    method: GET
+    headers:
+      - name: "Authorization "
+        value: Bearer
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://127.0.0.1:8000/api/wallet/transactions/?offset=
+    name: TransactionListPerOffset
+    meta:
+      id: req_0e1e05e5ae8d47fa88b1d009f288ddd8
+      created: 1769515354576
+      modified: 1769515382822
+      isPrivate: false
+      description: ""
+      sortKey: -1769512327096.125
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia/12.3.0
+        description: ""
+        disabled: false
+      - name: Authorization
+        value: Bearer
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_1fb85048443cb880eb72d1ee1dae26a87f20003f
+    created: 1769510827900
+    modified: 1769510827900
+environments:
+  name: Base Environment
+  meta:
+    id: env_1fb85048443cb880eb72d1ee1dae26a87f20003f
+    created: 1769510827892
+    modified: 1769510827892
+    isPrivate: false

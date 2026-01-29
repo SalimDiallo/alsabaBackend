@@ -6,7 +6,17 @@ import phonenumbers
 from phonenumbers import PhoneNumberFormat
 
 
+class UserQuerySet(models.QuerySet):
+    def active(self):
+        return self.filter(is_active=True, deleted_at__isnull=True)
+
 class UserManager(BaseUserManager):
+    def get_queryset(self):
+        return UserQuerySet(self.model, using=self._db).active()
+
+    def with_deleted(self):
+        return UserQuerySet(self.model, using=self._db)
+
     def create_user(self, phone_number, country_code="+33", password=None, **extra_fields):
         if not phone_number:
             raise ValueError("Le numéro de téléphone est obligatoire")
@@ -64,6 +74,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(blank=True, null=True)
     first_name = models.CharField(max_length=100, blank=True)
     last_name = models.CharField(max_length=100, blank=True)
+    
+    # Adresse structurée (utile pour les processeurs de paiement comme Flutterwave)
+    city = models.CharField(max_length=100, blank=True, null=True)
+    postal_code = models.CharField(max_length=20, blank=True, null=True)
+    state = models.CharField(max_length=100, blank=True, null=True)
+    
     profile_updated_at = models.DateTimeField(null=True, blank=True)
 
     kyc_status = models.CharField(max_length=20, choices=KYC_STATUS_CHOICES, default="unverified")
@@ -71,8 +87,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     kyc_verified_at = models.DateTimeField(null=True, blank=True)
     kyc_request_id = models.CharField(max_length=100, blank=True, null=True)
     kyc_retry_count = models.IntegerField(default=0)
-    
-    # Données extraites par Didit
+    kyc_last_attempt = models.DateTimeField(null=True, blank=True)
+    kyc_vendor_data = models.CharField(max_length=100, blank=True, null=True)
     kyc_document_type = models.CharField(max_length=20, blank=True, null=True)
     kyc_document_number = models.CharField(max_length=100, blank=True, null=True)
     kyc_date_of_birth = models.DateField(null=True, blank=True)
@@ -100,6 +116,9 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     didit_session_uuid = models.CharField(max_length=100, blank=True, null=True)
     didit_session_expires = models.DateTimeField(null=True, blank=True)
+
+    # Identifiant unique Flutterwave pour ce client
+    flutterwave_customer_id = models.CharField(max_length=100, blank=True, null=True, db_index=True)
 
     date_joined = models.DateTimeField(default=timezone.now)
     last_login = models.DateTimeField(null=True, blank=True)
@@ -129,15 +148,32 @@ class User(AbstractBaseUser, PermissionsMixin):
             models.Index(fields=["country_code", "phone_number"]),
         ]
 
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        from datetime import date
+        if self.kyc_date_of_birth:
+            today = date.today()
+            age = today.year - self.kyc_date_of_birth.year - ((today.month, today.day) < (self.kyc_date_of_birth.month, self.kyc_date_of_birth.day))
+            if age < 18:
+                raise ValidationError("L'utilisateur doit avoir au moins 18 ans pour la vérification KYC.")
+
     def __str__(self):
         return self.full_phone_number
 
     def soft_delete(self, reason="user_requested"):
+        """
+        Désactive l'utilisateur sans supprimer les données.
+        Le numéro est préfixé pour libérer les contraintes d'unicité sur le numéro original.
+        """
         self.is_active = False
         self.deleted_at = timezone.now()
         self.deleted_reason = reason
         self.deleted_phone_number = self.full_phone_number
-        self.full_phone_number = f"deleted_{self.full_phone_number}"
+        
+        # On ajoute un préfixe temporel pour garantir l'unicité même après plusieurs suppressions
+        # du même numéro historique.
+        timestamp = int(self.deleted_at.timestamp())
+        self.full_phone_number = f"deleted_{timestamp}_{self.full_phone_number}"
         self.phone_number = None
         self.save()
 
@@ -178,12 +214,6 @@ class KYCDocument(models.Model):
         db_table = "kyc_documents"
         verbose_name = "Document KYC"
         verbose_name_plural = "Documents KYC"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["user", "document_type"],
-                name="unique_user_document_type"
-            )
-        ]
 
     def __str__(self):
         return f"{self.user} - {self.get_document_type_display()} ({self.get_verification_status_display()})"

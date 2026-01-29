@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.core.cache import cache
 from ..models import User
 from ..Services.OTP_services import didit_service
-from ..utils import AuthUtils as auth_utils
+from ..utils import auth_utils
 import structlog
 from datetime import datetime
 
