@@ -345,8 +345,9 @@ class VerifyOTPView(APIView):
                     parsed = phonenumbers.parse(full_phone_number, None)
                     national_number = str(parsed.national_number)
                     country_code = f"+{parsed.country_code}"
-                except Exception:
-                    # Fallback basique en cas d'erreur de parsing inattendue
+                except Exception as e:
+                    # Fallback basique en cas d'erreur de parsing phonenumbers
+                    logger.warning("phone_parsing_fallback", error=str(e), phone=full_phone_number)
                     national_number = full_phone_number.replace(country_code, "").strip()
                     if national_number.startswith('0'):
                         national_number = national_number[1:]

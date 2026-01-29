@@ -32,40 +32,39 @@ class SecureEscrowService:
         if user.kyc_status != 'verified':
             raise ValidationError("KYC requis pour créer une offre.")
 
-        wallet = WalletService.get_or_create_wallet(user)
-        
-        # Vérification simple du solde (pas de lock ici, le lock se fait au moment du Match)
-        # Mais on empêche de créer une offre si on est à sec pour éviter le spam
-        amount_sell_cents = int(Decimal(str(amount_sell)) * 100)
-        
-        # Le solde disponible doit prendre en compte les autres locks actifs !
-        # Dispo = Solde Réel - Somme(Locks Actifs)
-        locked_amount = EscrowLock.objects.filter(
-            user=user, 
-            currency=currency_sell, 
-            status='LOCKED'
-        ).aggregate(sum=models.Sum('amount_cents'))['sum'] or 0
-        
-        real_balance = wallet.balance_cents
-        available_balance = real_balance - locked_amount
-        
-        if available_balance < amount_sell_cents:
-             raise ValidationError(f"Solde disponible insuffisant (Bloqué: {locked_amount/100}, Dispo: {available_balance/100})")
+        with db_transaction.atomic():
+            # 2. Lock the wallet to prevent concurrent 'available balance' checks bypass
+            wallet = Wallet.objects.select_for_update().get(user=user)
+            
+            # Recalculate locked amount INSIDE the lock for absolute consistency
+            locked_amount = EscrowLock.objects.filter(
+                user=user, 
+                currency=currency_sell, 
+                status='LOCKED'
+            ).aggregate(sum=models.Sum('amount_cents'))['sum'] or 0
+            
+            real_balance = wallet.balance_cents
+            available_balance = real_balance - locked_amount
+            
+            amount_sell_cents = int(Decimal(str(amount_sell)) * 100)
+            
+            if available_balance < amount_sell_cents:
+                 raise ValidationError(f"Solde disponible insuffisant (Bloqué: {locked_amount/100}, Dispo: {available_balance/100})")
 
-        amount_buy_cents = int(Decimal(str(amount_buy)) * 100)
-        rate = Decimal(amount_buy) / Decimal(amount_sell)
+            amount_buy_cents = int(Decimal(str(amount_buy)) * 100)
+            rate = Decimal(amount_buy) / Decimal(amount_sell)
 
-        offer = Offer.objects.create(
-            user=user,
-            amount_sell_cents=amount_sell_cents,
-            currency_sell=currency_sell,
-            amount_buy_cents=amount_buy_cents,
-            currency_buy=currency_buy,
-            rate=rate,
-            beneficiary_data=beneficiary_data or {},
-            expires_at=timezone.now() + timedelta(hours=expiry_hours),
-            status='OPEN'
-        )
+            offer = Offer.objects.create(
+                user=user,
+                amount_sell_cents=amount_sell_cents,
+                currency_sell=currency_sell,
+                amount_buy_cents=amount_buy_cents,
+                currency_buy=currency_buy,
+                rate=rate,
+                beneficiary_data=beneficiary_data or {},
+                expires_at=timezone.now() + timedelta(hours=expiry_hours),
+                status='OPEN'
+            )
         
         description = f"Created offer: Sell {amount_sell} {currency_sell} for {amount_buy} {currency_buy}"
         SecureEscrowService._log_audit(

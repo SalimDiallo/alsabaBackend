@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+import os
+import joblib
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
 from .models import UserPreference
@@ -17,88 +19,116 @@ class AdvancedMLEngine:
     _encoder = None
     _scaler = None
     _user_ids = []
+    
+    # Chemin vers le fichier de persistence du modèle
+    MODEL_PATH = os.path.join(os.path.dirname(__file__), 'persistent_model.joblib')
+
+    @staticmethod
+    def _save_model():
+        """Sauvegarde l'état du modèle sur le disque"""
+        try:
+            data = {
+                'model': AdvancedMLEngine._model,
+                'encoder': AdvancedMLEngine._encoder,
+                'scaler': AdvancedMLEngine._scaler,
+                'user_ids': AdvancedMLEngine._user_ids
+            }
+            joblib.dump(data, AdvancedMLEngine.MODEL_PATH)
+            logger.info("ml_model_saved_to_disk", path=AdvancedMLEngine.MODEL_PATH)
+        except Exception as e:
+            logger.error("ml_model_save_failed", error=str(e))
+
+    @staticmethod
+    def _load_model():
+        """Charge l'état du modèle depuis le disque"""
+        if not os.path.exists(AdvancedMLEngine.MODEL_PATH):
+            return False
+            
+        try:
+            data = joblib.load(AdvancedMLEngine.MODEL_PATH)
+            AdvancedMLEngine._model = data['model']
+            AdvancedMLEngine._encoder = data['encoder']
+            AdvancedMLEngine._scaler = data['scaler']
+            AdvancedMLEngine._user_ids = data['user_ids']
+            logger.info("ml_model_loaded_from_disk", n_users=len(AdvancedMLEngine._user_ids))
+            return True
+        except Exception as e:
+            logger.error("ml_model_load_failed", error=str(e))
+            return False
 
     @staticmethod
     def train_model():
         """
-        Entraîne le modèle sur les préférences utilisateurs actuelles.
-        À appeler périodiquement (ex: Celery Task toutes les 1h) ou au démarrage.
+        Entraîne le modèle sur les préférences utilisateurs actuelles et le persiste.
         """
         prefs = list(UserPreference.objects.all().values(
             'user_id', 'avg_transaction_amount_cents', 'preferred_currency_sell', 'preferred_currency_buy'
         ))
         
         if not prefs:
+            logger.warning("ml_train_no_data")
             return False
 
         df = pd.DataFrame(prefs)
         
-        # 1. Feature Engineering
-        # On encode les devises (Catégorique -> Numérique)
-        AdvancedMLEngine._encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
-        currency_features = AdvancedMLEngine._encoder.fit_transform(df[['preferred_currency_sell', 'preferred_currency_buy']])
-        
-        # On normalise le montant (0.0 à 1.0)
-        AdvancedMLEngine._scaler = MinMaxScaler()
-        amount_features = AdvancedMLEngine._scaler.fit_transform(df[['avg_transaction_amount_cents']])
-        
-        # Création du vecteur final X (Features combinées)
-        X = np.hstack([amount_features, currency_features])
-        
-        # 2. Entraînement KNN (Non supervisé)
-        # On cherche les 5 voisins les plus proches
-        n_neighbors = min(len(df), 5)
-        AdvancedMLEngine._model = NearestNeighbors(n_neighbors=n_neighbors, algorithm='auto')
-        AdvancedMLEngine._model.fit(X)
-        
-        AdvancedMLEngine._user_ids = df['user_id'].tolist()
-        logger.info("ml_model_trained", n_samples=len(df))
-        return True
+        try:
+            # 1. Feature Engineering
+            AdvancedMLEngine._encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
+            currency_features = AdvancedMLEngine._encoder.fit_transform(df[['preferred_currency_sell', 'preferred_currency_buy']])
+            
+            AdvancedMLEngine._scaler = MinMaxScaler()
+            amount_features = AdvancedMLEngine._scaler.fit_transform(df[['avg_transaction_amount_cents']])
+            
+            X = np.hstack([amount_features, currency_features])
+            
+            # 2. Entraînement KNN
+            n_neighbors = min(len(df), 5)
+            AdvancedMLEngine._model = NearestNeighbors(n_neighbors=n_neighbors, algorithm='auto')
+            AdvancedMLEngine._model.fit(X)
+            
+            AdvancedMLEngine._user_ids = df['user_id'].tolist()
+            
+            # 3. Persistence
+            AdvancedMLEngine._save_model()
+            
+            logger.info("ml_model_trained_successfully", n_samples=len(df))
+            return True
+        except Exception as e:
+            logger.error("ml_training_error", error=str(e))
+            return False
 
     @staticmethod
     def find_matching_users(offer):
         """
         Utilise le modèle pour prédire les utilisateurs intéressés.
-        Retourne une liste de (user_id, score_ml).
+        Charge le modèle depuis le disque si nécessaire.
         """
         if AdvancedMLEngine._model is None:
-            # Tente d'entraîner si pas encore fait (Cold Start)
-            success = AdvancedMLEngine.train_model()
-            if not success:
-                return []
+            # Tente de charger depuis le disque
+            if not AdvancedMLEngine._load_model():
+                # Si pas de fichier, entraîne (Cold Start)
+                if not AdvancedMLEngine.train_model():
+                    return []
 
-        # Construction du vecteur de l'offre
-        # L'offre est l'inverse de la préférence :
-        # Offre VEND X et ACHÈTE Y -> On cherche User qui VEUT ACHETER X et VENDRE Y
-        # Donc on mappe Offer.sell -> Pref.buy et Offer.buy -> Pref.sell
-        
-        # Attention : Le modèle a été entraîné sur [Pref.Sell, Pref.Buy].
-        # On cherche un User dont [Pref.Sell, Pref.Buy] MATCHE [Offer.Buy, Offer.Sell]
-        
         try:
-            # Encodage
-            target_currency_sell = offer.currency_buy # Le user doit vendre ce que l'offre achète
-            target_currency_buy = offer.currency_sell # Le user doit acheter ce que l'offre vend
+            # L'offre est l'inverse de la préférence (Vendre X, Acheter Y -> User qui veut Acheter X, Vendre Y)
+            target_currency_sell = offer.currency_buy
+            target_currency_buy = offer.currency_sell
             
             cur_vec = AdvancedMLEngine._encoder.transform([[target_currency_sell, target_currency_buy]])
             amt_vec = AdvancedMLEngine._scaler.transform([[offer.amount_sell_cents]])
             
             offer_vector = np.hstack([amt_vec, cur_vec])
             
-            # Prédiction
             distances, indices = AdvancedMLEngine._model.kneighbors(offer_vector)
             
             results = []
-            # indices[0] contient les index du DataFrame, distances[0] les distances
             for i, idx_in_df in enumerate(indices[0]):
-                user_id = AdvancedMLEngine._user_ids[idx_in_df]
-                dist = distances[0][i]
-                
-                # Conversion Distance -> Score (0.0 distance = 100% match)
-                # Score = 1 / (1 + distance) * 100
-                score_ml = int((1 / (1 + dist)) * 100)
-                
-                results.append((user_id, score_ml))
+                if idx_in_df < len(AdvancedMLEngine._user_ids):
+                    user_id = AdvancedMLEngine._user_ids[idx_in_df]
+                    dist = distances[0][i]
+                    score_ml = int((1 / (1 + dist)) * 100)
+                    results.append((user_id, score_ml))
                 
             return results
             

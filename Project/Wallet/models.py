@@ -293,6 +293,14 @@ class Transaction(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     flutterwave_reference = models.CharField(max_length=100, blank=True, null=True)
     flutterwave_transaction_id = models.CharField(max_length=100, blank=True, null=True)
+    flutterwave_event_id = models.CharField(
+        max_length=100, 
+        blank=True, 
+        null=True, 
+        unique=True,
+        db_index=True,
+        help_text="ID unique de l'événement webhook Flutterwave pour idempotence"
+    )
 
     # Métadonnées utilisateur
     user_ip = models.GenericIPAddressField(blank=True, null=True)
@@ -358,32 +366,43 @@ class Transaction(models.Model):
         super().save(*args, **kwargs)
 
     def mark_completed(self):
-        """Marque la transaction comme terminée"""
-        # Éviter de traiter deux fois la même transaction
-        if self.status == 'completed':
-            logger.warning(
-                "transaction_already_completed",
-                transaction_id=str(self.id),
-                current_status=self.status
-            )
-            return
+        """Marque la transaction comme terminée avec protection contre les accès concurrents"""
+        from django.db import transaction as db_transaction
         
-        self.status = 'completed'
-        self.completed_at = timezone.now()
-        
-        # Met à jour le solde du wallet seulement s'il ne l'a pas déjà été
-        if not self.balance_adjusted:
-            from decimal import Decimal
-            if self.transaction_type == 'deposit':
-                self.wallet.add_balance(self.amount_euros)
-                self.balance_adjusted = True
-            elif self.transaction_type == 'withdrawal':
-                # Débiter le montant + les frais
-                total_deduct = (Decimal(self.amount_cents) + Decimal(self.fee_cents)) / 100
-                self.wallet.subtract_balance(total_deduct)
-                self.balance_adjusted = True
+        with db_transaction.atomic():
+            # Verrouillage de la ligne en DB pour éviter que deux processus ne traitent 
+            # la même transaction simultanément (ex: deux webhooks successifs)
+            tx = Transaction.objects.select_for_update().get(pk=self.id)
+            
+            if tx.status == 'completed':
+                logger.warning(
+                    "transaction_already_completed",
+                    transaction_id=str(tx.id),
+                    current_status=tx.status
+                )
+                return
+            
+            tx.status = 'completed'
+            tx.completed_at = timezone.now()
+            
+            # Met à jour le solde du wallet seulement s'il ne l'a pas déjà été
+            if not tx.balance_adjusted:
+                from decimal import Decimal
+                if tx.transaction_type == 'deposit':
+                    tx.wallet.add_balance(tx.amount_euros)
+                    tx.balance_adjusted = True
+                elif tx.transaction_type == 'withdrawal':
+                    # Débiter le montant + les frais
+                    total_deduct = (Decimal(tx.amount_cents) + Decimal(tx.fee_cents)) / 100
+                    tx.wallet.subtract_balance(total_deduct)
+                    tx.balance_adjusted = True
 
-        self.save()
+            tx.save()
+            
+            # Mise à jour de l'instance actuelle (self) pour refléter les changements
+            self.status = tx.status
+            self.completed_at = tx.completed_at
+            self.balance_adjusted = tx.balance_adjusted
 
     def mark_failed(self, error_message=None, error_code=None):
         """Marque la transaction comme échouée"""

@@ -4,6 +4,8 @@ from .Views.registerLogViews import PhoneAuthView, VerifyOTPView, AuthStatusView
 from .Views.id_verificationViews import KYCVerifyView
 from .Views.profile import ProfileView
 from .Views.delete import AccountDeleteRequestView, AccountDeleteConfirmView
+from .Views.didit_webhook_views import DiditWebhookView
+
 app_name = 'Accounts'
 
 urlpatterns = [
@@ -18,6 +20,8 @@ urlpatterns = [
     path('profile/', ProfileView.as_view(), name='user_profile'),
     #Didit KYC
     path('kyc/verify/', KYCVerifyView.as_view(), name='kyc_verify'),
+    # Webhook Didit (KYC Asynchrone)
+    path('webhooks/didit/kyc/', DiditWebhookView.as_view(), name='didit_webhook'),
     # Delete Account
     path('delete/', AccountDeleteRequestView.as_view(), name='account_delete_request'),
     path('delete/confirm/', AccountDeleteConfirmView.as_view(), name='account_delete_confirm'),

@@ -453,7 +453,7 @@ class WalletService:
     @staticmethod
     def process_webhook(flutterwave_data):
         """
-        Traite un webhook Flutterwave
+        Traite un webhook Flutterwave avec vérification d'idempotence
 
         Args:
             flutterwave_data: Données du webhook
@@ -463,17 +463,37 @@ class WalletService:
         """
         event_type = flutterwave_data.get("event")
         data = flutterwave_data.get("data", {})
+        event_id = flutterwave_data.get("id")  # ID unique de l'événement webhook
+        
+        # IDEMPOTENCE: Vérifier si cet événement a déjà été traité
+        if event_id:
+            existing_transaction = Transaction.objects.filter(
+                flutterwave_event_id=event_id
+            ).first()
+            
+            if existing_transaction:
+                logger.info(
+                    "webhook_already_processed",
+                    event_id=event_id,
+                    transaction_id=str(existing_transaction.id),
+                    event_type=event_type
+                )
+                return {
+                    "success": True, 
+                    "message": "Événement déjà traité (idempotence)",
+                    "transaction_id": str(existing_transaction.id)
+                }
 
         if event_type == "charge.completed":
-            return WalletService._process_payment_webhook(data)
+            return WalletService._process_payment_webhook(data, event_id)
         elif event_type == "transfer.completed":
-            return WalletService._process_transfer_webhook(data)
+            return WalletService._process_transfer_webhook(data, event_id)
         else:
             logger.info("webhook_ignored", event_type=event_type)
             return {"success": True, "message": "Event ignoré"}
 
     @staticmethod
-    def _process_payment_webhook(data):
+    def _process_payment_webhook(data, event_id=None):
         """Traite un webhook de paiement (dépôt)"""
         tx_ref = data.get("tx_ref")
         status = data.get("status")
@@ -486,11 +506,17 @@ class WalletService:
             )
 
             if status == "successful":
+                # Stocker l'event_id pour idempotence
+                if event_id and not transaction.flutterwave_event_id:
+                    transaction.flutterwave_event_id = event_id
+                    transaction.save(update_fields=['flutterwave_event_id'])
+                
                 transaction.mark_completed()
                 logger.info(
                     "deposit_completed_via_webhook",
                     transaction_id=str(transaction.id),
-                    flutterwave_id=flutterwave_id
+                    flutterwave_id=flutterwave_id,
+                    event_id=event_id
                 )
                 return {"success": True, "message": "Dépôt traité avec succès"}
             else:
@@ -505,7 +531,7 @@ class WalletService:
             return {"success": False, "error": "Transaction non trouvée"}
 
     @staticmethod
-    def _process_transfer_webhook(data):
+    def _process_transfer_webhook(data, event_id=None):
         """Traite un webhook de transfert (retrait)"""
         reference = data.get("reference")
         status = data.get("status")
@@ -517,6 +543,10 @@ class WalletService:
             )
 
             if status == "successful":
+                # Stocker l'event_id pour idempotence
+                if event_id and not transaction.flutterwave_event_id:
+                    transaction.flutterwave_event_id = event_id
+                
                 transaction.mark_completed()
                 
                 # Sauvegarder les informations supplémentaires
@@ -542,7 +572,8 @@ class WalletService:
                     "withdrawal_completed_via_webhook",
                     transaction_id=str(transaction.id),
                     reference=reference,
-                    proof=proof
+                    proof=proof,
+                    event_id=event_id
                 )
                 return {"success": True, "message": "Retrait traité avec succès"}
             else:
