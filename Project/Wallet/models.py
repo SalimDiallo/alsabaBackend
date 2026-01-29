@@ -35,6 +35,9 @@ class Wallet(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
+    
+    # Optimistic Locking
+    version = models.IntegerField(default=0, help_text="Version pour le verrouillage optimiste")
 
     class Meta:
         db_table = "wallets"

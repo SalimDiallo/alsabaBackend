@@ -24,6 +24,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/accounts/', include('Accounts.urls')), 
     path('api/wallet/', include('Wallet.urls')),
+    path('api/offers/', include('Offer.urls')),
 ]
 
 # Pour servir les fichiers médias en développement

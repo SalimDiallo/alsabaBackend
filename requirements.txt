@@ -1,4 +1,4 @@
-Django==6.0
+Django==5.1.5
 djangorestframework==3.16.1
 phonenumbers==9.0.21
 djangorestframework-simplejwt==5.4.0
