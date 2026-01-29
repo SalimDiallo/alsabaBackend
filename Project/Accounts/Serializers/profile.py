@@ -30,6 +30,11 @@ class ProfileSerializer(serializers.ModelSerializer):
             'last_name',
             'email',
 
+            # Adresse structurée
+            'city',
+            'postal_code',
+            'state',
+
             # KYC
             'kyc_status',
             'kyc_status_display',
@@ -56,3 +61,27 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     def get_phone_verified_display(self, obj):
         return "Vérifié" if obj.phone_verified else "Non vérifié"
+
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer pour la mise à jour des informations du profil
+    """
+    class Meta:
+        model = User
+        fields = [
+            'first_name',
+            'last_name',
+            'email',
+            'city',
+            'postal_code',
+            'state',
+        ]
+
+    def validate_email(self, value):
+        """Vérifie l'unicité de l'email si fourni"""
+        if value:
+            user = self.context['request'].user
+            if User.objects.filter(email=value).exclude(id=user.id).exists():
+                raise serializers.ValidationError("Cette adresse email est déjà utilisée.")
+        return value

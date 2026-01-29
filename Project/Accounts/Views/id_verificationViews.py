@@ -10,11 +10,8 @@ from ..utils import auth_utils
 from ..models import User, KYCDocument
 from ..Serializers.KYC_serializers import KYCVerifySerializer
 #from ..Services.KYC_services import kyc_service
-from Project.settings import DIDIT_USE_PLACEHOLDER
-if DIDIT_USE_PLACEHOLDER:
-    from ..Services.placeholders.KYC import kyc_service
-else:
-    from ..Services.KYC_services import kyc_service
+
+from ..Services.KYC_services import kyc_service
 
 logger = structlog.get_logger(__name__)
 
@@ -55,6 +52,16 @@ class KYCVerifyView(APIView):
                 "message": "Votre identité est déjà vérifiée.",
                 "kyc_status": "verified"
             }, status=status.HTTP_200_OK)
+
+        # Rate limiting global par IP : 10 tentatives par heure
+        client_ip = auth_utils.get_client_ip(request)
+        global_limit_key = f"kyc_global_{client_ip}"
+        if auth_utils.is_rate_limited(global_limit_key, limit=10, window_seconds=3600):
+            return Response({
+                "error": "Trop de tentatives KYC depuis cette adresse IP (limite : 10 par heure)",
+                "code": "kyc_global_rate_limited",
+                "retry_after": 3600
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         # Rate limiting : 3 tentatives par heure
         kyc_limit_key = f"kyc_attempts_{user.id}"
@@ -279,6 +286,19 @@ class KYCVerifyView(APIView):
         user.kyc_nationality = id_verification.get("nationality", "")[:100]
         user.kyc_place_of_birth = id_verification.get("place_of_birth", "")[:200]
         user.kyc_address = id_verification.get("formatted_address") or id_verification.get("address", "")[:500]
+        
+        # Tentative d'extraction des champs d'adresse structurés
+        # Didit peut renvoyer ces champs dans address_details ou directement
+        user.city = id_verification.get("city") or id_verification.get("locality") or user.city
+        user.postal_code = id_verification.get("postal_code") or id_verification.get("zip_code") or user.postal_code
+        user.state = id_verification.get("state") or id_verification.get("region") or id_verification.get("subdivision") or user.state
+
+        # Fallback simple: si l'adresse est une chaîne et que les champs sont vides
+        if not user.city and user.kyc_address and ',' in user.kyc_address:
+            parts = [p.strip() for p in user.kyc_address.split(',')]
+            if len(parts) >= 2:
+                user.city = parts[-2]  # Souvent [Adresse, Ville, Pays]
+
         user.kyc_issuing_country = id_verification.get("issuing_state_name") or id_verification.get("issuing_state", "")[:100]
         user.kyc_personal_number = id_verification.get("personal_number", "")[:100]
         user.kyc_full_name = id_verification.get("full_name", "")[:200]

@@ -1,0 +1,5 @@
+ESCROW_API_KEY = "4900_zXXMHG5yBipU1906zcVfsEg3hFqjtaPi7f32Rr0r4Hjuv46kpZIYmQV0iyzZUWba"
+ESCROW_EMAIL = "komlanadjohmatthania@gmail.com"
+ESCROW_PASSWORD = "Matthania@1721"
+ESCROW_BASE_URL = "https://api.escrow-sandbox.com/2017-09-01/"
+SELLER_EMAIL = "adjohmatth@gmail.com"

@@ -1,0 +1,268 @@
+@baseUrl = http://127.0.0.1:8000/api
+@authToken = {{login.response.body.access}}
+@transactionId = 00000000-0000-0000-0000-000000000000
+@paymentMethodId = 00000000-0000-0000-0000-000000000000
+
+# ==========================================
+# 📱 MODULE ACCOUNTS (AUTHENTIFICATION)
+# ==========================================
+
+### 1. Initiation Auth (OTP)
+# @name inviteAuth
+POST {{baseUrl}}/accounts/auth/phone/
+Content-Type: application/json
+
+{
+    "phone_number": "+221770000000",
+    "country_code": "+221"
+}
+
+### 2. Renvoyer le Code OTP
+POST {{baseUrl}}/accounts/resend/
+Content-Type: application/json
+
+{
+    "session_key": "auth_xxxxx"
+}
+
+### 3. Vérifier Code & Se Connecter
+# @name login
+POST {{baseUrl}}/accounts/auth/verify/
+Content-Type: application/json
+
+{
+    "phone_number": "+221770000000",
+    "code": "123456",
+    "session_key": "auth_xxxxx"
+}
+
+### 4. Statut de la Session
+GET {{baseUrl}}/accounts/auth/status/?session_key=auth_xxxxx
+
+### 5. Rafraîchir le Token JWT
+POST {{baseUrl}}/accounts/auth/refresh/
+Content-Type: application/json
+
+{
+    "refresh": "{{login.response.body.refresh}}"
+}
+
+# ==========================================
+# 👤 USER PROFILE & KYC
+# ==========================================
+
+### 6. Récupérer mon Profil
+GET {{baseUrl}}/accounts/profile/
+Authorization: Bearer {{authToken}}
+
+### 7. Mettre à jour mon Profil
+PATCH {{baseUrl}}/accounts/profile/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "first_name": "Salim",
+    "last_name": "Diallo",
+    "email": "salim@example.com",
+    "city": "Dakar",
+    "postal_code": "12500"
+}
+
+### 8. Soumettre KYC (Didit)
+POST {{baseUrl}}/accounts/kyc/verify/
+Authorization: Bearer {{authToken}}
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="document_type"
+
+ID_CARD
+--boundary
+Content-Disposition: form-data; name="front_image"; filename="id.jpg"
+Content-Type: image/jpeg
+
+< ./dummy_id.jpg
+--boundary--
+
+# ==========================================
+# 💰 WALLET & DEPOSITS (CASH-IN)
+# ==========================================
+
+### 9. Voir mon Wallet (Solde)
+GET {{baseUrl}}/wallet/
+Authorization: Bearer {{authToken}}
+
+### 10. Estimer les Frais
+POST {{baseUrl}}/wallet/fees/estimate/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "amount": 1000,
+    "transaction_type": "deposit",
+    "payment_method": "card"
+}
+
+### 11. Initier un Dépôt (Carte)
+# @name initiateDeposit
+POST {{baseUrl}}/wallet/deposit/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "amount": 100,
+    "payment_method": "card",
+    "card_number": "4000000000000001",
+    "card_expiry_month": "12",
+    "card_expiry_year": "26",
+    "card_cvv": "123",
+    "save_payment_method": true
+}
+
+### 12. Confirmer un Dépôt (Admin/Système)
+POST {{baseUrl}}/wallet/deposit/{{transactionId}}/confirm/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "external_reference": "FLW-123",
+    "note": "Confirmation manuelle test"
+}
+
+### 13. Annuler un Dépôt
+POST {{baseUrl}}/wallet/deposit/{{transactionId}}/cancel/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "reason": "Annulé par l'utilisateur test"
+}
+
+# ==========================================
+# 💸 WITHDRAWALS (CASH-OUT)
+# ==========================================
+
+### 14. Initier un Retrait (Orange Money)
+POST {{baseUrl}}/wallet/withdraw/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "amount": 50,
+    "payment_method": "orange_money",
+    "orange_money_number": "+221771234567"
+}
+
+### 15. Confirmer un Retrait
+POST {{baseUrl}}/wallet/withdraw/{{transactionId}}/confirm/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "note": "Reçu les fonds sur mobile"
+}
+
+### 16. Annuler un Retrait (Remboursement Auto)
+POST {{baseUrl}}/wallet/withdraw/{{transactionId}}/cancel/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "reason": "Erreur de numéro"
+}
+
+# ==========================================
+# 📊 TRANSACTIONS MANAGEMENT
+# ==========================================
+
+### 17. Liste des Transactions (Filtres)
+GET {{baseUrl}}/wallet/transactions/?status=completed&limit=10
+Authorization: Bearer {{authToken}}
+
+### 18. Détail d'une Transaction
+GET {{baseUrl}}/wallet/transactions/{{transactionId}}/
+Authorization: Bearer {{authToken}}
+
+### 19. Statut Temps Réel (Sync Flutterwave)
+GET {{baseUrl}}/wallet/transactions/{{transactionId}}/status/
+Authorization: Bearer {{authToken}}
+
+### 20. Relancer une Transaction Échouée
+POST {{baseUrl}}/wallet/transactions/{{transactionId}}/retry/
+Authorization: Bearer {{authToken}}
+
+# ==========================================
+# 💳 PAYMENT METHODS
+# ==========================================
+
+### 21. Liste de mes méthodes
+GET {{baseUrl}}/wallet/payment-methods/
+Authorization: Bearer {{authToken}}
+
+### 22. Détail d'une méthode
+GET {{baseUrl}}/wallet/payment-methods/{{paymentMethodId}}/
+Authorization: Bearer {{authToken}}
+
+### 23. Définir par défaut
+POST {{baseUrl}}/wallet/payment-methods/{{paymentMethodId}}/set-default/
+Authorization: Bearer {{authToken}}
+
+### 24. Supprimer / Désactiver (Soft Delete)
+DELETE {{baseUrl}}/wallet/payment-methods/{{paymentMethodId}}/
+Authorization: Bearer {{authToken}}
+
+# ==========================================
+# 🛡️ ADMIN & SYSTEM
+# ==========================================
+
+### 25. Statistiques Globales (Staff Only)
+GET {{baseUrl}}/wallet/stats/
+Authorization: Bearer {{authToken}}
+
+### 26. Forcer Statut (Admin)
+PATCH {{baseUrl}}/wallet/transactions/{{transactionId}}/update-status/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "status": "completed",
+    "note": "Force status for perfection test"
+}
+
+### 27. Webhook Simulator (Raw Data)
+POST {{baseUrl}}/wallet/webhook/
+Content-Type: application/json
+verif-hash: test_secret_hash
+
+{
+    "event": "charge.completed",
+    "data": {
+        "id": 12345,
+        "tx_ref": "deposit_ref_xxx",
+        "status": "successful",
+        "amount": 100
+    }
+}
+
+# ==========================================
+# 🗑️ ACCOUNT DELETION
+# ==========================================
+
+### 28. Initier Suppression de Compte (OTP)
+POST {{baseUrl}}/accounts/delete/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "reason": "Fin du test de perfection"
+}
+
+### 29. Confirmer Suppression
+POST {{baseUrl}}/accounts/delete/confirm/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "code": "123456",
+    "session_key": "delete_xxx"
+}
