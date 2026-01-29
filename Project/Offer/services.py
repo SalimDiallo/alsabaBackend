@@ -126,7 +126,8 @@ class SecureEscrowService:
             )
             
             # 3. Mise à jour Offre
-            offer.status = 'LOCKED'
+            # Status ACCEPTED : Fonds bloqués, mais en attente de la validation finale du Vendeur (A1) qui doit préciser son bénéficiaire.
+            offer.status = 'ACCEPTED'
             offer.accepted_by = user_a2
             offer.accepted_at = timezone.now()
             offer.accepted_beneficiary_data = beneficiary_data or {}
@@ -144,6 +145,35 @@ class SecureEscrowService:
                 }
             )
             
+        return offer
+
+    @staticmethod
+    def validate_offer(user_validator, offer_id, beneficiary_data=None):
+        """
+        A1 valide l'acceptation de A2 et ajoute ses infos bénéficiaire (B2).
+        Passage de ACCEPTED -> LOCKED.
+        """
+        try:
+            offer = Offer.objects.select_for_update().get(id=offer_id)
+        except Offer.DoesNotExist:
+             raise ValidationError("Offre introuvable")
+
+        if offer.status != 'ACCEPTED':
+             raise ValidationError(f"L'offre n'est pas en attente de validation (Statut: {offer.status})")
+        
+        if offer.user != user_validator:
+             raise ValidationError("Seul le créateur de l'offre peut la valider")
+
+        offer.beneficiary_data = beneficiary_data or {}
+        offer.status = 'LOCKED'
+        offer.save()
+        
+        SecureEscrowService._log_audit(
+            action="OFFER_VALIDATED",
+            user=user_validator,
+            offer=offer,
+            data={"b2_info": beneficiary_data}
+        )
         return offer
 
     @staticmethod

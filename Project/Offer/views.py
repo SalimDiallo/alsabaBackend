@@ -1,31 +1,26 @@
-from rest_framework import viewsets, status, permissions
-from rest_framework.decorators import action
+from rest_framework import status, permissions, generics
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.core.exceptions import ValidationError
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
 
 from .models import Offer
-from .serializers import OfferSerializer, CreateOfferSerializer, AcceptOfferSerializer, DisputeOfferSerializer
+from .serializers import OfferSerializer, CreateOfferSerializer, AcceptOfferSerializer, DisputeOfferSerializer, UpdateOfferSerializer, ValidateOfferSerializer
 from .services import SecureEscrowService
 import structlog
 
 logger = structlog.get_logger(__name__)
 
-class OfferViewSet(viewsets.ReadOnlyModelViewSet):
+class OfferListView(generics.ListAPIView):
     """
-    ViewSet pour visualiser et interagir avec les offres.
-    Lecture seule par défaut, actions spécifiques pour créer/accepter.
+    GET /api/offers/
+    Liste les offres visibles (OPEN ou les miennes).
     """
     serializer_class = OfferSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """
-        Retourne les offres visibles :
-        1. Offres OPEN (Marché)
-        2. Mes offres (quel que soit le statut)
-        3. Offres que j'ai acceptées
-        """
         user = self.request.user
         return Offer.objects.filter(
             Q(status='OPEN') | 
@@ -33,13 +28,18 @@ class OfferViewSet(viewsets.ReadOnlyModelViewSet):
             Q(accepted_by=user)
         ).select_related('user', 'accepted_by').order_by('-created_at')
 
-    @action(detail=False, methods=['post'], url_path='create')
-    def create_offer(self, request):
+class CreateOfferView(APIView):
+    """
+    POST /api/offers/create/
+    Créer une nouvelle offre.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
         serializer = CreateOfferSerializer(data=request.data)
         if serializer.is_valid():
             data = serializer.validated_data
             try:
-                # Constuction beneficiary_data
                 beneficiary_data = {}
                 if 'beneficiary_name' in data:
                     beneficiary_data['name'] = data['beneficiary_name']
@@ -65,16 +65,68 @@ class OfferViewSet(viewsets.ReadOnlyModelViewSet):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'], url_path='accept')
-    def accept_offer(self, request, pk=None):
-        """
-        Accepter une offre (A2 accepte l'offre de A1).
-        Verrouille les fonds (Escrow).
-        """
+class UpdateOfferView(APIView):
+    """
+    PUT /api/offers/{id}/update/
+    Modifier une offre existante (Seulement si OPEN et Owner).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request, id):
+        offer = get_object_or_404(Offer, id=id)
+        if offer.user != request.user:
+            return Response({'error': "Non autorisé"}, status=status.HTTP_403_FORBIDDEN)
+        
+        if offer.status != 'OPEN':
+             return Response({'error': "Impossible de modifier une offre en cours de traitement"}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = UpdateOfferSerializer(data=request.data)
+        if serializer.is_valid():
+            data = serializer.validated_data
+            try:
+                # Mise à jour des champs
+                if 'amount_sell' in data:
+                    offer.amount_sell_cents = int(data['amount_sell'] * 100)
+                if 'currency_sell' in data:
+                    offer.currency_sell = data['currency_sell']
+                if 'amount_buy' in data:
+                    offer.amount_buy_cents = int(data['amount_buy'] * 100)
+                if 'currency_buy' in data:
+                    offer.currency_buy = data['currency_buy']
+                
+                # Recalcul du taux si montants changés
+                if 'amount_sell' in data or 'amount_buy' in data:
+                    offer.rate = Decimal(offer.amount_buy_cents) / Decimal(offer.amount_sell_cents)
+
+                offer.save()
+                return Response(OfferSerializer(offer).data, status=status.HTTP_200_OK)
+            except Exception as e:
+                logger.exception("update_offer_failed", offer_id=str(id))
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class OfferDetailView(generics.RetrieveAPIView):
+    """
+    GET /api/offers/{id}/
+    Détail d'une offre.
+    """
+    serializer_class = OfferSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = Offer.objects.all()
+    lookup_field = 'id'
+
+class AcceptOfferView(APIView):
+    """
+    POST /api/offers/{id}/accept/
+    Accepter une offre.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, id):
         serializer = AcceptOfferSerializer(data=request.data)
         if serializer.is_valid():
             try:
-                # Construction beneficiary_data pour B1
                 beneficiary_data = {}
                 data = serializer.validated_data
                 if 'beneficiary_name' in data:
@@ -84,7 +136,7 @@ class OfferViewSet(viewsets.ReadOnlyModelViewSet):
 
                 offer = SecureEscrowService.accept_offer(
                     user_accepter=request.user,
-                    offer_id=pk,
+                    offer_id=id,
                     beneficiary_data=beneficiary_data
                 )
                 return Response(OfferSerializer(offer).data, status=status.HTTP_200_OK)
@@ -92,57 +144,94 @@ class OfferViewSet(viewsets.ReadOnlyModelViewSet):
             except ValidationError as e:
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
-                logger.exception("accept_offer_failed", offer_id=str(pk), user_id=str(request.user.id))
+                logger.exception("accept_offer_failed", offer_id=str(id), user_id=str(request.user.id))
                 return Response({'error': "Erreur lors de l'acceptation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'], url_path='cancel')
-    def cancel_offer(self, request, pk=None):
-        """
-        Annuler une offre (Seulement par le créateur ou admin).
-        """
-        offer = self.get_object()
+class ValidateOfferView(APIView):
+    """
+    POST /api/offers/{id}/validate/
+    A1 valide et ajoute son bénéficiaire (B2).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, id):
+        serializer = ValidateOfferSerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                beneficiary_data = {}
+                data = serializer.validated_data
+                if 'beneficiary_name' in data:
+                    beneficiary_data['name'] = data['beneficiary_name']
+                if 'beneficiary_phone' in data:
+                    beneficiary_data['phone'] = data['beneficiary_phone']
+
+                offer = SecureEscrowService.validate_offer(
+                    user_validator=request.user,
+                    offer_id=id,
+                    beneficiary_data=beneficiary_data
+                )
+                return Response(OfferSerializer(offer).data, status=status.HTTP_200_OK)
+
+            except ValidationError as e:
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                logger.exception("validate_offer_failed", offer_id=str(id), user_id=str(request.user.id))
+                return Response({'error': "Erreur lors de la validation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class ConfirmOfferView(APIView):
+    """
+    POST /api/offers/{id}/confirm/
+    Valider et exécuter le swap.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, id):
+        try:
+            SecureEscrowService.confirm_transaction(offer_id=id)
+            offer = get_object_or_404(Offer, id=id)
+            return Response(OfferSerializer(offer).data, status=status.HTTP_200_OK)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.exception("confirm_offer_failed", offer_id=str(id))
+            return Response({'error': "Erreur lors de la confirmation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class CancelOfferView(APIView):
+    """
+    POST /api/offers/{id}/cancel/
+    Annuler une offre.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, id):
+        offer = get_object_or_404(Offer, id=id)
         if offer.user != request.user and not request.user.is_staff:
              return Response({'error': "Non autorisé"}, status=status.HTTP_403_FORBIDDEN)
              
         try:
             SecureEscrowService.cancel_transaction(offer.id, reason="Cancelled by user")
-            # Re-fetch pour le statut mis à jour
             offer.refresh_from_db()
             return Response(OfferSerializer(offer).data, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'], url_path='confirm')
-    def confirm_offer(self, request, pk=None):
-        """
-        Confirmer/Exécuter l'échange (Phase finale).
-        Débloque les fonds et effectue les transferts.
-        """
-        try:
-            # Pour l'instant, n'importe quelle partie peut déclencher la confirmation (selon implémentation service)
-            # Idéalement, c'est une confirmation mutuelle process.
-            SecureEscrowService.confirm_transaction(offer_id=pk)
-            
-            offer = self.get_object() # Refresh
-            return Response(OfferSerializer(offer).data, status=status.HTTP_200_OK)
-        except ValidationError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            logger.exception("confirm_offer_failed", offer_id=str(pk))
-            return Response({'error': "Erreur lors de la confirmation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+class DisputeOfferView(APIView):
+    """
+    POST /api/offers/{id}/dispute/
+    Ouvrir un litige.
+    """
+    permission_classes = [permissions.IsAuthenticated]
 
-    @action(detail=True, methods=['post'], url_path='dispute')
-    def dispute_offer(self, request, pk=None):
-        """
-        Ouvrir un litige sur une offre.
-        """
+    def post(self, request, id):
         serializer = DisputeOfferSerializer(data=request.data)
         if serializer.is_valid():
             try:
                 offer = SecureEscrowService.dispute_transaction(
-                    offer_id=pk,
+                    offer_id=id,
                     user=request.user,
                     reason=serializer.validated_data['reason']
                 )
@@ -150,7 +239,7 @@ class OfferViewSet(viewsets.ReadOnlyModelViewSet):
             except ValidationError as e:
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
-                logger.exception("dispute_offer_failed", offer_id=str(pk))
+                logger.exception("dispute_offer_failed", offer_id=str(id))
                 return Response({'error': "Erreur interne"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

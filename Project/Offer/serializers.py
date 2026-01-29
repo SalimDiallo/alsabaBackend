@@ -39,5 +39,17 @@ class AcceptOfferSerializer(serializers.Serializer):
     beneficiary_name = serializers.CharField(required=False)
     beneficiary_phone = serializers.CharField(required=False)
 
+class UpdateOfferSerializer(serializers.Serializer):
+    amount_sell = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=1, required=False)
+    currency_sell = serializers.CharField(max_length=3, required=False)
+    amount_buy = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=1, required=False)
+    currency_buy = serializers.CharField(max_length=3, required=False)
+
+class ValidateOfferSerializer(serializers.Serializer):
+    offer_id = serializers.UUIDField()
+    # Beneficiary pour le vendeur (A1)
+    beneficiary_name = serializers.CharField(required=False)
+    beneficiary_phone = serializers.CharField(required=False)
+
 class DisputeOfferSerializer(serializers.Serializer):
     reason = serializers.CharField(max_length=500)
