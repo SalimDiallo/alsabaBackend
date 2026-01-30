@@ -16,8 +16,12 @@ class Device(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='devices')
     
-    # Le token FCM unique fourni par Firebase côté client
-    fcm_token = models.CharField(max_length=255, unique=True, help_text="Token Firebase Cloud Messaging")
+    # Numéro de téléphone au format E.164 pour l'envoi de SMS via Twilio
+    phone_number = models.CharField(
+        max_length=20, 
+        unique=True, 
+        help_text="Numéro de téléphone au format E.164 (ex: +221771234567)"
+    )
     
     platform = models.CharField(max_length=10, choices=PLATFORM_CHOICES, default='android')
     
@@ -27,10 +31,10 @@ class Device(models.Model):
 
     class Meta:
         db_table = "notification_devices"
-        unique_together = ('user', 'fcm_token')
+        unique_together = ('user', 'phone_number')
 
     def __str__(self):
-        return f"{self.user} - {self.platform} ({self.fcm_token[:10]}...)"
+        return f"{self.user} - {self.platform} ({self.phone_number})"
 
 
 class Notification(models.Model):

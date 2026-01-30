@@ -1,6 +1,6 @@
 import structlog
 from .models import Notification, Device
-from .tasks import send_push_notification_task, send_email_notification_task
+from .tasks import send_email_notification_task
 
 logger = structlog.get_logger(__name__)
 
@@ -24,7 +24,7 @@ class NotificationService:
             channels (list): Liste des canaux ['db', 'push', 'email']. Défaut: tous.
         """
         if channels is None:
-            channels = ['db', 'push'] # Par défaut pas d'email pour éviter le spam, à activer explicitement
+            channels = ['db', 'sms'] # Par défaut SMS au lieu de Push
 
         if data is None:
             data = {}
@@ -43,21 +43,21 @@ class NotificationService:
             except Exception as e:
                 logger.error("notification_db_create_failed", error=str(e), user_id=str(user.id))
 
-        # 2. Push Notification (FCM) - Async
-        if 'push' in channels:
-            # On récupère tous les tokens actifs de l'utilisateur
-            device_tokens = list(Device.objects.filter(user=user, is_active=True).values_list('fcm_token', flat=True))
+        # 2. SMS Notification (Twilio) - Async
+        if 'sms' in channels:
+            # On récupère tous les numéros de téléphone actifs de l'utilisateur
+            phone_numbers = list(Device.objects.filter(user=user, is_active=True).values_list('phone_number', flat=True))
             
-            if device_tokens:
+            if phone_numbers:
                 # Appel Tâche Celery
-                send_push_notification_task.delay(
-                    registration_ids=device_tokens,
-                    title=title,
-                    body=body,
+                from .tasks import send_sms_notification_task
+                send_sms_notification_task.delay(
+                    phone_numbers=phone_numbers,
+                    message=f"{title}\n{body}",
                     data=data
                 )
             else:
-                logger.debug("no_active_devices_for_push", user_id=str(user.id))
+                logger.debug("no_active_phone_numbers_for_sms", user_id=str(user.id))
 
         # 3. Email - Async
         if 'email' in channels and user.email:
