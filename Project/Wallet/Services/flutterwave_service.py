@@ -29,6 +29,7 @@ class FlutterwaveService(FlutterwaveBaseService):
                         customer_phone: Optional[str] = None,
                         customer_name: Optional[str] = None,
                         card_details: Optional[Dict] = None,
+                        card_token: Optional[str] = None,
                         **kwargs) -> Dict[str, Any]:
         """
         Initie un dépôt selon la méthode de paiement
@@ -41,16 +42,17 @@ class FlutterwaveService(FlutterwaveBaseService):
             customer_phone: Téléphone
             customer_name: Nom du client
             card_details: Détails de la carte (pour card)
+            card_token: Token de la carte (pour card tokenisée)
             **kwargs: Arguments supplémentaires
             
         Returns:
             dict: Résultat de l'opération
         """
         if payment_method == "card":
-            if not card_details:
+            if not card_details and not card_token:
                 return {
                     "success": False,
-                    "error": "Détails de carte requis pour le paiement par carte",
+                    "error": "Détails de carte ou token requis pour le paiement par carte",
                     "code": "card_details_required"
                 }
             if not all([customer_email, customer_phone, customer_name]):
@@ -62,6 +64,7 @@ class FlutterwaveService(FlutterwaveBaseService):
             return self.card_service.initiate_deposit(
                 amount, currency, customer_email, customer_phone,
                 customer_name, card_details,
+                card_token=card_token,
                 address=kwargs.get('address'),
                 country_code=kwargs.get('country_code', '33'),
                 customer_id=kwargs.get('customer_id'),

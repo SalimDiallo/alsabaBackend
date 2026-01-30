@@ -1,6 +1,6 @@
 from django.db.models import F
 from django.shortcuts import get_object_or_404
-from .models import UserPreference, Notification
+from .models import UserPreference
 from .ml_engine import AdvancedMLEngine
 from Offer.models import Offer
 from Accounts.models import User
@@ -18,8 +18,17 @@ class UserPreferenceService:
         prefs, created = UserPreference.objects.get_or_create(user=user)
         
         # Logique d'apprentissage simple (Moyenne mobile pondérée)
-        new_amount = offer.amount_sell_cents
-        
+        if user == offer.user:
+            # Le vendeur (A1) a vendu currency_sell et acheté currency_buy
+            prefs.preferred_currency_sell = offer.currency_sell
+            prefs.preferred_currency_buy = offer.currency_buy
+            new_amount = offer.amount_sell_cents
+        else:
+            # L'acheteur (A2) a acheté currency_sell et vendu currency_buy
+            prefs.preferred_currency_sell = offer.currency_buy
+            prefs.preferred_currency_buy = offer.currency_sell
+            new_amount = offer.amount_buy_cents
+
         # 1. Mise à jour Montant Moyen
         if prefs.total_transactions_count == 0:
             prefs.avg_transaction_amount_cents = new_amount
@@ -27,11 +36,6 @@ class UserPreferenceService:
             # Formule: (AncienneMoyenne * N + Nouveau) / (N + 1)
             total_history = prefs.avg_transaction_amount_cents * prefs.total_transactions_count
             prefs.avg_transaction_amount_cents = int((total_history + new_amount) / (prefs.total_transactions_count + 1))
-
-        # 2. Mise à jour Devises Préférées
-        # Si c'est la 1ère fois ou si ça change, on prend la dernière comme "Préférence Actuelle"
-        prefs.preferred_currency_sell = offer.currency_sell
-        prefs.preferred_currency_buy = offer.currency_buy
         
         prefs.total_transactions_count += 1
         prefs.save()
@@ -115,15 +119,22 @@ class MatchingEngine:
 
     @staticmethod
     def _create_notification(user, offer, score):
+        from Notifications.services import NotificationService
+        
         title = "🎯 Offre Recommandée !"
         amount = offer.amount_sell_cents / 100
         msg = f"Une offre de {amount} {offer.currency_sell} correspond à vos critères ({score}% match)."
         
-        Notification.objects.create(
+        NotificationService.send(
             user=user,
-            offer=offer,
             title=title,
-            message=msg,
-            score=score
+            body=msg,
+            notification_type='suggestion',
+            data={
+                'offer_id': str(offer.id),
+                'score': score,
+                'screen': 'offer_detail'
+            },
+            channels=['db', 'push'] # Suggestions are pushed
         )
-        logger.info("notification_sent", user_id=str(user.id), offer_id=str(offer.id), score=score)
+        logger.info("suggestion_notification_sent", user_id=str(user.id), offer_id=str(offer.id), score=score)

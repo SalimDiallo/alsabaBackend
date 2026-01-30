@@ -7,6 +7,7 @@ import pycountry
 import phonenumbers
 from decimal import Decimal
 from phonenumbers import PhoneNumberFormat
+from fernet_fields import EncryptedCharField
 
 logger = structlog.get_logger(__name__)
 
@@ -28,6 +29,22 @@ class Wallet(models.Model):
         help_text="Devise du portefeuille (déterminée par le pays du numéro de téléphone)"
     )
 
+    CURRENCY_NAMES = {
+        'EUR': 'Euro',
+        'XAF': 'Franc CFA (CEMAC)',
+        'XOF': 'Franc CFA (BCEAO)',
+        'NGN': 'Naira Nigérian',
+        'GHS': 'Cedi Ghanéen',
+        'KES': 'Shilling Kényan',
+        'ZAR': 'Rand Sud-Africain',
+        'TZS': 'Shilling Tanzanien',
+        'UGX': 'Shilling Ougandais',
+        'RWF': 'Franc Rwandais',
+        'BIF': 'Franc Burundais',
+        'ZMW': 'Kwacha Zambien',
+        'ZWD': 'Dollar Zimbabwéen',
+    }
+
     # Solde en centimes pour éviter les problèmes de précision
     balance_cents = models.BigIntegerField(default=0, db_index=True)
 
@@ -48,6 +65,9 @@ class Wallet(models.Model):
             models.Index(fields=['currency']),
             models.Index(fields=['balance_cents']),
         ]
+        constraints = [
+            models.CheckConstraint(check=models.Q(balance_cents__gte=0), name='positive_balance_constraint')
+        ]
 
     def __str__(self):
         return f"Wallet de {self.user.full_phone_number} ({self.currency})"
@@ -56,6 +76,11 @@ class Wallet(models.Model):
     def balance(self):
         """Retourne le solde en euros (ou devise équivalente) sous forme de Decimal"""
         return Decimal(str(self.balance_cents)) / Decimal('100')
+
+    @property
+    def currency_name(self):
+        """Retourne le nom complet de la devise"""
+        return self.CURRENCY_NAMES.get(self.currency, self.currency)
 
     @balance.setter
     def balance(self, value):
@@ -76,8 +101,16 @@ class Wallet(models.Model):
         from django.db.models import F
         amount_cents = int(Decimal(str(amount)) * 100)
         
-        # Note: La vérification du solde ici est indicative car F() n'est évalué qu'en DB.
-        # En production, on utilise select_for_update() dans le service pour une vérification rigoureuse.
+        if self.balance_cents < amount_cents:
+            logger.warning(
+                "insufficient_balance_pre_check",
+                user_id=str(self.user.id),
+                balance=self.balance,
+                required=amount
+            )
+            # On laisse le DB constraint agir mais on loggue une info utile
+            # raise ValidationError(f"Solde insuffisant (Requis: {amount}, Dispo: {self.balance})")
+        
         self.balance_cents = F('balance_cents') - amount_cents
         self.save(update_fields=['balance_cents'])
         self.refresh_from_db()
@@ -188,7 +221,8 @@ class PaymentMethod(models.Model):
     # Note: On ne stocke JAMAIS le numéro complet ni le CVV pour des raisons de sécurité
     
     # Informations pour compte bancaire
-    account_number = models.CharField(max_length=50, blank=True, null=True, help_text="Numéro de compte (masqué)")
+    # Encrypted for security (PCI/Privacy)
+    account_number = EncryptedCharField(max_length=150, blank=True, null=True, help_text="Numéro de compte (Chiffré)")
     account_number_last_four = models.CharField(max_length=4, blank=True, null=True, help_text="4 derniers chiffres")
     bank_code = models.CharField(max_length=20, blank=True, null=True, help_text="Code de la banque")
     bank_name = models.CharField(max_length=200, blank=True, null=True, help_text="Nom de la banque")
@@ -196,7 +230,7 @@ class PaymentMethod(models.Model):
     bank_country = models.CharField(max_length=2, blank=True, null=True, help_text="Code pays de la banque")
     
     # Informations pour Orange Money
-    orange_money_number = models.CharField(max_length=20, blank=True, null=True, help_text="Numéro Orange Money")
+    orange_money_number = EncryptedCharField(max_length=100, blank=True, null=True, help_text="Numéro Orange Money (Chiffré)")
     
     # Métadonnées
     is_default = models.BooleanField(default=False, help_text="Méthode par défaut pour ce type")

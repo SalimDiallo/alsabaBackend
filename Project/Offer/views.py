@@ -5,8 +5,12 @@ from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 
-from .models import Offer
-from .serializers import OfferSerializer, CreateOfferSerializer, AcceptOfferSerializer, DisputeOfferSerializer, UpdateOfferSerializer, ValidateOfferSerializer
+from .models import Offer, Dispute
+from .serializers import (
+    OfferSerializer, CreateOfferSerializer, AcceptOfferSerializer,
+    DisputeOfferSerializer, UpdateOfferSerializer, ValidateOfferSerializer,
+    DisputeSerializer, InitiateDisputeSerializer, ResolveDisputeSerializer
+)
 from .services import SecureEscrowService
 import structlog
 
@@ -243,3 +247,123 @@ class DisputeOfferView(APIView):
                 return Response({'error': "Erreur interne"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# ✅ NOUVEAU: Endpoints pour la gestion des litiges
+class InitiateDisputeView(APIView):
+    """
+    POST /api/offers/{offer_id}/disputes/
+    Initier un litige sur une offre.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request, offer_id):
+        serializer = InitiateDisputeSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            dispute = SecureEscrowService.initiate_dispute(
+                offer_id=offer_id,
+                user_initiator=request.user,
+                reason=serializer.validated_data['reason'],
+                evidence=serializer.validated_data.get('evidence', {})
+            )
+            return Response(
+                DisputeSerializer(dispute).data,
+                status=status.HTTP_201_CREATED
+            )
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Offer.DoesNotExist:
+            return Response({'error': 'Offre non trouvée'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.exception("initiate_dispute_failed", offer_id=offer_id)
+            return Response(
+                {'error': 'Erreur lors de la création du litige'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class DisputeDetailView(APIView):
+    """
+    GET /api/disputes/{dispute_id}/
+    Récupérer les détails d'un litige.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, dispute_id):
+        dispute = get_object_or_404(Dispute, id=dispute_id)
+        
+        # Vérifier l'accès: partie de l'offre ou admin
+        if (dispute.offer.user != request.user and
+            dispute.offer.user_accepter != request.user and
+            not request.user.is_staff):
+            return Response(
+                {'error': 'Non autorisé'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        return Response(DisputeSerializer(dispute).data, status=status.HTTP_200_OK)
+
+
+class ListDisputesView(generics.ListAPIView):
+    """
+    GET /api/disputes/
+    Lister les litiges (pour l'utilisateur ou pour les admins).
+    """
+    serializer_class = DisputeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+        
+        # Admin voit tous les litiges
+        if user.is_staff:
+            return Dispute.objects.all().select_related(
+                'offer', 'initiated_by', 'reviewed_by'
+            ).order_by('-created_at')
+        
+        # User voit seulement ses litiges (initiés ou concernant ses offres)
+        return Dispute.objects.filter(
+            Q(initiated_by=user) |
+            Q(offer__user=user) |
+            Q(offer__user_accepter=user)
+        ).select_related('offer', 'initiated_by', 'reviewed_by').order_by('-created_at')
+
+
+class ResolveDisputeView(APIView):
+    """
+    POST /api/disputes/{dispute_id}/resolve/
+    Résoudre un litige (Admin only).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request, dispute_id):
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Seul un administrateur peut résoudre les litiges'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = ResolveDisputeSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            dispute = SecureEscrowService.review_dispute(
+                dispute_id=dispute_id,
+                reviewer=request.user,
+                resolution=serializer.validated_data['resolution'],
+                notes=serializer.validated_data.get('notes')
+            )
+            return Response(DisputeSerializer(dispute).data, status=status.HTTP_200_OK)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Dispute.DoesNotExist:
+            return Response({'error': 'Litige non trouvé'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.exception("resolve_dispute_failed", dispute_id=dispute_id)
+            return Response(
+                {'error': 'Erreur lors de la résolution'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

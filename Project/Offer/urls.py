@@ -8,7 +8,11 @@ from .views import (
     ValidateOfferView, 
     ConfirmOfferView, 
     CancelOfferView, 
-    DisputeOfferView
+    DisputeOfferView,
+    InitiateDisputeView,
+    DisputeDetailView,
+    ListDisputesView,
+    ResolveDisputeView
 )
 
 urlpatterns = [
@@ -26,4 +30,10 @@ urlpatterns = [
     path('<uuid:id>/confirm/', ConfirmOfferView.as_view(), name='confirm_offer'),
     path('<uuid:id>/cancel/', CancelOfferView.as_view(), name='cancel_offer'),
     path('<uuid:id>/dispute/', DisputeOfferView.as_view(), name='dispute_offer'),
+    
+    # ✅ NOUVEAU: Endpoints pour les litiges
+    path('<uuid:offer_id>/disputes/', InitiateDisputeView.as_view(), name='initiate_dispute'),
+    path('disputes/', ListDisputesView.as_view(), name='list_disputes'),
+    path('disputes/<uuid:dispute_id>/', DisputeDetailView.as_view(), name='dispute_detail'),
+    path('disputes/<uuid:dispute_id>/resolve/', ResolveDisputeView.as_view(), name='resolve_dispute'),
 ]

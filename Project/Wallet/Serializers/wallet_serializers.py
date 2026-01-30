@@ -31,22 +31,7 @@ class WalletSerializer(serializers.ModelSerializer):
 
     def get_currency_display(self, obj):
         """Retourne le nom complet de la devise"""
-        currency_names = {
-            'EUR': 'Euro',
-            'XAF': 'Franc CFA (CEMAC)',
-            'XOF': 'Franc CFA (BCEAO)',
-            'NGN': 'Naira Nigérian',
-            'GHS': 'Cedi Ghanéen',
-            'KES': 'Shilling Kényan',
-            'ZAR': 'Rand Sud-Africain',
-            'TZS': 'Shilling Tanzanien',
-            'UGX': 'Shilling Ougandais',
-            'RWF': 'Franc Rwandais',
-            'BIF': 'Franc Burundais',
-            'ZMW': 'Kwacha Zambien',
-            'ZWD': 'Dollar Zimbabwéen',
-        }
-        return currency_names.get(obj.currency, obj.currency)
+        return obj.currency_name
 
 
 class TransactionSerializer(serializers.ModelSerializer):
@@ -92,28 +77,15 @@ class TransactionSerializer(serializers.ModelSerializer):
 
     def get_currency_display(self, obj):
         """Retourne le nom complet de la devise"""
-        currency_names = {
-            'EUR': 'Euro',
-            'XAF': 'Franc CFA (CEMAC)',
-            'XOF': 'Franc CFA (BCEAO)',
-            'NGN': 'Naira Nigérian',
-            'GHS': 'Cedi Ghanéen',
-            'KES': 'Shilling Kényan',
-            'ZAR': 'Rand Sud-Africain',
-            'TZS': 'Shilling Tanzanien',
-            'UGX': 'Shilling Ougandais',
-            'RWF': 'Franc Rwandais',
-            'BIF': 'Franc Burundais',
-            'ZMW': 'Kwacha Zambien',
-            'ZWD': 'Dollar Zimbabwéen',
-        }
-        return currency_names.get(obj.currency, obj.currency)
+        # On utilise le modèle Wallet pour centraliser les noms de devises
+        return obj.wallet.currency_name
     
     def get_payment_method_saved_info(self, obj):
         """Retourne les informations de la méthode de paiement sauvegardée si disponible"""
         if obj.payment_method_saved:
+            # Note: Pour une performance optimale, assurez-vous que la vue utilise .select_related('payment_method_saved')
             from ..Serializers.payment_method_serializers import PaymentMethodSerializer
-            return PaymentMethodSerializer(obj.payment_method_saved).data
+            return PaymentMethodSerializer(obj.payment_method_saved, context=self.context).data
         return None
 
 
@@ -168,6 +140,12 @@ class DepositSerializer(serializers.Serializer):
         help_text="CVV de la carte (toujours requis même avec payment_method_id)"
     )
     
+    # Option 3: Token de carte (PCI-DSS)
+    card_token = serializers.CharField(
+        required=False,
+        help_text="Token de carte généré par le frontend (alternative aux détails complets)"
+    )
+    
     # Option pour sauvegarder la méthode de paiement
     save_payment_method = serializers.BooleanField(
         default=False,
@@ -198,14 +176,22 @@ class DepositSerializer(serializers.Serializer):
     def validate(self, data):
         payment_method = data.get('payment_method')
         payment_method_id = data.get('payment_method_id')
+        card_token = data.get('card_token')
         
         # Si payment_method_id est fourni, on n'a pas besoin des détails
         if payment_method_id:
             # CVV toujours requis pour les cartes même avec payment_method_id
-            if payment_method == 'card' and not data.get('card_cvv'):
-                raise serializers.ValidationError({
-                    'card_cvv': "CVV requis même avec une méthode sauvegardée"
-                })
+            if payment_method == 'card':
+                 # Note: Avec payment_method_id, si on a un token backend, le CVV peut être optionnel selon config Flutterwave
+                 # Pour l'instant on garde la contrainte existante ou on l'assouplit si besoin
+                 if not data.get('card_cvv'):
+                    raise serializers.ValidationError({
+                        'card_cvv': "CVV requis même avec une méthode sauvegardée"
+                    })
+            return data
+        
+        # Si un token frontend est fourni (PCI-DSS compliant flow)
+        if card_token:
             return data
         
         # Sinon, on doit avoir tous les détails
@@ -214,7 +200,7 @@ class DepositSerializer(serializers.Serializer):
             for field in required_fields:
                 if not data.get(field):
                     raise serializers.ValidationError({
-                        field: f"Ce champ est requis pour les paiements par carte (ou utilisez payment_method_id)"
+                        field: f"Ce champ est requis pour les paiements par carte (ou utilisez payment_method_id / card_token)"
                     })
 
             # Validation basique du numéro de carte

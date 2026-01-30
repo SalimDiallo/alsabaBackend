@@ -27,6 +27,15 @@ else:
     # Fallback si lancé depuis le dossier Project
     load_dotenv(os.path.join(BASE_DIR, '.env'))
 
+# Celery Configuration
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT = ['application/json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+
+
 # ===================================
 # VALIDATION DES VARIABLES CRITIQUES
 # ===================================
@@ -77,6 +86,8 @@ INSTALLED_APPS = [
     'Wallet',
     'Offer',
     'Suggestions',
+    'Notifications',
+    'django_celery_beat',
 ]
 
 REST_FRAMEWORK = {
@@ -241,12 +252,26 @@ STATIC_URL = 'static/'
 
 import structlog
 import os
+from .logging_utils import redact_sensitive_data
 
 # Créer le dossier logs s'il n'existe pas
 LOGS_DIR = os.path.join(BASE_DIR, 'logs')
 os.makedirs(LOGS_DIR, exist_ok=True)
 
+# Celery Beat Schedule
+CELERY_BEAT_SCHEDULE = {
+    'check-expired-offers-every-10-min': {
+        'task': 'Offer.tasks.check_expired_offers',
+        'schedule': 600.0,  # 10 minutes
+    },
+    'reconcile-transactions-every-30-min': {
+        'task': 'Wallet.tasks.reconcile_transactions',
+        'schedule': 1800.0,  # 30 minutes
+    },
+}
+
 LOGGING = {
+
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
@@ -354,6 +379,7 @@ structlog.configure(
     processors=[
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.filter_by_level,
+        redact_sensitive_data, # Custom processor for PCI-DSS
         structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False),
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,

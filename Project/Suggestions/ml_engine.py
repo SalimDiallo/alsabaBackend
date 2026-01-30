@@ -61,7 +61,8 @@ class AdvancedMLEngine:
         """
         Entraîne le modèle sur les préférences utilisateurs actuelles et le persiste.
         """
-        prefs = list(UserPreference.objects.all().values(
+        # On limite aux 10000 derniers utilisateurs actifs pour garantir la performance (Scalabilité)
+        prefs = list(UserPreference.objects.order_by('-last_active_at')[:10000].values(
             'user_id', 'avg_transaction_amount_cents', 'preferred_currency_sell', 'preferred_currency_buy'
         ))
         

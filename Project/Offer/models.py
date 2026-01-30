@@ -2,6 +2,9 @@ from django.db import models
 from django.conf import settings
 import uuid
 from django.utils import timezone
+from fernet_fields import EncryptedCharField, EncryptedTextField, EncryptedIntegerField
+
+
 
 class Offer(models.Model):
     """
@@ -31,7 +34,7 @@ class Offer(models.Model):
     # Taux de change implicite stocké pour référence
     rate = models.DecimalField(max_digits=10, decimal_places=6, help_text="Taux: 1 Unit Sell = X Unit Buy")
     
-    # Bénéficiaires
+    # Bénéficiaires (TODO: Encrypt this field in future)
     # beneficiary_data = B2 (Ami de A1, reçoit EUR)
     beneficiary_data = models.JSONField(default=dict, blank=True, help_text="Bénéficiaire désigné par le vendeur (B2)")
     
@@ -136,3 +139,77 @@ class AuditLog(models.Model):
     class Meta:
         db_table = "escrow_audit_logs"
         ordering = ['timestamp']
+
+# ✅ NOUVEAU: Modèle pour la gestion des litiges
+class Dispute(models.Model):
+    """
+    ✅ NOUVEAU: Modèle pour la résolution des litiges d'offres.
+    Permet à A1 ou A2 de contester une offre et d'invoquer un processus de résolution.
+    """
+    RESOLUTION_CHOICES = (
+        ('refund_a1', 'Remboursement A1'),
+        ('refund_a2', 'Remboursement A2'),
+        ('split', 'Partage 50/50'),
+        ('pending', 'En attente'),
+    )
+    
+    STATUS_CHOICES = (
+        ('open', 'Ouvert'),
+        ('under_review', 'Sous revue'),
+        ('resolved', 'Résolu'),
+        ('escalated', 'Escaladé (Support manuel)'),
+    )
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    offer = models.ForeignKey(Offer, on_delete=models.PROTECT, related_name='disputes')
+    
+    # Qui a initié le litige
+    initiated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='disputes_initiated'
+    )
+    
+    # Raison du litige
+    reason = models.CharField(max_length=500)
+    
+    # Evidence JSON (messages, screenshots, etc.)
+    evidence = models.JSONField(default=dict, blank=True)
+    
+    # Statut du litige
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open', db_index=True)
+    
+    # Résolution proposée
+    resolution = models.CharField(
+        max_length=20,
+        choices=RESOLUTION_CHOICES,
+        default='pending',
+        blank=True
+    )
+    
+    # Admin review
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='disputes_reviewed'
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    admin_notes = models.TextField(blank=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        db_table = "offer_disputes"
+        indexes = [
+            models.Index(fields=['offer', 'status']),
+            models.Index(fields=['initiated_by', 'created_at']),
+        ]
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Dispute {self.id} for Offer {self.offer.id} - {self.status}"

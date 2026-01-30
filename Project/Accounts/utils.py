@@ -35,22 +35,29 @@ class AuthUtils:
     @staticmethod
     def get_client_ip(request):
         """
-        Récupère l'adresse IP réelle du client en gérant les proxies.
-        Priorité: X-Forwarded-For > REMOTE_ADDR
+        ✅ SÉCURISÉ: Récupère l'adresse IP réelle du client en gérant les proxies.
+        Valide X-Forwarded-For et revient à REMOTE_ADDR si invalide.
+        Priorité: X-Forwarded-For (dernière IP valide) > REMOTE_ADDR
         """
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         if x_forwarded_for:
-            # Prend la première IP non-trusted
+            # Prend la DERNIÈRE IP car c'est le vrai client (la première est le trusted proxy)
             ips = [ip.strip() for ip in x_forwarded_for.split(',')]
-            # Filtrage des IPs locales/proxies (configuration optionnelle)
-            trusted_proxies = getattr(settings, 'TRUSTED_PROXIES', [])
-            for ip in ips:
-                if not AuthUtils._is_ip_in_subnets(ip, trusted_proxies):
+            
+            # Valide que c'est une IP correcte
+            for ip in reversed(ips):  # Check du dernier au premier
+                if AuthUtils.is_valid_ip(ip):
                     return ip
-            # Si toutes sont trusted, retourne la première
-            return ips[0] if ips else ''
+            
+            logger.warning("invalid_x_forwarded_for", value=x_forwarded_for[:50])
         
-        return request.META.get('REMOTE_ADDR', '')
+        # Fallback sur REMOTE_ADDR
+        remote_addr = request.META.get('REMOTE_ADDR', '')
+        if AuthUtils.is_valid_ip(remote_addr):
+            return remote_addr
+        
+        logger.warning("invalid_remote_addr", value=remote_addr[:50])
+        return ''  # IP invalide
     
     @staticmethod
     def extract_request_metadata(request):
@@ -73,7 +80,7 @@ class AuthUtils:
     
     @staticmethod
     def is_valid_ip(ip):
-        """Valide une adresse IPv4 ou IPv6."""
+        """✅ Valide une adresse IPv4 ou IPv6."""
         if not ip:
             return False
         try:

@@ -163,6 +163,48 @@ class FlutterwaveCardService(FlutterwaveBaseService):
             logger.error("flutterwave_payment_method_creation_failed", error=str(e))
             raise
     
+    def charge_with_token(self, token: str, email: str, amount: float,
+                          reference: Optional[str] = None,
+                          currency: Optional[str] = None,
+                          country: str = "NG", **kwargs) -> Dict[str, Any]:
+        """
+        Effectue un paiement via un token (Tokenized Charge).
+        PCI-DSS COMPLIANT : Le backend ne manipule pas les données de carte.
+        
+        Endpoint: POST /tokenized-charges
+        """
+        if reference is None:
+            reference = str(uuid.uuid4())
+
+        auth_token = self.get_access_token()
+        endpoint = "/tokenized-charges"
+        
+        json_data = {
+            "token": token,
+            "currency": currency or self.currency,
+            "country": country,
+            "amount": amount,
+            "email": email,
+            "tx_ref": reference, # Tokenized charges often expect tx_ref
+            "ip": kwargs.get("ip", "127.0.0.1"),
+            "narration": f"Deposit via Token {reference}"
+        }
+        
+        headers = {
+            "X-Idempotency-Key": str(uuid.uuid4())
+        }
+
+        try:
+            logger.info("flutterwave_tokenized_charge_initiated", reference=reference, amount=amount)
+            # Utilisation de _make_request (hérité)
+            response = self._make_request("POST", endpoint, token=auth_token,
+                                         json_data=json_data, headers=headers)
+            return response
+        except Exception as e:
+            logger.error("flutterwave_tokenized_charge_failed", error=str(e))
+            # On relève l'exception pour que le service appelant gère
+            raise
+
     def charge_card(self, customer_id: str, payment_method_id: str, 
                    amount: float, reference: Optional[str] = None,
                    currency: Optional[str] = None,
@@ -440,7 +482,7 @@ class FlutterwaveCardService(FlutterwaveBaseService):
             logger.error("flutterwave_bank_recipient_creation_failed", error=str(e))
             raise
     
-    def initiate_bank_transfer(self, recipient_id: str, amount: int,
+    def initiate_bank_transfer(self, recipient_id: str, amount_cents: int,
                                narration: str = "Wallet withdrawal",
                                currency: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -448,7 +490,7 @@ class FlutterwaveCardService(FlutterwaveBaseService):
         
         Args:
             recipient_id: ID du recipient
-            amount: Montant en centimes
+            amount_cents: Montant en centimes
             narration: Description du transfert
             currency: Devise (utilise self.currency si None)
             
@@ -458,6 +500,9 @@ class FlutterwaveCardService(FlutterwaveBaseService):
         token = self.get_access_token()
         endpoint = "/transfers"
         
+        # FLUTTERWAVE V3 ATTEND DES UNITÉS (EX: 10.50) ET NON DES CENTIMES
+        amount_units = float(amount_cents) / 100.0
+
         json_data = {
             "action": "instant",
             "reference": str(uuid.uuid4()),
@@ -467,7 +512,7 @@ class FlutterwaveCardService(FlutterwaveBaseService):
                 "destination_currency": currency or self.currency,
                 "amount": {
                     "applies_to": "destination_currency",
-                    "value": amount
+                    "value": amount_units
                 },
                 "recipient_id": recipient_id
             }
@@ -516,7 +561,8 @@ class FlutterwaveCardService(FlutterwaveBaseService):
     
     def initiate_deposit(self, amount: float, currency: str,
                         customer_email: str, customer_phone: str,
-                        customer_name: str, card_details: Dict[str, str],
+                        customer_name: str, card_details: Optional[Dict[str, str]] = None,
+                        card_token: Optional[str] = None,
                         address: Optional[Dict] = None,
                         country_code: str = "33",
                         customer_id: Optional[str] = None,
@@ -531,6 +577,7 @@ class FlutterwaveCardService(FlutterwaveBaseService):
             customer_phone: Téléphone du client
             customer_name: Nom complet du client
             card_details: Détails de la carte (number, exp_month, exp_year, cvv)
+            card_token: Token de la carte (si tokenisé sur le frontend)
             country_code: Code pays
             customer_id: ID Flutterwave du client (si déjà connu)
             
@@ -538,10 +585,11 @@ class FlutterwaveCardService(FlutterwaveBaseService):
             dict: Résultat avec reference, charge_id, status, payment_link
         """
         try:
-            # 1. Obtenir token
+            # 1. Obtenir token API (Auth)
             token = self.get_access_token()
             
             # 2. Obtenir ou créer customer
+            # (Toujours nécessaire pour lier la transaction à un customer)
             if not customer_id:
                 name_parts = customer_name.split(maxsplit=1)
                 first_name = name_parts[0] if name_parts else customer_name
@@ -550,24 +598,47 @@ class FlutterwaveCardService(FlutterwaveBaseService):
                     customer_email, first_name, last_name, customer_phone, 
                     country_code, address=address)
             
-            # 3. Créer payment method
-            pm_id = self.create_card_payment_method(
-                card_details['number'],
-                card_details['exp_month'],
-                card_details['exp_year'],
-                card_details['cvv']
-            )
+            # 3. Charger (Token vs Carte)
+            if card_token:
+                # Flux Tokenisation (PCI-DSS compliant via Frontend)
+                logger.info("flutterwave_attempting_tokenized_charge", customer_id=customer_id, amount=amount)
+                charge = self.charge_with_token(
+                    card_token, customer_email, float(amount),
+                    currency=currency,
+                    country=kwargs.get('country_code', 'NG'), # Default NG for tokenized usually? Or depends on card issuance
+                    reference=kwargs.get("reference")
+                )
+            else:
+                # Flux Legacy (Server-Side Encryption)
+                if not card_details:
+                     raise ValueError("card_details required if no card_token provided")
+
+                # Créer payment method
+                pm_id = self.create_card_payment_method(
+                    card_details['number'],
+                    card_details['exp_month'],
+                    card_details['exp_year'],
+                    card_details['cvv']
+                )
+                
+                # Créer charge
+                logger.info("flutterwave_attempting_charge", customer_id=customer_id, pm_id=pm_id, amount=amount)
+                charge = self.charge_card(
+                    customer_id, pm_id, float(amount),
+                    currency=currency,
+                    redirect_url=kwargs.get('redirect_url')
+                )
             
-            # 4. Créer charge
-            logger.info("flutterwave_attempting_charge", customer_id=customer_id, pm_id=pm_id, amount=amount)
-            charge = self.charge_card(
-                customer_id, pm_id, float(amount),
-                currency=currency,
-                redirect_url=kwargs.get('redirect_url')
-            )
+            # Note: Tokenized Charges structure response differently usually
+            # But standard v3 charge response structure is usually similar inside 'data'
             
-            charge_data = charge["data"]
-            charge_id = charge_data["id"]
+            charge_data = charge.get("data", {})
+            if not charge_data and "status" in charge and charge["status"] == "success":
+                 # Parfois la réponse est directe
+                 charge_data = charge
+
+            # Fallback ID extraction
+            charge_id = charge_data.get("id") or charge.get("id")
             
             # 5. Gérer l'autorisation (3DS, PIN, OTP) selon V3
             auth_result = self.handle_authorization_response(charge_data)
@@ -580,7 +651,7 @@ class FlutterwaveCardService(FlutterwaveBaseService):
                 
                 return {
                     "success": True,
-                    "reference": charge_data["reference"],
+                    "reference": charge_data.get("reference") or charge_data.get("tx_ref"),
                     "charge_id": charge_id,
                     "customer_id": customer_id,
                     "status": "requires_authorization",
@@ -591,7 +662,7 @@ class FlutterwaveCardService(FlutterwaveBaseService):
             # Paiement réussi ou en cours
             return {
                 "success": True,
-                "reference": charge_data["reference"],
+                "reference": charge_data.get("reference") or charge_data.get("tx_ref"),
                 "charge_id": charge_id,
                 "customer_id": customer_id,
                 "status": charge_data.get("status", "pending"),

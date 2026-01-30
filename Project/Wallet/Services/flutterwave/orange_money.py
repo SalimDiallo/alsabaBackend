@@ -112,14 +112,14 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             raise
     
     def charge_mobile_money(self, customer_id: str, payment_method_id: str,
-                           amount: int, reference: Optional[str] = None, **kwargs) -> str:
+                           amount_cents: int, reference: Optional[str] = None, **kwargs) -> str:
         """
         Effectue un encaissement via Orange Money (dépôt)
         
         Args:
             customer_id: ID du customer
             payment_method_id: ID de la méthode de paiement
-            amount: Montant en centimes
+            amount_cents: Montant en centimes
             reference: Référence unique (générée si None)
             
         Returns:
@@ -141,12 +141,15 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             clean_redirect = "https://google.com"
             logger.warning("using_fallback_redirect_url", url=clean_redirect)
 
+        # FLUTTERWAVE V3 ATTEND DES UNITÉS (EX: 10.50) ET NON DES CENTIMES
+        amount_units = float(amount_cents) / 100.0
+
         json_data = {
             "reference": reference,
             "currency": self.currency,
             "customer_id": customer_id,
             "payment_method_id": payment_method_id,
-            "amount": float(amount),  # TOUJOURS float, jamais centimes
+            "amount": amount_units,
             "redirect_url": clean_redirect
         }
         
@@ -242,14 +245,14 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             logger.error("flutterwave_recipient_creation_failed", error=str(e))
             raise
     
-    def initiate_mobile_money_transfer(self, recipient_id: str, amount: int,
+    def initiate_mobile_money_transfer(self, recipient_id: str, amount_cents: int,
                                       narration: str = "Wallet withdrawal") -> str:
         """
         Initie un transfert Orange Money (retrait depuis votre compte)
         
         Args:
             recipient_id: ID du recipient
-            amount: Montant en centimes
+            amount_cents: Montant en centimes
             narration: Description du transfert
             
         Returns:
@@ -258,6 +261,9 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
         token = self.get_access_token()
         endpoint = "/transfers"
         
+        # FLUTTERWAVE V3 ATTEND DES UNITÉS (EX: 10.50) ET NON DES CENTIMES
+        amount_units = float(amount_cents) / 100.0
+
         json_data = {
             "action": "instant",
             "reference": str(uuid.uuid4()),
@@ -267,7 +273,7 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
                 "destination_currency": self.currency,
                 "amount": {
                     "applies_to": "destination_currency",
-                    "value": amount
+                    "value": amount_units
                 },
                 "recipient_id": recipient_id
             }

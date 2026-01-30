@@ -142,6 +142,18 @@ class SecureEscrowService:
                     "a2_locked": f"{amount_lock_a2} {offer.currency_buy}",
                     "b1_info": beneficiary_data
                 }
+
+            )
+
+            # Notification à A1 (Vendeur)
+            from Notifications.services import NotificationService
+            NotificationService.send(
+                user=user_a1,
+                title="Offre acceptée !",
+                body=f"Votre offre de {offer.amount_sell} {offer.currency_sell} a été acceptée. Veuillez valider le bénéficiaire pour finaliser.",
+                notification_type='offer',
+                data={'offer_id': str(offer.id), 'screen': 'offer_detail'},
+                channels=['push', 'email']
             )
             
         return offer
@@ -173,6 +185,18 @@ class SecureEscrowService:
             offer=offer,
             data={"b2_info": beneficiary_data}
         )
+        
+        # Notification à A2 (Acheteur)
+        from Notifications.services import NotificationService
+        NotificationService.send(
+            user=offer.accepted_by,
+            title="Fonds bloqués !",
+            body=f"Le vendeur a validé l'échange. Les fonds sont sécurisés en Escrow. La transaction va être finalisée.",
+            notification_type='offer',
+            data={'offer_id': str(offer.id), 'screen': 'offer_detail'},
+            channels=['push']
+        )
+        
         return offer
 
     @staticmethod
@@ -224,10 +248,8 @@ class SecureEscrowService:
         """
         Finalise l'échange (Phase 7 du PDF).
         Libère les fonds bloqués vers les bénéficiaires.
+        PRÉVENTION DEADLOCKS : Verrouillage déterministe des 4 portefeuilles.
         """
-        # Note: Pour cet exemple, on suppose que c'est déclenché automatiquement ou par une confirmation mutuelle.
-        # Dans un vrai scénario, il faudrait passer user_id du déclencheur.
-        
         with db_transaction.atomic():
             offer = Offer.objects.select_for_update().get(id=offer_id)
             
@@ -242,31 +264,54 @@ class SecureEscrowService:
             user_a1 = offer.user # Vendeur XOF
             user_a2 = offer.accepted_by # Acheteur EUR
             
-            # --- EXECUTION DU SWAP ---
-            # Modèle:
-            # A1 (XOF) -> Paye B1 (A2's friend, XOF)
-            # A2 (EUR) -> Paye B2 (A1's friend, EUR)
-            
-            # 1. Gestion du flux XOF (A1 -> B1)
+            # --- IDENTIFICATION DES ACTEURS ---
             lock_a1 = locks.get(user=user_a1)
             b1_phone = offer.accepted_beneficiary_data.get('phone')
             if not b1_phone:
-                 # Fallback: Si pas de B1 précisé, on crédite A2 ? 
-                 # Le User dit "A2 precise son ami B1". Si absent, erreur ou fallback A2.
                  raise ValidationError("Bénéficiaire B1 manquant pour le flux XOF")
             
-            # Trouver Wallet B1
             b1_user = SecureEscrowService._get_user_by_phone(b1_phone)
             if not b1_user:
                  raise ValidationError(f"Utilisateur B1 introuvable avec le numéro {b1_phone}")
             
-            wallet_b1 = WalletService.get_or_create_wallet(b1_user)
+            lock_a2 = locks.get(user=user_a2)
+            b2_phone = offer.beneficiary_data.get('phone')
+            if not b2_phone:
+                 raise ValidationError("Bénéficiaire B2 manquant pour le flux EUR")
             
-            # Débit Réel A1 (Soustraction du Lock)
-            wallet_a1 = WalletService.get_or_create_wallet(user_a1)
+            b2_user = SecureEscrowService._get_user_by_phone(b2_phone)
+            if not b2_user:
+                 raise ValidationError(f"Utilisateur B2 introuvable avec le numéro {b2_phone}")
+
+            # --- VERROUILLAGE DÉTERMINISTE (Global Lock) ---
+            # On récupère les IDs des usagers impliqués pour verrouiller leurs wallets dans l'ordre croissant
+            # Cela empêche les deadlocks si plusieurs transactions croisées se produisent
+            involved_users = sorted([user_a1.id, user_a2.id, b1_user.id, b2_user.id])
+            
+            # On force le verrouillage des wallets via select_for_update
+            # Note: On utilise filter(user_id__in=...) pour faire une requête groupée, mais
+            # pour garantir l'ordre du verrouillage DB, il est souvent plus sûr de faire des requêtes individuelles triées
+            # ou d'espérer que la DB gère le row-level locking intelligemment.
+            # Avec PostgreSQL, SELECT ... FOR UPDATE verrouille les lignes au fur et à mesure qu'elles sont visitées via l'index.
+            # Pour être 100% sûr : boucle sur les IDs triés.
+            
+            wallets_map = {}
+            for uid in involved_users:
+                # get_or_create pour s'assurer qu'il existe
+                w, _ = Wallet.objects.get_or_create(user_id=uid)
+                # Verrouillage explicite
+                Wallet.objects.select_for_update().get(pk=w.pk)
+                wallets_map[uid] = w
+
+            # --- EXECUTION DU SWAP ---
+            
+            # 1. Gestion du flux XOF (A1 -> B1)
+            wallet_a1 = wallets_map[user_a1.id]
+            wallet_b1 = wallets_map[b1_user.id]
+            
+            # Débit A1
             wallet_a1.subtract_balance(Decimal(lock_a1.amount_cents) / 100)
-            
-            # Crédit Réel B1
+            # Crédit B1
             wallet_b1.add_balance(Decimal(lock_a1.amount_cents) / 100)
             
             lock_a1.status = 'RELEASED'
@@ -274,23 +319,12 @@ class SecureEscrowService:
             lock_a1.save()
 
             # 2. Gestion du flux EUR (A2 -> B2)
-            lock_a2 = locks.get(user=user_a2)
-            b2_phone = offer.beneficiary_data.get('phone')
-            if not b2_phone:
-                 raise ValidationError("Bénéficiaire B2 manquant pour le flux EUR")
+            wallet_a2 = wallets_map[user_a2.id]
+            wallet_b2 = wallets_map[b2_user.id]
             
-            # Trouver Wallet B2
-            b2_user = SecureEscrowService._get_user_by_phone(b2_phone)
-            if not b2_user:
-                 raise ValidationError(f"Utilisateur B2 introuvable avec le numéro {b2_phone}")
-            
-            wallet_b2 = WalletService.get_or_create_wallet(b2_user)
-            
-            # Débit Réel A2
-            wallet_a2 = WalletService.get_or_create_wallet(user_a2)
+            # Débit A2
             wallet_a2.subtract_balance(Decimal(lock_a2.amount_cents) / 100)
-            
-            # Crédit Réel B2
+            # Crédit B2
             wallet_b2.add_balance(Decimal(lock_a2.amount_cents) / 100)
             
             lock_a2.status = 'RELEASED'
@@ -312,11 +346,46 @@ class SecureEscrowService:
                 }
             )
 
+            # Notification de succès aux deux parties
+            from Notifications.services import NotificationService
+            
+            # A1 a vendu (Débité) -> Reçoit notif de succès de la vente
+            NotificationService.send(
+                user=user_a1,
+                title="Echange réussi !",
+                body=f"Vente de {offer.amount_sell} {offer.currency_sell} terminée avec succès.",
+                notification_type='transaction',
+                data={'offer_id': str(offer.id)},
+                channels=['push', 'email']
+            )
+
+            # A2 a acheté (Débité) -> Reçoit notif de succès de l'achat
+            NotificationService.send(
+                user=user_a2,
+                title="Echange réussi !",
+                body=f"Achat de {offer.amount_buy} {offer.currency_buy} terminé avec succès.",
+                notification_type='transaction',
+                data={'offer_id': str(offer.id)},
+                channels=['push', 'email']
+            )
+
     @staticmethod
     def _get_user_by_phone(phone):
         from Accounts.models import User
-        # Essayer de trouver un match exact ou partiel
-        # Supposons que phone est clean
+        import phonenumbers
+        from phonenumbers import PhoneNumberFormat
+        
+        # Normalisation du numéro (E.164)
+        try:
+            # Si le numéro ne commence pas par +, on essaie de deviner ou on assume qu'il est déjà formaté
+            # Pour être robuste, on parse le numéro
+            parsed = phonenumbers.parse(phone, None)
+            if phonenumbers.is_valid_number(parsed):
+                phone = phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
+        except Exception:
+            # Si le parsing échoue, on garde le numéro tel quel (cas où c'est déjà un ID spécial ou formaté)
+            pass
+
         try:
              return User.objects.get(full_phone_number=phone)
         except User.DoesNotExist:
@@ -331,7 +400,7 @@ class SecureEscrowService:
         with db_transaction.atomic():
             offer = Offer.objects.select_for_update().get(id=offer_id)
             
-            if offer.status not in ['LOCKED', 'OPEN']:
+            if offer.status not in ['LOCKED', 'OPEN', 'ACCEPTED']:
                 # Si déjà completed ou cancelled, on fait rien
                 return
 
@@ -388,6 +457,45 @@ class SecureEscrowService:
             return offer
 
     @staticmethod
+    def resolve_dispute(offer_id, resolved_by, outcome, notes=None):
+        """
+        Résout un litige Admin.
+        outcome: 'RELEASE_TO_BUYER', 'RELEASE_TO_SELLER', 'CANCEL_BOTH'
+        """
+        if not resolved_by.is_staff:
+            raise ValidationError("Seul un administrateur peut résoudre un litige.")
+
+        with db_transaction.atomic():
+            offer = Offer.objects.select_for_update().get(id=offer_id)
+            if offer.status != 'DISPUTE':
+                raise ValidationError("L'offre n'est pas en litige.")
+
+            if outcome == 'RELEASE_TO_SELLER':
+                # On force la complétion de la transaction (Phase 7)
+                # Note: confirm_transaction gère déjà le verrouillage déterministe
+                SecureEscrowService.confirm_transaction(offer_id)
+            
+            elif outcome == 'CANCEL_BOTH':
+                # On annule et libère les fonds (Phase Rollback)
+                SecureEscrowService.cancel_transaction(offer_id, reason=f"Dispute resolved: {notes}")
+            
+            elif outcome == 'RELEASE_TO_BUYER':
+                # Logique spécifique si on veut favoriser l'acheteur (rare dans ce flux P2P direct)
+                # Pour l'instant on considère 'CANCEL_BOTH' comme le retour à l'envoyeur.
+                SecureEscrowService.cancel_transaction(offer_id, reason=f"Dispute resolved (Refund): {notes}")
+            
+            SecureEscrowService._log_audit(
+                action="OFFER_DISPUTE_RESOLVED",
+                user=resolved_by,
+                offer=offer,
+                data={
+                    "outcome": outcome,
+                    "notes": notes
+                }
+            )
+            return offer
+
+    @staticmethod
     def _calculate_hash(user_id, amount, offer_id):
         """Génère un hash SHA256 pour l'intégrité du lock"""
         raw = f"{user_id}:{amount}:{offer_id}:{timezone.now().isoformat()}"
@@ -414,3 +522,179 @@ class SecureEscrowService:
             amount_cents=data.get('amount_cents'), # Optionnel
             currency=data.get('currency')
         )
+
+    # ✅ NOUVEAU: Gestion des litiges
+    @staticmethod
+    def initiate_dispute(offer_id, user_initiator, reason, evidence=None):
+        """
+        ✅ NOUVEAU: Initie un litige sur une offre.
+        Permet à l'une des parties de contester une transaction.
+        
+        Args:
+            offer_id: UUID de l'offre
+            user_initiator: Utilisateur initiateur (A1 ou A2)
+            reason: Raison du litige (max 500 chars)
+            evidence: Dict optionnel avec screenshots/messages
+        
+        Returns:
+            Dispute object
+        """
+        from .models import Dispute
+        
+        with db_transaction.atomic():
+            offer = Offer.objects.select_for_update().get(id=offer_id)
+            
+            # Vérifier que l'utilisateur est une des parties
+            if user_initiator not in [offer.user, offer.user_accepter]:
+                raise ValidationError("Vous n'êtes pas une partie de cette offre")
+            
+            # Vérifier que l'offre est dans un état approprié (pas trop tôt, pas trop tard)
+            if offer.status not in ['LOCKED', 'RELEASED_TO_SELLER', 'RELEASED_TO_BUYER']:
+                raise ValidationError(f"Impossible de créer un litige pour une offre en statut {offer.status}")
+            
+            # Vérifier qu'un litige n'existe pas déjà
+            existing = Dispute.objects.filter(offer=offer, status__in=['open', 'under_review']).exists()
+            if existing:
+                raise ValidationError("Un litige est déjà en cours pour cette offre")
+            
+            # Créer le litige
+            dispute = Dispute.objects.create(
+                offer=offer,
+                initiated_by=user_initiator,
+                reason=reason,
+                evidence=evidence or {}
+            )
+            
+            SecureEscrowService._log_audit(
+                action="DISPUTE_INITIATED",
+                user=user_initiator,
+                offer=offer,
+                data={
+                    "dispute_id": str(dispute.id),
+                    "reason": reason,
+                    "initiator": str(user_initiator.id)
+                }
+            )
+            
+            logger.info(
+                "dispute_initiated",
+                dispute_id=str(dispute.id),
+                offer_id=str(offer_id),
+                initiator=str(user_initiator.id)
+            )
+        
+        return dispute
+    
+    @staticmethod
+    def review_dispute(dispute_id, reviewer, resolution, notes=None):
+        """
+        ✅ NOUVEAU: Admin revoit et résout un litige.
+        
+        Args:
+            dispute_id: UUID du litige
+            reviewer: Admin/Staff qui revoit
+            resolution: 'refund_a1', 'refund_a2', 'split'
+            notes: Notes de l'admin
+        
+        Returns:
+            Dispute object
+        """
+        from .models import Dispute
+        
+        if not reviewer.is_staff:
+            raise ValidationError("Seul un administrateur peut traiter les litiges")
+        
+        with db_transaction.atomic():
+            dispute = Dispute.objects.select_for_update().get(id=dispute_id)
+            
+            if dispute.status not in ['open', 'under_review']:
+                raise ValidationError(f"Litige en statut {dispute.status}, impossible à résoudre")
+            
+            offer = dispute.offer
+            
+            # Implémenter la résolution
+            try:
+                if resolution == 'refund_a1':
+                    # Rembourser A1 (user qui a créé l'offre)
+                    _refund_user_for_dispute(offer.user, offer.amount_sell_cents, offer.currency_sell)
+                    
+                elif resolution == 'refund_a2':
+                    # Rembourser A2 (user qui a accepté)
+                    if offer.user_accepter:
+                        _refund_user_for_dispute(offer.user_accepter, offer.amount_buy_cents, offer.currency_buy)
+                    
+                elif resolution == 'split':
+                    # Split 50/50
+                    split_amount_a1 = offer.amount_sell_cents // 2
+                    split_amount_a2 = offer.amount_buy_cents // 2 if offer.user_accepter else 0
+                    
+                    _refund_user_for_dispute(offer.user, split_amount_a1, offer.currency_sell)
+                    if offer.user_accepter:
+                        _refund_user_for_dispute(offer.user_accepter, split_amount_a2, offer.currency_buy)
+            
+            except Exception as e:
+                logger.error("dispute_resolution_error", error=str(e), dispute_id=str(dispute_id))
+                raise ValidationError(f"Erreur lors de la résolution: {str(e)}")
+            
+            # Mettre à jour le litige
+            dispute.status = 'resolved'
+            dispute.resolution = resolution
+            dispute.reviewed_by = reviewer
+            dispute.reviewed_at = timezone.now()
+            dispute.admin_notes = notes or ""
+            dispute.resolved_at = timezone.now()
+            dispute.save()
+            
+            # Mettre à jour l'offre
+            offer.status = 'CANCELLED'
+            offer.save()
+            
+            SecureEscrowService._log_audit(
+                action="DISPUTE_RESOLVED",
+                user=reviewer,
+                offer=offer,
+                data={
+                    "dispute_id": str(dispute_id),
+                    "resolution": resolution,
+                    "notes": notes
+                }
+            )
+            
+            logger.info(
+                "dispute_resolved",
+                dispute_id=str(dispute_id),
+                resolution=resolution,
+                reviewer=str(reviewer.id)
+            )
+        
+        return dispute
+
+
+def _refund_user_for_dispute(user, amount_cents, currency):
+    """
+    Utilitaire pour rembourser un utilisateur suite à la résolution d'un litige.
+    """
+    wallet = Wallet.objects.select_for_update().get(user=user)
+    
+    # Créer une transaction de remboursement
+    transaction_obj = Transaction.objects.create(
+        wallet=wallet,
+        amount_cents=amount_cents,
+        currency=currency,
+        transaction_type='refund',
+        status='completed',
+        description="Dispute resolution refund",
+        reference=f"DISPUTE_{timezone.now().timestamp()}"
+    )
+    
+    # Ajouter les fonds au portefeuille
+    wallet.balance_cents = models.F('balance_cents') + amount_cents
+    wallet.save(update_fields=['balance_cents'])
+    
+    logger.info(
+        "dispute_refund_issued",
+        user_id=str(user.id),
+        amount=amount_cents/100,
+        currency=currency,
+        transaction_id=str(transaction_obj.id)
+    )

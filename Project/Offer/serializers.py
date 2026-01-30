@@ -1,11 +1,12 @@
 from rest_framework import serializers
-from .models import Offer, EscrowLock
+from .models import Offer, EscrowLock, Dispute
 from Accounts.models import User
 
 class UserMinimalSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'first_name', 'last_name', 'country_code', 'kyc_status', 'kyc_nationality']
+
 
 class OfferSerializer(serializers.ModelSerializer):
     user = UserMinimalSerializer(read_only=True)
@@ -33,6 +34,21 @@ class CreateOfferSerializer(serializers.Serializer):
     beneficiary_name = serializers.CharField(required=False)
     beneficiary_phone = serializers.CharField(required=False)
 
+    def validate(self, data):
+        """
+        Validation globale de l'offre.
+        """
+        if data.get('currency_sell') == data.get('currency_buy'):
+            raise serializers.ValidationError({
+                "currency_buy": "La devise d'achat doit être différente de la devise de vente."
+            })
+        
+        # Le taux est calculé par le service, mais on peut vérifier la cohérence ici
+        if data.get('amount_sell') <= 0 or data.get('amount_buy') <= 0:
+             raise serializers.ValidationError("Les montants doivent être supérieurs à zéro.")
+             
+        return data
+
 class AcceptOfferSerializer(serializers.Serializer):
     offer_id = serializers.UUIDField()
     # Beneficiary pour l'acheteur (celui qui recevra les fonds vendus par A1)
@@ -53,3 +69,45 @@ class ValidateOfferSerializer(serializers.Serializer):
 
 class DisputeOfferSerializer(serializers.Serializer):
     reason = serializers.CharField(max_length=500)
+
+# ✅ NOUVEAU: Serializers pour les litiges
+class DisputeSerializer(serializers.ModelSerializer):
+    """Sérializer pour afficher un litige"""
+    initiated_by = UserMinimalSerializer(read_only=True)
+    reviewed_by = UserMinimalSerializer(read_only=True)
+    
+    class Meta:
+        model = Dispute
+        fields = [
+            'id', 'offer', 'initiated_by', 'reason', 'evidence',
+            'status', 'resolution', 'reviewed_by', 'admin_notes',
+            'created_at', 'updated_at', 'reviewed_at', 'resolved_at'
+        ]
+        read_only_fields = [
+            'id', 'initiated_by', 'status', 'resolution',
+            'reviewed_by', 'admin_notes', 'created_at',
+            'updated_at', 'reviewed_at', 'resolved_at'
+        ]
+
+
+class InitiateDisputeSerializer(serializers.Serializer):
+    """Sérializer pour initier un litige"""
+    reason = serializers.CharField(max_length=500)
+    evidence = serializers.JSONField(required=False, default=dict)
+    
+    def validate_reason(self, value):
+        if len(value.strip()) < 10:
+            raise serializers.ValidationError("La raison doit contenir au moins 10 caractères")
+        return value
+
+
+class ResolveDisputeSerializer(serializers.Serializer):
+    """Sérializer pour résoudre un litige (Admin only)"""
+    RESOLUTION_CHOICES = [
+        ('refund_a1', 'Rembourser A1'),
+        ('refund_a2', 'Rembourser A2'),
+        ('split', 'Partager 50/50'),
+    ]
+    
+    resolution = serializers.ChoiceField(choices=RESOLUTION_CHOICES)
+    notes = serializers.CharField(max_length=1000, required=False, allow_blank=True)

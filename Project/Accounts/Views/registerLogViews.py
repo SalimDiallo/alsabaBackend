@@ -3,6 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
+from django.db import transaction as db_transaction
 from django.utils import timezone
 from django.core.cache import cache
 import structlog
@@ -204,18 +205,7 @@ class PhoneAuthView(APIView):
             }
 
         return response_data 
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import AllowAny
-from django.utils import timezone
-from django.core.cache import cache
-from ..models import User
-from ..Services.OTP_services import didit_service
-from ..utils import auth_utils
-import structlog
 
-logger = structlog.get_logger(__name__)
 
 
 class VerifyOTPView(APIView):
@@ -334,34 +324,46 @@ class VerifyOTPView(APIView):
 
         country_code = session_data.get('country_code') if session_data else phone_details.get("country_code", "+33")
 
-        # 6. Gestion utilisateur
+        # 6. Gestion utilisateur (Sécurisée contre les race conditions)
         try:
-            user = User.objects.get(full_phone_number=full_phone_number)
-            logger.debug("user_found", user_id=str(user.id))
-        except User.DoesNotExist:
-            if action == 'register':
-                try:
-                    import phonenumbers
-                    parsed = phonenumbers.parse(full_phone_number, None)
-                    national_number = str(parsed.national_number)
-                    country_code = f"+{parsed.country_code}"
-                except Exception as e:
-                    # Fallback basique en cas d'erreur de parsing phonenumbers
-                    logger.warning("phone_parsing_fallback", error=str(e), phone=full_phone_number)
-                    national_number = full_phone_number.replace(country_code, "").strip()
-                    if national_number.startswith('0'):
-                        national_number = national_number[1:]
+            with db_transaction.atomic():
+                # On essaie d'abord de récupérer l'utilisateur
+                user = User.objects.filter(full_phone_number=full_phone_number).select_for_update().first()
                 
-                user = User.objects.create_user(
-                    phone_number=national_number,
-                    country_code=country_code
-                )
-                logger.info("user_created_via_otp", user_id=str(user.id))
-            else:
-                return Response({
-                    "error": "Utilisateur introuvable",
-                    "code": "user_not_found"
-                }, status=status.HTTP_404_NOT_FOUND)
+                if not user:
+                    if action == 'register':
+                        # Parsing du numéro pour la création
+                        try:
+                            import phonenumbers
+                            parsed = phonenumbers.parse(full_phone_number, None)
+                            national_number = str(parsed.national_number)
+                            country_code = f"+{parsed.country_code}"
+                        except Exception as e:
+                            logger.warning("phone_parsing_fallback", error=str(e), phone=full_phone_number)
+                            national_number = full_phone_number.replace(country_code, "").strip()
+                            if national_number.startswith('0'):
+                                national_number = national_number[1:]
+                        
+                        user = User.objects.create_user(
+                            full_phone_number=full_phone_number,
+                            phone_number=national_number,
+                            country_code=country_code
+                        )
+                        logger.info("user_created_via_otp", user_id=str(user.id))
+                    else:
+                        return Response({
+                            "error": "Utilisateur introuvable",
+                            "code": "user_not_found"
+                        }, status=status.HTTP_404_NOT_FOUND)
+                else:
+                    logger.debug("user_found", user_id=str(user.id))
+                    
+        except Exception as e:
+            logger.error("user_resolution_error", error=str(e), phone=full_phone_number)
+            return Response({
+                "error": "Erreur lors de la résolution de l'utilisateur",
+                "code": "auth_error"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # 7. Mise à jour utilisateur avec données Didit
         user.carrier = phone_details.get("carrier", "")
