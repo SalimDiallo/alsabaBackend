@@ -20,6 +20,8 @@ class Device(models.Model):
     phone_number = models.CharField(
         max_length=20, 
         unique=True, 
+        null=True,
+        blank=True,
         help_text="Numéro de téléphone au format E.164 (ex: +221771234567)"
     )
     
