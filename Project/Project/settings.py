@@ -27,6 +27,15 @@ else:
     # Fallback si lancé depuis le dossier Project
     load_dotenv(os.path.join(BASE_DIR, '.env'))
 
+# Celery Configuration
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT = ['application/json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+
+
 # ===================================
 # VALIDATION DES VARIABLES CRITIQUES
 # ===================================
@@ -77,6 +86,8 @@ INSTALLED_APPS = [
     'Wallet',
     'Offer',
     'Suggestions',
+    'Notifications',
+    'django_celery_beat',
 ]
 
 REST_FRAMEWORK = {
@@ -92,7 +103,7 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '10/hour',  # 10 tentatives par heure pour les anonymes
+        'anon': '30/hour',  # Augmenté légèrement pour permettre OTP + Login
         'user': '1000/day'
     }
 }
@@ -240,53 +251,136 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 import structlog
+import os
+from .logging_utils import redact_sensitive_data
+
+# Créer le dossier logs s'il n'existe pas
+LOGS_DIR = os.path.join(BASE_DIR, 'logs')
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+# Celery Beat Schedule
+CELERY_BEAT_SCHEDULE = {
+    'check-expired-offers-every-10-min': {
+        'task': 'Offer.tasks.check_expired_offers',
+        'schedule': 600.0,  # 10 minutes
+    },
+    'reconcile-transactions-every-30-min': {
+        'task': 'Wallet.tasks.reconcile_transactions',
+        'schedule': 1800.0,  # 30 minutes
+    },
+}
 
 LOGGING = {
+
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
-        'json_formatter': {
-            '()': structlog.stdlib.ProcessorFormatter,
-            'processor': structlog.processors.JSONRenderer(),
+        # Format lisible pour fichiers .log
+        'detailed': {
+            'format': '[{asctime}] {levelname:8s} | {name:30s} | {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
         },
+        # Format console avec couleurs (via structlog)
         'console_formatter': {
             '()': structlog.stdlib.ProcessorFormatter,
             'processor': structlog.dev.ConsoleRenderer(colors=True),
         },
     },
     'handlers': {
+        # Console avec couleurs
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'console_formatter',
+            'level': 'DEBUG' if DEBUG else 'INFO',
         },
-        'json_file': {
+        # Fichier général (tous les niveaux)
+        'file_all': {
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': 'logs/structlog.json',
-            'formatter': 'json_formatter',
+            'filename': os.path.join(LOGS_DIR, 'alsaba.log'),
+            'formatter': 'detailed',
             'maxBytes': 10485760,  # 10MB
+            'backupCount': 10,
+            'encoding': 'utf-8',
+        },
+        # Fichier INFO uniquement
+        'file_info': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(LOGS_DIR, 'info.log'),
+            'formatter': 'detailed',
+            'level': 'INFO',
+            'maxBytes': 5242880,  # 5MB
             'backupCount': 5,
+            'encoding': 'utf-8',
+        },
+        # Fichier ERROR et CRITICAL
+        'file_error': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(LOGS_DIR, 'error.log'),
+            'formatter': 'detailed',
+            'level': 'ERROR',
+            'maxBytes': 5242880,  # 5MB
+            'backupCount': 10,
+            'encoding': 'utf-8',
+        },
+        # Fichier DEBUG (seulement en mode DEBUG)
+        'file_debug': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(LOGS_DIR, 'debug.log'),
+            'formatter': 'detailed',
+            'level': 'DEBUG',
+            'maxBytes': 10485760,  # 10MB
+            'backupCount': 3,
+            'encoding': 'utf-8',
         },
     },
     'loggers': {
+        # Logger racine (tous les modules)
         '': {
-            'handlers': ['console', 'json_file'],
-            'level': 'INFO',
-            'propagate': True,
+            'handlers': ['console', 'file_all', 'file_info', 'file_error'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
         },
-        'wallet': {
-            'handlers': ['console', 'json_file'],
+        # Logger spécifique Wallet
+        'Wallet': {
+            'handlers': ['console', 'file_all', 'file_info', 'file_error'],
             'level': 'INFO',
+            'propagate': False,
+        },
+        # Logger spécifique Accounts
+        'Accounts': {
+            'handlers': ['console', 'file_all', 'file_info', 'file_error'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # Logger spécifique Offer
+        'Offer': {
+            'handlers': ['console', 'file_all', 'file_info', 'file_error'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # Logger Django (requêtes, etc.)
+        'django': {
+            'handlers': ['console', 'file_all'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # Logger requêtes DB (désactivé par défaut pour éviter spam)
+        'django.db.backends': {
+            'handlers': ['file_debug'] if DEBUG else [],
+            'level': 'DEBUG',
             'propagate': False,
         },
     },
 }
 
-# Configuration structlog
+# Configuration structlog (pour logs structurés lisibles)
 structlog.configure(
     processors=[
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.filter_by_level,
-        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+        redact_sensitive_data, # Custom processor for PCI-DSS
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False),
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.PositionalArgumentsFormatter(),
@@ -306,3 +400,4 @@ FLUTTERWAVE_ENCRYPTION_KEY = os.getenv("FLUTTERWAVE_ENCRYPTION_KEY")
 FLUTTERWAVE_WEBHOOK_SECRET = os.getenv("FLUTTERWAVE_WEBHOOK_SECRET")
 
 # Didit settings
+DIDIT_WEBHOOK_SECRET = os.getenv('DIDIT_WEBHOOK_SECRET', '')

@@ -134,8 +134,11 @@ class KYCVerifySerializer(serializers.Serializer):
                 ratio = img.width / img.height
                 if not 0.5 <= ratio <= 2.0:
                     errors.append("Proportions incorrectes pour un document")
-        except Exception:
-            pass  # On tolère les PDF → pas d'erreur si PIL échoue sur PDF
+        except (IOError, SyntaxError) as e:
+            # On tolère les PDF ou images corrompues qui passent par le validateur initial
+            # mais échouent à l'ouverture PIL.
+            logger.debug("pil_skip_or_failure", error=str(e), side=side)
+            pass  
 
         if errors:
             raise serializers.ValidationError(f"Image {side} invalide : {' ; '.join(errors)}")

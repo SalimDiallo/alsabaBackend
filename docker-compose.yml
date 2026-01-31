@@ -1,5 +1,5 @@
 # ===================================
-# Docker Compose - Django + PostgreSQL + pgAdmin
+# Docker Compose - Django + PostgreSQL + Redis + Celery
 # ===================================
 
 services:
@@ -26,7 +26,24 @@ services:
     networks:
       - alsaba_network
 
-  # Service Django
+  # Service Redis (Message Broker & Cache)
+  redis:
+    image: redis:7.2-alpine
+    container_name: alsaba_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alsaba_network
+
+  # Service Django Application
   web:
     build:
       context: .
@@ -42,7 +59,10 @@ services:
       - DATABASE_USER=${POSTGRES_USER:-alsaba_user}
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-alsaba_password}
       - DATABASE_HOST=db
-      - DATABASE_PORT=5432°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°         °                                                                                                                                                                                                                                                                                     
+      - DATABASE_PORT=5432
+      # Redis Config
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     ports:
       - "8000:8000"
     volumes:
@@ -52,6 +72,64 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - alsaba_network
+
+  # Celery Worker (Traitement des tâches)
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: alsaba_celery_worker
+    restart: unless-stopped
+    environment:
+      - DATABASE_ENGINE=django.db.backends.postgresql
+      - DATABASE_NAME=${POSTGRES_DB:-alsaba_db}
+      - DATABASE_USER=${POSTGRES_USER:-alsaba_user}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-alsaba_password}
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    # Commande pour lancer le worker
+    command: celery -A Project worker -l info
+    volumes:
+      - ./Project:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    depends_on:
+      - db
+      - redis
+      - web
+    networks:
+      - alsaba_network
+
+  # Celery Beat (Planificateur)
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: alsaba_celery_beat
+    restart: unless-stopped
+    environment:
+      - DATABASE_ENGINE=django.db.backends.postgresql
+      - DATABASE_NAME=${POSTGRES_DB:-alsaba_db}
+      - DATABASE_USER=${POSTGRES_USER:-alsaba_user}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-alsaba_password}
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    # Commande pour lancer le scheduler
+    command: celery -A Project beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - ./Project:/app
+    depends_on:
+      - db
+      - redis
+      - web
     networks:
       - alsaba_network
 
@@ -76,6 +154,7 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   static_volume:
   media_volume:
   pgadmin_data:

@@ -6,6 +6,10 @@ import sys
 
 def main():
     """Run administrative tasks."""
+    # Monkeypatch for django-fernet-fields compatibility with Django 4+
+    import django.utils.encoding
+    django.utils.encoding.force_text = django.utils.encoding.force_str
+    
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'Project.settings')
     try:
         from django.core.management import execute_from_command_line

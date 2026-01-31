@@ -1,0 +1,302 @@
+type: collection.insomnia.rest/5.0
+schema_version: "5.1"
+name: ALSABA COMPLET
+meta:
+  id: wrk_8c38339d2576430f82211f9be4fa00b5
+  created: 1738183041000
+  modified: 1738183041000
+  description: "Collection exhaustive pour l'API Alsaba"
+collection:
+  # ==========================================
+  # AUTHENTIFICATION (Accounts)
+  # ==========================================
+  - url: http://127.0.0.1:8000/api/accounts/auth/phone/
+    name: "Auth: 1. Phone Auth"
+    meta: { id: req_auth_phone }
+    method: POST
+    body: { mimeType: application/json, text: '{"phone_number": "0660620565", "country_code": "+212"}' }
+    headers: [{ name: Content-Type, value: application/json }]
+
+  - url: http://127.0.0.1:8000/api/accounts/auth/verify/
+    name: "Auth: 2. Verify OTP"
+    meta: { id: req_auth_verify }
+    method: POST
+    body: { mimeType: application/json, text: '{"phone_number": "+212660620565", "code": "123456", "session_key": "auth_xxxxx"}' }
+    headers: [{ name: Content-Type, value: application/json }]
+
+  - url: http://127.0.0.1:8000/api/accounts/auth/resend/
+    name: "Auth: Resend OTP"
+    meta: { id: req_auth_resend }
+    method: POST
+    body: { mimeType: application/json, text: '{"session_key": "auth_xxxxx"}' }
+    headers: [{ name: Content-Type, value: application/json }]
+
+  - url: http://127.0.0.1:8000/api/accounts/auth/status/
+    name: "Auth: Session Status"
+    meta: { id: req_auth_status }
+    method: GET
+    parameters: [{ name: session_key, value: auth_xxxxx }]
+
+  - url: http://127.0.0.1:8000/api/accounts/auth/refresh/
+    name: "Auth: Refresh JWT"
+    meta: { id: req_auth_refresh }
+    method: POST
+    body: { mimeType: application/json, text: '{"refresh": "REFRESH_TOKEN_ICI"}' }
+    headers: [{ name: Content-Type, value: application/json }]
+
+  # ==========================================
+  # PROFILE & KYC (Accounts)
+  # ==========================================
+  - url: http://127.0.0.1:8000/api/accounts/profile/
+    name: "Profile: View"
+    meta: { id: req_profile_get }
+    method: GET
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/accounts/profile/
+    name: "Profile: Update"
+    meta: { id: req_profile_update }
+    method: PATCH
+    body: { mimeType: application/json, text: '{"first_name": "Salim", "last_name": "Diallo"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/accounts/kyc/verify/
+    name: "KYC: Submit Verification"
+    meta: { id: req_kyc_verify }
+    method: POST
+    body: { mimeType: multipart/form-data, params: [{ name: document_type, value: id_card }, { name: front_image, type: file, fileName: front.jpg }] }
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/accounts/delete/
+    name: "Account: Delete Request"
+    meta: { id: req_delete_req }
+    method: POST
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/accounts/delete/confirm/
+    name: "Account: Delete Confirm"
+    meta: { id: req_delete_conf }
+    method: POST
+    body: { mimeType: application/json, text: '{"confirmation": "SUPPRIMER MON COMPTE"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  # ==========================================
+  # WALLET
+  # ==========================================
+  - url: http://127.0.0.1:8000/api/wallet/
+    name: "Wallet: View Balance"
+    meta: { id: req_wallet_get }
+    method: GET
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/deposit/
+    name: "Wallet: Deposit Initiate"
+    meta: { id: req_wallet_dep }
+    method: POST
+    body: { mimeType: application/json, text: '{"amount": 100.00, "payment_method": "card", "card_number": "4242424242424242", "card_expiry_month": 12, "card_expiry_year": 2026, "card_cvv": "123"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/deposit/TRANSACTION_ID/confirm/
+    name: "Wallet: Deposit Confirm"
+    meta: { id: req_wallet_dep_c }
+    method: POST
+    body: { mimeType: application/json, text: '{"notes": "Validé"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/deposit/TRANSACTION_ID/cancel/
+    name: "Wallet: Deposit Cancel"
+    meta: { id: req_wallet_dep_can }
+    method: POST
+    body: { mimeType: application/json, text: '{"reason": "Erreur"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/withdraw/
+    name: "Wallet: Withdrawal Initiate"
+    meta: { id: req_wallet_with }
+    method: POST
+    body: { mimeType: application/json, text: '{"amount": 50.00, "payment_method": "orange_money", "orange_money_number": "221770000000"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/withdraw/TRANSACTION_ID/confirm/
+    name: "Wallet: Withdrawal Confirm"
+    meta: { id: req_wallet_with_c }
+    method: POST
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/withdraw/TRANSACTION_ID/cancel/
+    name: "Wallet: Withdrawal Cancel"
+    meta: { id: req_wallet_with_can }
+    method: POST
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/transactions/
+    name: "Wallet: Transaction List"
+    meta: { id: req_wallet_tx_l }
+    method: GET
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/transactions/TRANSACTION_ID/
+    name: "Wallet: Transaction Detail"
+    meta: { id: req_wallet_tx_d }
+    method: GET
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/transactions/TRANSACTION_ID/status/
+    name: "Wallet: Transaction Status"
+    meta: { id: req_wallet_tx_s }
+    method: GET
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/transactions/TRANSACTION_ID/retry/
+    name: "Wallet: Transaction Retry"
+    meta: { id: req_wallet_tx_r }
+    method: POST
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/fees/estimate/
+    name: "Wallet: Fees Estimate"
+    meta: { id: req_wallet_fees }
+    method: POST
+    body: { mimeType: application/json, text: '{"amount": 100.00, "transaction_type": "deposit", "payment_method": "card"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/payment-methods/
+    name: "Wallet: PM List"
+    meta: { id: req_wallet_pm_l }
+    method: GET
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/payment-methods/
+    name: "Wallet: PM Create"
+    meta: { id: req_wallet_pm_cr }
+    method: POST
+    body: { mimeType: application/json, text: '{"method_type": "orange_money", "label": "Perso", "orange_money_number": "0600000000"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/payment-methods/PM_ID/
+    name: "Wallet: PM Detail"
+    meta: { id: req_wallet_pm_d }
+    method: GET
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/payment-methods/PM_ID/
+    name: "Wallet: PM Delete"
+    meta: { id: req_wallet_pm_del }
+    method: DELETE
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/payment-methods/PM_ID/set-default/
+    name: "Wallet: PM Set Default"
+    meta: { id: req_wallet_pm_def }
+    method: POST
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/stats/
+    name: "Wallet: Admin Stats"
+    meta: { id: req_wallet_stats }
+    method: GET
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/wallet/transactions/TRANSACTION_ID/update-status/
+    name: "Wallet: Admin Update Status"
+    meta: { id: req_wallet_admin_up }
+    method: PATCH
+    body: { mimeType: application/json, text: '{"status": "completed", "notes": "Admin fix"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  # ==========================================
+  # OFFERS P2P
+  # ==========================================
+  - url: http://127.0.0.1:8000/api/offers/
+    name: "Offer: List"
+    meta: { id: req_offer_list }
+    method: GET
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/offers/create/
+    name: "Offer: Create"
+    meta: { id: req_offer_create }
+    method: POST
+    body: { mimeType: application/json, text: '{"amount_sell": 100, "currency_sell": "EUR", "amount_buy": 65595, "currency_buy": "XAF"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/offers/OFFER_ID/
+    name: "Offer: Detail"
+    meta: { id: req_offer_detail }
+    method: GET
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/offers/OFFER_ID/update/
+    name: "Offer: Update"
+    meta: { id: req_offer_update }
+    method: PATCH
+    body: { mimeType: application/json, text: '{"amount_sell": 120}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/offers/OFFER_ID/accept/
+    name: "Offer: Accept (Buyer)"
+    meta: { id: req_offer_accept }
+    method: POST
+    body: { mimeType: application/json, text: '{"offer_id": "OFFER_ID", "beneficiary_name": "Buyer", "beneficiary_phone": "336..."}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/offers/OFFER_ID/validate/
+    name: "Offer: Validate (Seller)"
+    meta: { id: req_offer_validate }
+    method: POST
+    body: { mimeType: application/json, text: '{"offer_id": "OFFER_ID", "beneficiary_name": "Seller", "beneficiary_phone": "221..."}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/offers/OFFER_ID/confirm/
+    name: "Offer: Confirm"
+    meta: { id: req_offer_confirm }
+    method: POST
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/offers/OFFER_ID/cancel/
+    name: "Offer: Cancel"
+    meta: { id: req_offer_cancel }
+    method: POST
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/offers/OFFER_ID/dispute/
+    name: "Offer: Dispute"
+    meta: { id: req_offer_dispute }
+    method: POST
+    body: { mimeType: application/json, text: '{"reason": "Fonds non reçus"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  # ==========================================
+  # SUGGESTIONS
+  # ==========================================
+  - url: http://127.0.0.1:8000/api/suggestions/
+    name: "Suggestions: List"
+    meta: { id: req_sugg_list }
+    method: GET
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  - url: http://127.0.0.1:8000/api/suggestions/SUGG_ID/read/
+    name: "Suggestions: Mark Read"
+    meta: { id: req_sugg_read }
+    method: POST
+    headers: [{ name: Authorization, value: "Bearer ACCESS_TOKEN" }]
+
+  # ==========================================
+  # WEBHOOKS
+  # ==========================================
+  - url: http://127.0.0.1:8000/api/accounts/webhooks/didit/kyc/
+    name: "Webhook: Didit KYC"
+    meta: { id: req_webhook_didit }
+    method: POST
+    body: { mimeType: application/json, text: '{"request_id": "req_sim", "status": "Approved"}' }
+    headers: [{ name: Content-Type, value: application/json }]
+
+  - url: http://127.0.0.1:8000/api/wallet/webhook/
+    name: "Webhook: Flutterwave"
+    meta: { id: req_webhook_fw }
+    method: POST
+    body: { mimeType: application/json, text: '{"event": "charge.completed", "data": {"status": "successful"}}' }
+    headers: [{ name: Content-Type, value: application/json }]
+
+cookieJar: { name: Default Jar, meta: { id: jar_alsaba } }
+environments: { name: Base Environment, meta: { id: env_alsaba } }

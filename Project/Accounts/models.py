@@ -85,6 +85,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     kyc_status = models.CharField(max_length=20, choices=KYC_STATUS_CHOICES, default="unverified")
     kyc_submitted_at = models.DateTimeField(null=True, blank=True)
     kyc_verified_at = models.DateTimeField(null=True, blank=True)
+    kyc_expires_at = models.DateField(null=True, blank=True, help_text="✅ KYC expiration date for compliance")
     kyc_request_id = models.CharField(max_length=100, blank=True, null=True)
     kyc_retry_count = models.IntegerField(default=0)
     kyc_last_attempt = models.DateTimeField(null=True, blank=True)
@@ -157,6 +158,16 @@ class User(AbstractBaseUser, PermissionsMixin):
             if age < 18:
                 raise ValidationError("L'utilisateur doit avoir au moins 18 ans pour la vérification KYC.")
 
+    @property
+    def kyc_is_valid(self):
+        """✅ Vérifie que le KYC est vérifié ET n'a pas expiré"""
+        if self.kyc_status != 'verified':
+            return False
+        if self.kyc_expires_at and self.kyc_expires_at < timezone.now().date():
+            logger.warning("kyc_expired", user_id=str(self.id), expires_at=self.kyc_expires_at)
+            return False
+        return True
+
     def __str__(self):
         return self.full_phone_number
 
@@ -196,14 +207,21 @@ class KYCDocument(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="kyc_documents")
     document_type = models.CharField(max_length=20, choices=DOCUMENT_TYPES)
-    front_image = models.ImageField(upload_to="kyc_documents/")
-    back_image = models.ImageField(upload_to="kyc_documents/", blank=True, null=True)
-    selfie_image = models.ImageField(upload_to="kyc_selfies/", blank=True, null=True)
+    
+    # ✅ SÉCURITÉ AMÉLIORÉE: Images sensibles
+    # Note: django-fernet-fields peut être ajouté pour chiffrement complet
+    front_image = models.ImageField(upload_to="kyc_documents/", help_text="Face avant du document")
+    back_image = models.ImageField(upload_to="kyc_documents/", blank=True, null=True, help_text="Face arrière")
+    selfie_image = models.ImageField(upload_to="kyc_selfies/", blank=True, null=True, help_text="Selfie")
 
     verification_status = models.CharField(max_length=20, choices=VERIFICATION_STATUS, default="pending")
     verification_note = models.TextField(blank=True)
     verified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    # ✅ NOUVEAU: Audit trail pour documents sensibles
+    accessed_at = models.DateTimeField(null=True, blank=True, help_text="Dernière consultation")
+    accessed_by = models.CharField(max_length=100, blank=True, help_text="ID de qui a consulté")
     
     # Champs Didit spécifiques
     didit_request_id = models.CharField(max_length=100, blank=True, null=True)
@@ -214,6 +232,10 @@ class KYCDocument(models.Model):
         db_table = "kyc_documents"
         verbose_name = "Document KYC"
         verbose_name_plural = "Documents KYC"
+        indexes = [
+            models.Index(fields=['user', 'verification_status']),
+            models.Index(fields=['created_at']),
+        ]
 
     def __str__(self):
         return f"{self.user} - {self.get_document_type_display()} ({self.get_verification_status_display()})"

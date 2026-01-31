@@ -84,9 +84,10 @@ class DepositView(APIView):
         card_details = None
         validated_data = serializer.validated_data
         payment_method_id = validated_data.get('payment_method_id')
+        card_token = validated_data.get('card_token')
         
         if validated_data['payment_method'] == 'card':
-            # Si payment_method_id fourni, on a juste besoin du CVV
+            # 1. Si payment_method_id fourni, on a juste besoin du CVV
             if payment_method_id:
                 if not validated_data.get('card_cvv'):
                     return Response({
@@ -97,8 +98,12 @@ class DepositView(APIView):
                 card_details = {
                     'cvv': validated_data['card_cvv']
                 }
+            # 2. Si card_token fourni (PCI-DSS)
+            elif card_token:
+                # Pas besoin de détails de carte, le token suffit
+                pass
+            # 3. Sinon, détails complets requis
             else:
-                # Détails complets requis
                 card_details = {
                     'number': validated_data['card_number'],
                     'exp_month': validated_data['card_expiry_month'],
@@ -115,7 +120,8 @@ class DepositView(APIView):
             payment_method_id=payment_method_id,
             save_payment_method=validated_data.get('save_payment_method', False),
             payment_method_label=validated_data.get('payment_method_label'),
-            redirect_url=validated_data.get('redirect_url')
+            redirect_url=validated_data.get('redirect_url'),
+            card_token=card_token
         )
 
         if not result["success"]:
@@ -274,8 +280,8 @@ class TransactionListView(APIView):
         # Récupération du wallet
         wallet = wallet_service.get_or_create_wallet(request.user)
 
-        # Construction de la requête
-        queryset = wallet.transactions.all()
+        # Construction de la requête avec optimisation N+1
+        queryset = wallet.transactions.all().select_related('wallet', 'payment_method_saved')
 
         # Application des filtres
         if filters.get('transaction_type'):
