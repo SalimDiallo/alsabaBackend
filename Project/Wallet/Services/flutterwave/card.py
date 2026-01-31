@@ -607,5 +607,31 @@ class FlutterwaveCardService(FlutterwaveBaseService):
             }
 
 
-# Instance globale
-flutterwave_card_service = FlutterwaveCardService()
+# Instance globale avec lazy loading
+_flutterwave_card_service_instance = None
+
+def get_flutterwave_card_service():
+    """
+    Retourne l'instance du service Flutterwave Card avec lazy loading.
+    Évite les erreurs au démarrage si la configuration est incomplète.
+    """
+    global _flutterwave_card_service_instance
+    if _flutterwave_card_service_instance is None:
+        _flutterwave_card_service_instance = FlutterwaveCardService()
+    return _flutterwave_card_service_instance
+
+# Pour compatibilité ascendante, on crée un proxy qui lève l'erreur uniquement à l'utilisation
+class _LazyFlutterwaveCardService:
+    """Proxy pour lazy loading du service Flutterwave Card"""
+    _instance = None
+    
+    def __getattr__(self, name):
+        if self._instance is None:
+            try:
+                self._instance = FlutterwaveCardService()
+            except ValueError as e:
+                logger.warning("flutterwave_card_service_not_configured", error=str(e))
+                raise
+        return getattr(self._instance, name)
+
+flutterwave_card_service = _LazyFlutterwaveCardService()

@@ -53,11 +53,24 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
 SECRET_KEY = get_required_env('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
-DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
+# En développement, DEBUG est True par défaut
+DEBUG = True
 # Hosts autorisés
 # En développement/tests on autorise toutes les origines pour simplifier l'exécution locale
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "10.0.2.2",
+    "0.0.0.0",
+    "*"
+]
+
+# ===================================
+# CORS Configuration
+# ===================================
+# En développement, on autorise toutes les origines
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
 
 
 # Application definition
@@ -261,7 +274,7 @@ LOGGING = {
         },
         'json_file': {
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': 'logs/structlog.json',
+            'filename': BASE_DIR / 'logs' / 'structlog.json',
             'formatter': 'json_formatter',
             'maxBytes': 10485760,  # 10MB
             'backupCount': 5,

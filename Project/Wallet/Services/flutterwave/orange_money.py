@@ -415,5 +415,18 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             }
 
 
-# Instance globale
-flutterwave_orange_service = FlutterwaveOrangeMoneyService()
+# Instance globale avec lazy loading
+class _LazyFlutterwaveOrangeService:
+    """Proxy pour lazy loading du service Flutterwave Orange Money"""
+    _instance = None
+    
+    def __getattr__(self, name):
+        if self._instance is None:
+            try:
+                self._instance = FlutterwaveOrangeMoneyService()
+            except ValueError as e:
+                logger.warning("flutterwave_orange_service_not_configured", error=str(e))
+                raise
+        return getattr(self._instance, name)
+
+flutterwave_orange_service = _LazyFlutterwaveOrangeService()
