@@ -221,7 +221,8 @@ class AccountDeleteConfirmView(APIView):
             # Incrémenter les tentatives
             session_data['attempts'] = session_data.get('attempts', 0) + 1
             session_data['last_attempt'] = timezone.now().isoformat()
-            cache.set(session_key, session_data, timeout=cache.ttl(session_key) or 600)  # ← Note: ici ttl() est optionnel, tu peux le remplacer par 600
+            ttl = auth_utils.get_session_ttl(session_key, session_data)
+            cache.set(session_key, session_data, timeout=ttl or 600)
             
             remaining = 3 - session_data['attempts']
             logger.warning(

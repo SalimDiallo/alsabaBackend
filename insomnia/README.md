@@ -1,58 +1,59 @@
-# 🧪 Guide de Test Alsaba API (Insomnia)
+# 🧪 Guide de Test Alsaba API (Insomnia v2.0)
 
-Ce dossier contient la collection Insomnia pour tester l'intégralité des **42 endpoints** de l'API Alsaba. Pour un test cohérent, suivez l'ordre logique ci-dessous.
+Ce dossier contient la collection Insomnia mise à jour pour tester l'intégralité des **endpoints** de l'API Alsaba, incluant les nouvelles fonctionnalités (Disputes, Notifications, Sécurité).
+
+## 🚀 Installation
+1.  Ouvrez **Insomnia**.
+2.  Cliquez sur **Create** > **Import**.
+3.  Sélectionnez le fichier `alsaba.yaml` présent dans ce dossier.
+4.  Une fois importé, configurez votre `access_token` dans l'environnement (Ctrl+E).
 
 ---
 
-## 🔐 Phase 1 : Authentification & JWT (5 endpoints)
+## 🔐 Phase 1 : Authentification
 *Indispensable pour toutes les autres requêtes.*
-
-1.  **Auth: 1. Phone Auth** : Envoie un OTP (simulé ou réel). Récupérez la `session_key`.
-2.  **Auth: 2. Verify OTP** : Utilisez la `session_key` et le code (ex: `123456`). Récupérez les tokens `access` et `refresh`.
-3.  **Auth: Refresh JWT** : Renouvelle l'access token.
+1.  **Auth: 1. Phone Auth** : Envoie un OTP.
+2.  **Auth: 2. Verify OTP** : Récupère les tokens JWT (`access`). Mettez ce token dans l'environnement Insomnia.
 
 ---
 
-## 👤 Phase 2 : Profil & KYC (6 endpoints)
-*Nécessaire pour lever les limites du compte.*
-
+## 👤 Phase 2 : Profil & KYC
 1.  **Profile: View/Update** : Voir et modifier vos informations.
-2.  **KYC: Submit Verification** : Envoyez vos photos de documents.
-3.  **Webhook: Didit KYC** : Simulez l'approbation de votre KYC par le service tiers.
-4.  **Account: Delete (Request/Confirm)** : Cycle de suppression.
+2.  **KYC: Submit Verification** : Uploader ID et Selfie.
+3.  **Webhook: Didit KYC** : Simuler la validation par Didit.
 
 ---
 
-## 💰 Phase 3 : Wallet & Méthodes de Paiement (14 endpoints)
-*Préparez votre solde avant de faire du P2P.*
-
-1.  **Wallet: PM (List/Create/Detail/Delete/Default)** : Gérez vos comptes Orange Money ou cartes.
-2.  **Wallet: Deposit Initiate** : Initiez un dépôt.
-3.  **Webhook: Flutterwave** : Simulez le paiement réussi.
-4.  **Wallet: Transactions (List/Detail/Status/Retry)** : Suivi précis des mouvements.
+## 💰 Phase 3 : Wallet (Portefeuille)
+1.  **Wallet: Deposit** : Initier un dépôt (Carte/Orange Money).
+2.  **Wallet: Withdraw** : Simuler un retrait.
+3.  **Wallet: PM** : Gérer les méthodes de paiement sauvegardées.
+4.  **Admin: Update Status** : (Admin) Forcer le statut d'une transaction bloquée.
 
 ---
 
-## 🤝 Phase 4 : Le Flux P2P (Escrow) (10 endpoints)
-*Nécessite deux utilisateurs (A et B).*
-
-1.  **Offer: Create** : Le vendeur A bloque ses fonds.
-2.  **Offer: List/Detail/Update** : Gestion des annonces.
-3.  **Offer: Accept (Buyer)** : L'acheteur B se manifeste.
-4.  **Offer: Validate (Seller)** : Le vendeur A confirme le matching.
-5.  **Offer: Confirm/Cancel/Dispute** : Déblocage, annulation ou litige.
+## 🤝 Phase 4 : Offres P2P & Escrow
+1.  **Offer: Create** : Vendeur (A1) crée une annonce.
+2.  **Offer: Accept** : Acheteur (A2) accepte.
+3.  **Offer: Validate** : Vendeur (A1) valide le match.
+4.  **Offer: Confirm** : Finalisation automatique (fonds libérés).
 
 ---
 
-## 💡 Phase 5 : Suggestions ML (2 endpoints)
-1.  **Suggestions: List** : Matching intelligent basé sur le profil.
-2.  **Suggestions: Mark Read** : Nettoyer ses notifications.
+## ⚖️ Phase 5 : Gestion des Litiges (Disputes) - **NOUVEAU**
+*En cas de problème entre vendeur et acheteur.*
+1.  **Dispute: Initiate** : Signaler un problème ("Je n'ai pas reçu l'argent").
+2.  **Dispute: List/Detail** : Voir l'état du litige.
+3.  **Dispute: Resolve** : (Admin) Trancher en faveur du vendeur ou de l'acheteur.
 
 ---
 
-## 🛡️ Phase 6 : Administration Staff (5 endpoints)
-*Nécessite un accès `is_staff`.*
+## 🔔 Phase 6 : Notifications
+1.  **Notifications: Register Device** : Enregistrer un téléphone (FCM Token).
+2.  **Notifications: List** : Voir l'historique des notifs in-app.
 
-1.  **Wallet: Admin Stats** : Santé globale du système.
-2.  **Wallet: Admin Deposit/Withdrawal (Confirm/Cancel)** : Validation manuelle forcée par l'admin.
-3.  **Wallet: Admin Update Status** : Correction manuelle de statut de transaction.
+---
+
+## 💡 Notes Importantes
+*   **Environnement** : La collection utilise une variable `{{ base_url }}` (défaut: `http://127.0.0.1:8000`).
+*   **Tokens** : La plupart des requêtes nécessitent un Header `Authorization: Bearer {{ access_token }}`. N'oubliez pas de mettre à jour la variable après le login.

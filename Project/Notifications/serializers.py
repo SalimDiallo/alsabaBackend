@@ -7,6 +7,10 @@ class NotificationSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'body', 'notification_type', 'data', 'is_read', 'created_at']
         read_only_fields = ['id', 'title', 'body', 'notification_type', 'data', 'created_at']
 
+    @staticmethod
+    def setup_eager_loading(queryset):
+        return queryset  # Pas de relations à charger pour le moment, mais prêt pour le futur
+
 
 
 class DeviceSerializer(serializers.ModelSerializer):

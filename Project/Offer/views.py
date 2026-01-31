@@ -38,6 +38,7 @@ class CreateOfferView(APIView):
     Créer une nouvelle offre.
     """
     permission_classes = [permissions.IsAuthenticated]
+    throttle_scope = 'offer_create'
 
     def post(self, request):
         serializer = CreateOfferSerializer(data=request.data)
@@ -126,6 +127,7 @@ class AcceptOfferView(APIView):
     Accepter une offre.
     """
     permission_classes = [permissions.IsAuthenticated]
+    throttle_scope = 'offer_accept'
 
     def post(self, request, id):
         serializer = AcceptOfferSerializer(data=request.data)
@@ -296,7 +298,7 @@ class DisputeDetailView(APIView):
         
         # Vérifier l'accès: partie de l'offre ou admin
         if (dispute.offer.user != request.user and
-            dispute.offer.user_accepter != request.user and
+            dispute.offer.accepted_by != request.user and
             not request.user.is_staff):
             return Response(
                 {'error': 'Non autorisé'},
@@ -325,9 +327,9 @@ class ListDisputesView(generics.ListAPIView):
         
         # User voit seulement ses litiges (initiés ou concernant ses offres)
         return Dispute.objects.filter(
-            Q(initiated_by=user) |
-            Q(offer__user=user) |
-            Q(offer__user_accepter=user)
+            Q(initiated_by_id=user.id) |
+            Q(offer__user_id=user.id) |
+            Q(offer__accepted_by_id=user.id)
         ).select_related('offer', 'initiated_by', 'reviewed_by').order_by('-created_at')
 
 

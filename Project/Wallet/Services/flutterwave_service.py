@@ -3,6 +3,8 @@ Service principal d'intégration avec Flutterwave
 Orchestre les services spécialisés pour carte et Orange Money
 """
 import structlog
+import hmac
+import hashlib
 from django.conf import settings
 from typing import Dict, Optional, Any
 from .flutterwave.card import flutterwave_card_service
@@ -298,6 +300,36 @@ class FlutterwaveService(FlutterwaveBaseService):
     def get_supported_payment_methods(self) -> list:
         """Retourne les méthodes de paiement supportées"""
         return ['card', 'orange_money']
+    
+    @staticmethod
+    def verify_webhook_signature(payload: str, signature: str) -> bool:
+        """
+        Vérifie la signature HMAC d'un webhook Flutterwave
+        
+        Args:
+            payload: Corps de la requête (string JSON)
+            signature: Header 'verif-hash'
+        
+        Returns:
+            bool: True si signature valide
+        """
+        secret = settings.FLUTTERWAVE_WEBHOOK_SECRET
+        if not secret:
+            logger.error("flutterwave_webhook_secret_missing")
+            return False
+        
+        try:
+            expected_signature = hmac.new(
+                secret.encode('utf-8'),
+                payload.encode('utf-8'),
+                hashlib.sha256
+            ).hexdigest()
+            
+            # Utiliser compare_digest pour éviter les timing attacks
+            return hmac.compare_digest(expected_signature, signature)
+        except Exception as e:
+            logger.error("flutterwave_signature_verification_error", error=str(e))
+            return False
 
 
 # Instance globale du service

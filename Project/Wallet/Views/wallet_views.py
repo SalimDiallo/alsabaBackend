@@ -62,9 +62,10 @@ class DepositView(APIView):
     Initie un dépôt sur le portefeuille
     """
     permission_classes = [IsAuthenticated]
+    throttle_scope = 'deposit'
 
     def post(self, request):
-        serializer = DepositSerializer(data=request.data)
+        serializer = DepositSerializer(data=request.data, context={'request': request})
         if not serializer.is_valid():
             logger.warning(
                 "deposit_validation_failed",
@@ -168,6 +169,7 @@ class WithdrawalView(APIView):
     Initie un retrait du portefeuille
     """
     permission_classes = [IsAuthenticated]
+    throttle_scope = 'withdrawal'
 
     def post(self, request):
         serializer = WithdrawalSerializer(data=request.data)

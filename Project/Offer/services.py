@@ -545,7 +545,8 @@ class SecureEscrowService:
             offer = Offer.objects.select_for_update().get(id=offer_id)
             
             # Vérifier que l'utilisateur est une des parties
-            if user_initiator not in [offer.user, offer.user_accepter]:
+            # Vérifier que l'utilisateur est une des partie
+            if user_initiator not in [offer.user, offer.accepted_by]:
                 raise ValidationError("Vous n'êtes pas une partie de cette offre")
             
             # Vérifier que l'offre est dans un état approprié (pas trop tôt, pas trop tard)
@@ -620,17 +621,17 @@ class SecureEscrowService:
                     
                 elif resolution == 'refund_a2':
                     # Rembourser A2 (user qui a accepté)
-                    if offer.user_accepter:
-                        _refund_user_for_dispute(offer.user_accepter, offer.amount_buy_cents, offer.currency_buy)
+                    if offer.accepted_by:
+                        _refund_user_for_dispute(offer.accepted_by, offer.amount_buy_cents, offer.currency_buy)
                     
                 elif resolution == 'split':
                     # Split 50/50
                     split_amount_a1 = offer.amount_sell_cents // 2
-                    split_amount_a2 = offer.amount_buy_cents // 2 if offer.user_accepter else 0
+                    split_amount_a2 = offer.amount_buy_cents // 2 if offer.accepted_by else 0
                     
                     _refund_user_for_dispute(offer.user, split_amount_a1, offer.currency_sell)
-                    if offer.user_accepter:
-                        _refund_user_for_dispute(offer.user_accepter, split_amount_a2, offer.currency_buy)
+                    if offer.accepted_by:
+                        _refund_user_for_dispute(offer.accepted_by, split_amount_a2, offer.currency_buy)
             
             except Exception as e:
                 logger.error("dispute_resolution_error", error=str(e), dispute_id=str(dispute_id))

@@ -345,7 +345,6 @@ class VerifyOTPView(APIView):
                                 national_number = national_number[1:]
                         
                         user = User.objects.create_user(
-                            full_phone_number=full_phone_number,
                             phone_number=national_number,
                             country_code=country_code
                         )

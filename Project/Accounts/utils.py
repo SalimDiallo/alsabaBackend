@@ -145,7 +145,9 @@ class AuthUtils:
             if increment:
                 session_data['attempts'] = session_data.get('attempts', 0) + 1
             session_data['last_attempt'] = timezone.now().isoformat()
-            cache.set(session_key, session_data, timeout=cache.ttl(session_key) or 300)
+            # Utilisation de get_session_ttl pour compatibilité LocMemCache
+            ttl = AuthUtils.get_session_ttl(session_key, session_data)
+            cache.set(session_key, session_data, timeout=ttl or 300)
         return session_data
     
     @staticmethod

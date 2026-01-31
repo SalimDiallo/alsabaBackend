@@ -14,6 +14,12 @@ class OfferSerializer(serializers.ModelSerializer):
     amount_sell = serializers.FloatField(read_only=True)
     amount_buy = serializers.FloatField(read_only=True)
 
+    @staticmethod
+    def setup_eager_loading(queryset):
+        """ Optimisation pour éviter les requêtes N+1 """
+        queryset = queryset.select_related('user', 'accepted_by')
+        return queryset
+
     class Meta:
         model = Offer
         fields = [

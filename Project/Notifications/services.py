@@ -1,6 +1,8 @@
 import structlog
+from django.conf import settings
 from .models import Notification, Device
 from .tasks import send_email_notification_task
+from twilio.request_validator import RequestValidator
 
 logger = structlog.get_logger(__name__)
 
@@ -9,6 +11,19 @@ class NotificationService:
     Service unifié pour envoyer des notifications via plusieurs canaux (In-App, Push, Email).
     Utilise Celery pour l'envoi asynchrone (sauf pour la création DB qui est rapide).
     """
+
+    @staticmethod
+    def verify_twilio_signature(uri, signature, params):
+        """
+        Vérifie la signature d'un webhook Twilio.
+        """
+        auth_token = getattr(settings, 'TWILIO_AUTH_TOKEN', None)
+        if not auth_token:
+            logger.error("twilio_auth_token_missing")
+            return False
+            
+        validator = RequestValidator(auth_token)
+        return validator.validate(uri, params, signature)
 
     @staticmethod
     def send(user, title, body, notification_type='system', data=None, channels=None):

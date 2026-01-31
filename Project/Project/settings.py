@@ -100,11 +100,18 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',  # Pour throttling par endpoint
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '30/hour',  # Augmenté légèrement pour permettre OTP + Login
-        'user': '1000/day'
+        'user': '1000/day',
+        # Rate limiting avancé par endpoint critique
+        'deposit': '10/hour',  # Max 10 dépôts par heure
+        'withdrawal': '5/hour',  # Max 5 retraits par heure
+        'offer_create': '20/hour',  # Max 20 offres créées par heure
+        'offer_accept': '30/hour',  # Max 30 acceptations par heure
+        'kyc_upload': '3/hour',  # Max 3 uploads KYC par heure
     }
 }
 
