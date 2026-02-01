@@ -388,7 +388,7 @@ class TransactionConfirmSerializer(serializers.Serializer):
     """
     Sérialiseur pour la confirmation d'une transaction
     """
-    transaction_id = serializers.UUIDField(required=True)
+    transaction_id = serializers.UUIDField(required=False)
     confirmation_code = serializers.CharField(max_length=10, required=False, help_text="Code de confirmation si requis")
     notes = serializers.CharField(max_length=500, required=False, help_text="Notes supplémentaires")
 
@@ -397,7 +397,7 @@ class TransactionCancelSerializer(serializers.Serializer):
     """
     Sérialiseur pour l'annulation d'une transaction
     """
-    transaction_id = serializers.UUIDField(required=True)
+    transaction_id = serializers.UUIDField(required=False)
     reason = serializers.CharField(max_length=500, required=True, help_text="Raison de l'annulation")
     notes = serializers.CharField(max_length=500, required=False, help_text="Notes supplémentaires")
 

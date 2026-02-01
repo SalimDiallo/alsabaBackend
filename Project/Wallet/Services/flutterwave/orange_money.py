@@ -346,9 +346,7 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             
             # 2. Obtenir ou créer customer
             if not customer_id:
-                name_parts = customer_name.split(maxsplit=1)
-                first_name = name_parts[0] if name_parts else customer_name
-                last_name = name_parts[1] if len(name_parts) > 1 else ""
+                first_name, last_name = self.split_customer_name(customer_name)
                 customer_id = self.create_customer(
                     customer_email, first_name, last_name, customer_phone, country_code=country_code)
             

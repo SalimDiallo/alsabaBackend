@@ -34,6 +34,8 @@ CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+CELERY_TASK_ALWAYS_EAGER = True  # Exécution synchrone pour le développement (évite l'erreur Redis)
+CELERY_TASK_EAGER_PROPAGATES = True
 
 
 # ===================================
@@ -208,13 +210,23 @@ AUTH_PASSWORD_VALIDATORS = [
 #     }
 # }
 
-# Cahing Configuration en Développement avec LocMemCache
+# Caching Configuration en Développement avec LocMemCache
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'unique-snowflake',
     }
 }
+
+# Configuration Email
+# Utilisez le backend SMTP pour envoyer réellement des emails
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '25'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@alsaba.com')
 DIDIT_API_KEY = os.environ.get('DIDIT_API_KEY', 'your-key-here')
 
 # Flutterwave Configuration

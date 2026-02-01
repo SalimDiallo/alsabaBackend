@@ -4,6 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.utils import timezone
 from django.db.models import Q
+from decimal import Decimal
 import structlog
 
 from ..models import Wallet, Transaction
@@ -809,7 +810,7 @@ class EstimateFeesView(APIView):
         }
         """
         try:
-            amount = float(request.data.get('amount', 0))
+            amount = Decimal(str(request.data.get('amount', 0)))
             transaction_type = request.data.get('transaction_type')
             payment_method = request.data.get('payment_method')
             

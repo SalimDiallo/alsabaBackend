@@ -17,11 +17,21 @@ class UserManager(BaseUserManager):
     def with_deleted(self):
         return UserQuerySet(self.model, using=self._db)
 
-    def create_user(self, phone_number, country_code="+33", password=None, **extra_fields):
-        if not phone_number:
-            raise ValueError("Le numéro de téléphone est obligatoire")
+    def create_user(self, phone_number=None, country_code=None, password=None, **extra_fields):
+        # Récupérer le numéro complet s'il est passé via extra_fields (cas du CLI createsuperuser)
+        full_phone = extra_fields.pop('full_phone_number', None)
+        
+        if not full_phone:
+            if not phone_number:
+                raise ValueError("Le numéro de téléphone est obligatoire")
+            
+            # Si phone_number commence par '+', on considère que c'est le numéro complet
+            if str(phone_number).startswith('+'):
+                full_phone = str(phone_number)
+            else:
+                c_code = country_code or "+33"
+                full_phone = f"{c_code}{phone_number}"
 
-        full_phone = f"{country_code}{phone_number}"
         try:
             parsed = phonenumbers.parse(full_phone, None)
             if not phonenumbers.is_valid_number(parsed):
@@ -48,7 +58,7 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, phone_number, country_code="+33", password=None, **extra_fields):
+    def create_superuser(self, phone_number=None, country_code=None, password=None, **extra_fields):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)

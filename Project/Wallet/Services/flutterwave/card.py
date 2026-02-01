@@ -459,11 +459,11 @@ class FlutterwaveCardService(FlutterwaveBaseService):
         }
         
         if account_name:
-            # Séparer le nom en first/last si possible
-            name_parts = account_name.split(maxsplit=1)
+            # Séparer le nom en first/last avec validation (min 2 chars) via helper base
+            first, last = self.split_customer_name(account_name)
             json_data["name"] = {
-                "first": name_parts[0] if name_parts else account_name,
-                "last": name_parts[1] if len(name_parts) > 1 else ""
+                "first": first,
+                "last": last
             }
         
         headers = {
@@ -591,9 +591,7 @@ class FlutterwaveCardService(FlutterwaveBaseService):
             # 2. Obtenir ou créer customer
             # (Toujours nécessaire pour lier la transaction à un customer)
             if not customer_id:
-                name_parts = customer_name.split(maxsplit=1)
-                first_name = name_parts[0] if name_parts else customer_name
-                last_name = name_parts[1] if len(name_parts) > 1 else ""
+                first_name, last_name = self.split_customer_name(customer_name)
                 customer_id = self.create_customer(
                     customer_email, first_name, last_name, customer_phone, 
                     country_code, address=address)
@@ -666,7 +664,11 @@ class FlutterwaveCardService(FlutterwaveBaseService):
                 "charge_id": charge_id,
                 "customer_id": customer_id,
                 "status": charge_data.get("status", "pending"),
-                "payment_link": charge_data.get("authorization", {}).get("redirect_url"),
+                "payment_link": charge_data.get("authorization", {}).get("redirect_url") or (
+                    charge_data.get("next_action", {}).get("redirect_url") 
+                    if charge_data.get("next_action", {}).get("type") == "redirect" 
+                    else None
+                ),
                 "next_action": charge_data.get("next_action")
             }
         except Exception as e:

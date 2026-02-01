@@ -246,6 +246,33 @@ class FlutterwaveBaseService:
         # Si on arrive ici, tous les retries ont échoué
         raise last_exception or Exception("Erreur inconnue lors de la requête")
 
+    def split_customer_name(self, name: str) -> tuple[str, str]:
+        """
+        Sépare un nom complet en prénom et nom, avec validation pour Flutterwave (min 2 caractères).
+        Nettoie également les caractères spéciaux interdits.
+        """
+        import re
+        if not name or not isinstance(name, str):
+            return "User", "Customer"
+            
+        # Nettoyage: Flutterwave accepte lettres, espaces, virgules, points, apostrophes et tirets.
+        # On supprime tout le reste (notamment le '+' des numéros de téléphone)
+        # On autorise les caractères accentués courants (A-ÿ)
+        name = re.sub(r'[^a-zA-ZÀ-ÿ\s,.\'\-]', '', name).strip()
+        
+        parts = name.split(maxsplit=1)
+        
+        first = parts[0] if parts else "User"
+        last = parts[1] if len(parts) > 1 else "Customer"
+        
+        # Validation Flutterwave (min 2 chars, max 50)
+        if len(first) < 2:
+            first = f"{first}." if first else "User"
+        if len(last) < 2:
+            last = f"{last}." if last else "Customer"
+            
+        return first[:50], last[:50]
+
     def get_customer_id_by_email(self, email: str) -> str:
         """
         Récupère l'ID d'un customer Flutterwave par son email
