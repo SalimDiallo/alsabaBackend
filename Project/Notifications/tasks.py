@@ -71,27 +71,6 @@ def send_push_notification_task(registration_ids, title, body, data=None):
         return str(e)
 
 
-@shared_task
-def send_email_notification_task(email, subject, message):
-    """
-    Envoie un email simple.
-    """
-    from django.core.mail import send_mail
-    from django.conf import settings
-    
-    try:
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@alsaba.com'),
-            recipient_list=[email],
-            fail_silently=False,
-        )
-        logger.info("email_sent_success", recipient=email, subject=subject)
-        return "Email sent"
-    except Exception as e:
-        logger.exception("email_send_failed", recipient=email)
-        return str(e)
 
 
 @shared_task

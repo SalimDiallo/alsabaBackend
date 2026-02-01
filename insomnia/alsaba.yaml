@@ -229,8 +229,14 @@ collection:
     headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer {{ access_token }}" }]
 
   - url: "{{ base_url }}/api/offers/OFFER_ID/confirm/"
-    name: "Offer: Confirm"
+    name: "Offer: Confirm (Admin/Manual)"
     meta: { id: req_offer_confirm }
+    method: POST
+    headers: [{ name: Authorization, value: "Bearer {{ access_token }}" }]
+
+  - url: "{{ base_url }}/api/offers/OFFER_ID/beneficiary-confirm/"
+    name: "Offer: Beneficiary Confirm (B1/B2)"
+    meta: { id: req_offer_benef_conf }
     method: POST
     headers: [{ name: Authorization, value: "Bearer {{ access_token }}" }]
 

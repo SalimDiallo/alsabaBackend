@@ -50,6 +50,10 @@ class Offer(models.Model):
         db_column='accepted_beneficiary_data'
     )
 
+    # Confirmations des bénéficiaires
+    b1_confirmed = models.BooleanField(default=False, help_text="Le bénéficiaire B1 a confirmé la réception/participation")
+    b2_confirmed = models.BooleanField(default=False, help_text="Le bénéficiaire B2 a confirmé la réception/participation")
+
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='OPEN', db_index=True)
     
     created_at = models.DateTimeField(auto_now_add=True)

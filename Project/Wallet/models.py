@@ -43,6 +43,12 @@ class Wallet(models.Model):
         'BIF': 'Franc Burundais',
         'ZMW': 'Kwacha Zambien',
         'ZWD': 'Dollar Zimbabwéen',
+        'MAD': 'Dirham Marocain',
+        'DZD': 'Dinar Algérien',
+        'TND': 'Dinar Tunisien',
+        'EGP': 'Livre Égyptienne',
+        'USD': 'Dollar Américain',
+        'GBP': 'Livre Britannique',
     }
 
     # Solde en centimes pour éviter les problèmes de précision
@@ -125,7 +131,7 @@ class Wallet(models.Model):
             phone_number: Numéro de téléphone au format E.164
             
         Returns:
-            str: Code devise (EUR, XAF, USD, etc.)
+            str: Code devise (EUR, XAF, XOF, NGN, etc.)
         """
         from django.conf import settings
         
@@ -133,47 +139,36 @@ class Wallet(models.Model):
             # Parse le numéro pour obtenir le code pays
             parsed = phonenumbers.parse(phone_number, None)
             
-            # Utiliser le code de région (ex: 'FR', 'CM', 'MA') directement
+            # Utiliser le code de région (ex: 'FR', 'CM', 'SN') directement
             region_code = phonenumbers.region_code_for_number(parsed)
             
-            # Mapping pays -> devise (COMPLET pour Afrique/Europe)
+            # Mapping pays -> devise (Afrique / Europe)
             currency_map = {
                 # Afrique du Nord
-                'MA': 'MAD',  # Maroc
-                'DZ': 'DZD',  # Algérie
-                'TN': 'TND',  # Tunisie
-                'EG': 'EGP',  # Égypte
+                'MA': 'MAD', 'DZ': 'DZD', 'TN': 'TND', 'EG': 'EGP',
                 
                 # Zone Euro
                 'FR': 'EUR', 'DE': 'EUR', 'IT': 'EUR', 'ES': 'EUR', 
                 'BE': 'EUR', 'NL': 'EUR', 'PT': 'EUR', 'IE': 'EUR',
                 
-                # Afrique Francophone (XAF)
+                # Afrique Francophone (XAF - CEMAC)
                 'CM': 'XAF', 'GA': 'XAF', 'CF': 'XAF', 'TD': 'XAF', 'CG': 'XAF',
                 
-                # Afrique Francophone (XOF)
-                'CI': 'XOF', 'SN': 'XOF', 'ML': 'XOF', 'BJ': 'XOF', 'BF': 'XOF',
+                # Afrique Francophone (XOF - BCEAO)
+                'CI': 'XOF', 'SN': 'XOF', 'ML': 'XOF', 'BJ': 'XOF', 'BF': 'XOF', 'TG': 'XOF', 'NE': 'XOF',
                 
                 # Afrique Anglophone / Autres
-                'NG': 'NGN', 'GH': 'GHS', 'KE': 'KES', 'ZA': 'ZAR',
-                'US': 'USD', 'GB': 'GBP'
+                'NG': 'NGN', 'GH': 'GHS', 'KE': 'KES', 'ZA': 'ZAR', 'TZ': 'TZS', 'UG': 'UGX', 'RW': 'RWF', 'ZM': 'ZMW'
             }
             
             detected_currency = currency_map.get(region_code, 'EUR')
             
-            # Gestion SANDBOX
+            # Gestion SANDBOX pour Flutterwave
             is_sandbox = getattr(settings, 'FLUTTERWAVE_ENVIRONMENT', 'sandbox') == 'sandbox'
-            
             if is_sandbox:
-                # Liste des devises généralement supportées en sandbox sans restriction
-                sandbox_safe_currencies = ['NGN', 'USD', 'KES', 'GHS', 'ZAR', 'TZS', 'UGX']
-                
-                # Si la devise détectée n'est pas "safe" en sandbox (ex: MAD, EUR, XAF), on force USD
-                if detected_currency not in sandbox_safe_currencies:
-                    logger.info("sandbox_currency_fallback", 
-                                original=detected_currency, 
-                                fallback='USD', 
-                                reason="Currency not supported in sandbox")
+                # Devises supportées nativement en sandbox
+                sandbox_safe = ['NGN', 'USD', 'KES', 'GHS', 'ZAR', 'TZS', 'UGX']
+                if detected_currency not in sandbox_safe:
                     return 'USD'
 
             return detected_currency
@@ -275,11 +270,15 @@ class Transaction(models.Model):
     TRANSACTION_TYPES = (
         ('deposit', 'Dépôt'),
         ('withdrawal', 'Retrait'),
+        ('refund', 'Remboursement'),
+        ('p2p_debit', 'Débit P2P'),
+        ('p2p_credit', 'Crédit P2P'),
     )
 
     PAYMENT_METHODS = (
         ('card', 'Carte bancaire'),
         ('orange_money', 'Orange Money'),
+        ('internal', 'Interne (Wallet)'),
     )
 
     STATUS_CHOICES = (
@@ -422,11 +421,11 @@ class Transaction(models.Model):
             # Met à jour le solde du wallet seulement s'il ne l'a pas déjà été
             if not tx.balance_adjusted:
                 from decimal import Decimal
-                if tx.transaction_type == 'deposit':
+                if tx.transaction_type in ['deposit', 'refund', 'p2p_credit']:
                     tx.wallet.add_balance(tx.amount_euros)
                     tx.balance_adjusted = True
-                elif tx.transaction_type == 'withdrawal':
-                    # Débiter le montant + les frais
+                elif tx.transaction_type in ['withdrawal', 'p2p_debit']:
+                    # Débiter le montant + les frais (les frais sont 0 pour p2p généralement)
                     total_deduct = (Decimal(tx.amount_cents) + Decimal(tx.fee_cents)) / 100
                     tx.wallet.subtract_balance(total_deduct)
                     tx.balance_adjusted = True

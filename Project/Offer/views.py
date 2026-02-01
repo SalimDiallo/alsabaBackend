@@ -206,6 +206,26 @@ class ConfirmOfferView(APIView):
             logger.exception("confirm_offer_failed", offer_id=str(id))
             return Response({'error': "Erreur lors de la confirmation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+class BeneficiaryConfirmView(APIView):
+    """
+    POST /api/offers/{id}/beneficiary-confirm/
+    Confirmation par un bénéficiaire (B1 ou B2).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, id):
+        try:
+            offer = SecureEscrowService.confirm_beneficiary_participation(
+                user=request.user,
+                offer_id=id
+            )
+            return Response(OfferSerializer(offer).data, status=status.HTTP_200_OK)
+        except ValidationError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.exception("beneficiary_confirm_failed", offer_id=str(id), user_id=str(request.user.id))
+            return Response({'error': "Erreur lors de la confirmation bénéficiaire"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 class CancelOfferView(APIView):
     """
     POST /api/offers/{id}/cancel/

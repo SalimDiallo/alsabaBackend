@@ -87,11 +87,13 @@ class KYCVerifyView(APIView):
                 verification_status='pending',
                 created_at=timezone.now(),
             )
-            
             filename_prefix = f"kyc_{user.id}_{vendor_data}"
             kyc_doc.front_image.save(f"{filename_prefix}_front.jpg", front_image)
             if back_image:
                 kyc_doc.back_image.save(f"{filename_prefix}_back.jpg", back_image)
+            # --- AUDIT TRAIL ---
+            kyc_doc.accessed_at = timezone.now()
+            kyc_doc.accessed_by = str(user.id)
             kyc_doc.save()
             
         except Exception as e:

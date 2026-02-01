@@ -52,17 +52,28 @@ services:
     restart: unless-stopped
     environment:
       - DEBUG=${DEBUG:-True}
-      - SECRET_KEY=${SECRET_KEY:-django-insecure-change-me-in-production}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - SECRET_KEY=${SECRET_KEY:?err}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:?err}
       - DATABASE_ENGINE=django.db.backends.postgresql
-      - DATABASE_NAME=${POSTGRES_DB:-alsaba_db}
-      - DATABASE_USER=${POSTGRES_USER:-alsaba_user}
-      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-alsaba_password}
+      - DATABASE_NAME=${POSTGRES_DB:?err}
+      - DATABASE_USER=${POSTGRES_USER:?err}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?err}
       - DATABASE_HOST=db
       - DATABASE_PORT=5432
       # Redis Config
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # Sécurité API
+      - DIDIT_API_KEY=${DIDIT_API_KEY:?err}
+      - DIDIT_WEBHOOK_SECRET=${DIDIT_WEBHOOK_SECRET:?err}
+      - FLUTTERWAVE_SECRET_KEY=${FLUTTERWAVE_SECRET_KEY:?err}
+      - FLUTTERWAVE_WEBHOOK_SECRET=${FLUTTERWAVE_WEBHOOK_SECRET:?err}
+      - EMAIL_HOST=${EMAIL_HOST:?err}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER:?err}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD:?err}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/1}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
     ports:
       - "8000:8000"
     volumes:

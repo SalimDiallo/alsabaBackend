@@ -10,10 +10,12 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+
 from pathlib import Path
 from datetime import timedelta
 import os
 from dotenv import load_dotenv
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -27,6 +29,7 @@ else:
     # Fallback si lancé depuis le dossier Project
     load_dotenv(os.path.join(BASE_DIR, '.env'))
 
+
 # Celery Configuration
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
@@ -34,8 +37,21 @@ CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
-CELERY_TASK_ALWAYS_EAGER = True  # Exécution synchrone pour le développement (évite l'erreur Redis)
-CELERY_TASK_EAGER_PROPAGATES = True
+# ALWAYS_EAGER dépend de l'environnement
+CELERY_TASK_ALWAYS_EAGER = os.getenv('CELERY_ALWAYS_EAGER', 'False').lower() in ('true', '1', 'yes') or os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
+CELERY_TASK_EAGER_PROPAGATES = CELERY_TASK_ALWAYS_EAGER
+# Timeouts et retry logic
+CELERY_TASK_TIME_LIMIT = 300  # 5 minutes max
+CELERY_TASK_SOFT_TIME_LIMIT = 250  # Alerte à 250s
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_BROKER_POOL_KWARGS = {
+    'connection_kwargs': {
+        'socket_connect_timeout': 5,
+        'socket_keepalive': True,
+    },
+    'max_retries': 3,
+}
 
 
 # ===================================
@@ -63,12 +79,20 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = get_required_env('SECRET_KEY')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-# DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
+
+# DEBUG
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
-# Hosts autorisés
-# En développement/tests on autorise toutes les origines pour simplifier l'exécution locale
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# Hosts autorisés - validation stricte
+if DEBUG:
+    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+else:
+    allowed_hosts = os.getenv('ALLOWED_HOSTS')
+    if not allowed_hosts:
+        raise ValueError(
+            "ALLOWED_HOSTS must be configured in production (.env file)\n"
+            "Format: ALLOWED_HOSTS=api.yourdomain.com,yourdomain.com"
+        )
+    ALLOWED_HOSTS = allowed_hosts.split(',')
 
 
 # Application definition
@@ -92,9 +116,19 @@ INSTALLED_APPS = [
     'django_celery_beat',
 ]
 
+
+# CORS Configuration
+CORS_ALLOWED_ORIGINS = os.getenv(
+    'CORS_ALLOWED_ORIGINS',
+    'http://localhost:3000,http://localhost:8080' if DEBUG else ''
+).split(',') if os.getenv('CORS_ALLOWED_ORIGINS') or DEBUG else []
+if not DEBUG and not CORS_ALLOWED_ORIGINS:
+    raise ValueError("CORS_ALLOWED_ORIGINS must be configured in production (.env file)")
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = ['*']
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        # 'Accounts.authentication.SessionKeyAuthentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
@@ -103,17 +137,16 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
-        'rest_framework.throttling.ScopedRateThrottle',  # Pour throttling par endpoint
+        'rest_framework.throttling.ScopedRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '30/hour',  # Augmenté légèrement pour permettre OTP + Login
+        'anon': '30/hour',
         'user': '1000/day',
-        # Rate limiting avancé par endpoint critique
-        'deposit': '10/hour',  # Max 10 dépôts par heure
-        'withdrawal': '5/hour',  # Max 5 retraits par heure
-        'offer_create': '20/hour',  # Max 20 offres créées par heure
-        'offer_accept': '30/hour',  # Max 30 acceptations par heure
-        'kyc_upload': '3/hour',  # Max 3 uploads KYC par heure
+        'deposit': '10/hour',
+        'withdrawal': '5/hour',
+        'offer_create': '20/hour',
+        'offer_accept': '30/hour',
+        'kyc_upload': '3/hour',
     }
 }
 
@@ -199,59 +232,81 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
-# Cahing Configuration en Production avec Redis
-# CACHES = {
-#     'default': {
-#         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-#         'LOCATION': 'redis://127.0.0.1:6379/1',
-#         'OPTIONS': {
-#             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-#         }
-#     }
-# }
 
-# Caching Configuration en Développement avec LocMemCache
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake',
+# Caching Configuration
+if DEBUG:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'unique-snowflake',
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': os.getenv('REDIS_URL', 'redis://redis:6379/1'),
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'CONNECTION_POOL_KWARGS': {'max_connections': 50},
+                'SOCKET_CONNECT_TIMEOUT': 5,
+                'SOCKET_TIMEOUT': 5,
+            },
+            'KEY_PREFIX': 'alsaba',
+            'TIMEOUT': 300,
+        }
+    }
 
-# Configuration Email
-# Utilisez le backend SMTP pour envoyer réellement des emails
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', '25'))
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+
+# Email Configuration (Set to Console for fallback, as project uses SMS-only)
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@alsaba.com')
-DIDIT_API_KEY = os.environ.get('DIDIT_API_KEY', 'your-key-here')
 
-# Flutterwave Configuration
-FLUTTERWAVE_ENVIRONMENT = os.getenv('FLUTTERWAVE_ENVIRONMENT', 'sandbox')
+# Validation stricte des clés API
+DIDIT_API_KEY = os.getenv('DIDIT_API_KEY')
+if not DIDIT_API_KEY:
+    if not DEBUG:
+        raise ValueError("DIDIT_API_KEY must be configured in production (.env file)")
+    DIDIT_API_KEY = 'dev-key-placeholder'
+elif DIDIT_API_KEY == 'your-key-here':
+    raise ValueError("DIDIT_API_KEY: Do not use default placeholder key! Configure in .env")
 
-# Configuration Sandbox
+
+# Flutterwave Configuration avec validations
+FLUTTERWAVE_ENVIRONMENT = os.getenv('FLUTTERWAVE_ENVIRONMENT', 'sandbox' if DEBUG else 'production')
+# Sandbox
 FLUTTERWAVE_SANDBOX_CLIENT_ID = os.getenv('FLUTTERWAVE_SANDBOX_CLIENT_ID', '')
 FLUTTERWAVE_SANDBOX_CLIENT_SECRET = os.getenv('FLUTTERWAVE_SANDBOX_CLIENT_SECRET', '')
 FLUTTERWAVE_SANDBOX_ENCRYPTION_KEY = os.getenv('FLUTTERWAVE_SANDBOX_ENCRYPTION_KEY', '')
-FLUTTERWAVE_SANDBOX_BASE_URL = os.getenv('FLUTTERWAVE_SANDBOX_BASE_URL', 'https://developersandbox-api.flutterwave.com')
-FLUTTERWAVE_SANDBOX_AUTH_URL = os.getenv('FLUTTERWAVE_SANDBOX_AUTH_URL', 'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token')
-
-# Configuration Production
+FLUTTERWAVE_SANDBOX_BASE_URL = 'https://developersandbox-api.flutterwave.com'
+FLUTTERWAVE_SANDBOX_AUTH_URL = 'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token'
+# Production
 FLUTTERWAVE_PRODUCTION_CLIENT_ID = os.getenv('FLUTTERWAVE_PRODUCTION_CLIENT_ID', '')
 FLUTTERWAVE_PRODUCTION_CLIENT_SECRET = os.getenv('FLUTTERWAVE_PRODUCTION_CLIENT_SECRET', '')
 FLUTTERWAVE_PRODUCTION_ENCRYPTION_KEY = os.getenv('FLUTTERWAVE_PRODUCTION_ENCRYPTION_KEY', '')
-FLUTTERWAVE_PRODUCTION_BASE_URL = os.getenv('FLUTTERWAVE_PRODUCTION_BASE_URL', 'https://api.flutterwave.com')
-FLUTTERWAVE_PRODUCTION_AUTH_URL = os.getenv('FLUTTERWAVE_PRODUCTION_AUTH_URL', 'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token')
-
+FLUTTERWAVE_PRODUCTION_BASE_URL = 'https://api.flutterwave.com'
+FLUTTERWAVE_PRODUCTION_AUTH_URL = 'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token'
 # URLs et Secrets communs
 FLUTTERWAVE_REDIRECT_URL = os.getenv('FLUTTERWAVE_REDIRECT_URL', 'https://google.com')
-FLUTTERWAVE_WEBHOOK_SECRET = os.getenv('FLUTTERWAVE_WEBHOOK_SECRET', '')
+FLUTTERWAVE_SECRET_KEY = os.getenv('FLUTTERWAVE_SECRET_KEY')
+FLUTTERWAVE_PUBLIC_KEY = os.getenv('FLUTTERWAVE_PUBLIC_KEY')
+FLUTTERWAVE_ENCRYPTION_KEY = os.getenv('FLUTTERWAVE_ENCRYPTION_KEY')
+FLUTTERWAVE_WEBHOOK_SECRET = os.getenv('FLUTTERWAVE_WEBHOOK_SECRET')
 FLUTTERWAVE_TIMEOUT = int(os.getenv('FLUTTERWAVE_TIMEOUT', '30'))
 FLUTTERWAVE_MAX_RETRIES = int(os.getenv('FLUTTERWAVE_MAX_RETRIES', '3'))
 FLUTTERWAVE_RETRY_DELAY = int(os.getenv('FLUTTERWAVE_RETRY_DELAY', '2'))
+# Validation stricte pour production
+if not DEBUG:
+    if FLUTTERWAVE_ENVIRONMENT == 'production':
+        required_keys = [
+            ('FLUTTERWAVE_PRODUCTION_CLIENT_ID', FLUTTERWAVE_PRODUCTION_CLIENT_ID),
+            ('FLUTTERWAVE_PRODUCTION_CLIENT_SECRET', FLUTTERWAVE_PRODUCTION_CLIENT_SECRET),
+            ('FLUTTERWAVE_PUBLIC_KEY', FLUTTERWAVE_PUBLIC_KEY),
+            ('FLUTTERWAVE_WEBHOOK_SECRET', FLUTTERWAVE_WEBHOOK_SECRET),
+        ]
+        for key_name, key_value in required_keys:
+            if not key_value:
+                raise ValueError(f"Production: {key_name} must be configured in .env")
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
@@ -277,15 +332,16 @@ from .logging_utils import redact_sensitive_data
 LOGS_DIR = os.path.join(BASE_DIR, 'logs')
 os.makedirs(LOGS_DIR, exist_ok=True)
 
-# Celery Beat Schedule
+
+# Celery Beat Schedule - configurable
 CELERY_BEAT_SCHEDULE = {
     'check-expired-offers-every-10-min': {
         'task': 'Offer.tasks.check_expired_offers',
-        'schedule': 600.0,  # 10 minutes
+        'schedule': float(os.getenv('OFFER_CHECK_INTERVAL', '600')),
     },
     'reconcile-transactions-every-30-min': {
         'task': 'Wallet.tasks.reconcile_transactions',
-        'schedule': 1800.0,  # 30 minutes
+        'schedule': float(os.getenv('TRANSACTION_RECONCILE_INTERVAL', '1800')),
     },
 }
 
@@ -413,10 +469,29 @@ structlog.configure(
 )
 
 
-FLUTTERWAVE_SECRET_KEY = os.getenv("FLUTTERWAVE_SECRET_KEY")
-FLUTTERWAVE_PUBLIC_KEY = os.getenv("FLUTTERWAVE_PUBLIC_KEY")
-FLUTTERWAVE_ENCRYPTION_KEY = os.getenv("FLUTTERWAVE_ENCRYPTION_KEY")
-FLUTTERWAVE_WEBHOOK_SECRET = os.getenv("FLUTTERWAVE_WEBHOOK_SECRET")
 
-# Didit settings
-DIDIT_WEBHOOK_SECRET = os.getenv('DIDIT_WEBHOOK_SECRET', '')
+# Monitoring avec Sentry
+SENTRY_DSN = os.getenv('SENTRY_DSN')
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development' if DEBUG else 'production')
+if SENTRY_DSN and not DEBUG:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=ENVIRONMENT,
+        integrations=[DjangoIntegration(), CeleryIntegration()],
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+        ignore_errors=[
+            'rest_framework.exceptions.NotFound',
+            'rest_framework.exceptions.PermissionDenied',
+        ],
+    )
+
+# Didit settings - validation stricte
+DIDIT_WEBHOOK_SECRET = os.getenv('DIDIT_WEBHOOK_SECRET')
+if not DIDIT_WEBHOOK_SECRET:
+    if not DEBUG:
+        raise ValueError("Production: DIDIT_WEBHOOK_SECRET must be configured in .env for security")
+    DIDIT_WEBHOOK_SECRET = 'dev-webhook-secret'

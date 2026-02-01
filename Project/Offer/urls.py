@@ -7,6 +7,7 @@ from .views import (
     AcceptOfferView,
     ValidateOfferView, 
     ConfirmOfferView, 
+    BeneficiaryConfirmView,
     CancelOfferView, 
     DisputeOfferView,
     InitiateDisputeView,
@@ -28,6 +29,7 @@ urlpatterns = [
     path('<uuid:id>/accept/', AcceptOfferView.as_view(), name='accept_offer'),
     path('<uuid:id>/validate/', ValidateOfferView.as_view(), name='validate_offer'),
     path('<uuid:id>/confirm/', ConfirmOfferView.as_view(), name='confirm_offer'),
+    path('<uuid:id>/beneficiary-confirm/', BeneficiaryConfirmView.as_view(), name='beneficiary_confirm'),
     path('<uuid:id>/cancel/', CancelOfferView.as_view(), name='cancel_offer'),
     path('<uuid:id>/dispute/', DisputeOfferView.as_view(), name='dispute_offer'),
     

@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
-from django.db import transaction as db_transaction
+from django.db import transaction as db_transaction, IntegrityError
 from django.utils import timezone
 from django.core.cache import cache
 import structlog
@@ -357,6 +357,11 @@ class VerifyOTPView(APIView):
                 else:
                     logger.debug("user_found", user_id=str(user.id))
                     
+        except IntegrityError:
+            # Race condition: l'utilisateur a été créé par une autre requête entre-temps
+            user = User.objects.get(full_phone_number=full_phone_number)
+            logger.info("user_registration_race_condition_resolved", user_id=str(user.id))
+            
         except Exception as e:
             logger.error("user_resolution_error", error=str(e), phone=full_phone_number)
             return Response({

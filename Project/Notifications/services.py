@@ -1,14 +1,13 @@
 import structlog
 from django.conf import settings
 from .models import Notification, Device
-from .tasks import send_email_notification_task
 from twilio.request_validator import RequestValidator
 
 logger = structlog.get_logger(__name__)
 
 class NotificationService:
     """
-    Service unifié pour envoyer des notifications via plusieurs canaux (In-App, Push, Email).
+    Service unifié pour envoyer des notifications via plusieurs canaux (In-App, SMS/Twilio).
     Utilise Celery pour l'envoi asynchrone (sauf pour la création DB qui est rapide).
     """
 
@@ -36,7 +35,7 @@ class NotificationService:
             body (str): Corps du message.
             notification_type (str): Type (transaction, offer, etc.).
             data (dict): Données méta (ex: ID transaction) pour deep linking.
-            channels (list): Liste des canaux ['db', 'push', 'email']. Défaut: tous.
+            channels (list): Liste des canaux ['db', 'sms']. Défaut: tous.
         """
         if channels is None:
             channels = ['db', 'sms'] # Par défaut SMS au lieu de Push
@@ -74,11 +73,3 @@ class NotificationService:
             else:
                 logger.debug("no_active_phone_numbers_for_sms", user_id=str(user.id))
 
-        # 3. Email - Async
-        if 'email' in channels and user.email:
-             # Appel Tâche Celery
-             send_email_notification_task.delay(
-                 email=user.email,
-                 subject=title,
-                 message=body # Ou utiliser un template HTML dédié dans la tâche
-             )

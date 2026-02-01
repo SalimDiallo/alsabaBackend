@@ -34,9 +34,10 @@ Ce dossier contient la collection Insomnia mise à jour pour tester l'intégrali
 
 ## 🤝 Phase 4 : Offres P2P & Escrow
 1.  **Offer: Create** : Vendeur (A1) crée une annonce.
-2.  **Offer: Accept** : Acheteur (A2) accepte.
-3.  **Offer: Validate** : Vendeur (A1) valide le match.
-4.  **Offer: Confirm** : Finalisation automatique (fonds libérés).
+2.  **Offer: Accept** : Acheteur (A2) accepte (Désigne B1).
+3.  **Offer: Validate** : Vendeur (A1) valide le match (Désigne B2).
+4.  **Offer: Beneficiary Confirm** : B1 et B2 confirment la participation (Le swap s'exécute automatiquement après les deux confirmations).
+5.  **Offer: Confirm** : (Admin/Manuel) Forcer l'exécution du swap si besoin.
 
 ---
 

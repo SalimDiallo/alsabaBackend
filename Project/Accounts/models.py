@@ -4,6 +4,9 @@ from django.utils import timezone
 import uuid
 import phonenumbers
 from phonenumbers import PhoneNumberFormat
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class UserQuerySet(models.QuerySet):

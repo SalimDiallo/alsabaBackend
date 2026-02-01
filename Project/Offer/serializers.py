@@ -26,9 +26,10 @@ class OfferSerializer(serializers.ModelSerializer):
             'id', 'user', 'amount_sell', 'currency_sell', 
             'amount_buy', 'currency_buy', 'rate', 
             'status', 'created_at', 'expires_at',
-            'accepted_by', 'accepted_at'
+            'accepted_by', 'accepted_at',
+            'b1_confirmed', 'b2_confirmed'
         ]
-        read_only_fields = ['id', 'user', 'rate', 'status', 'created_at', 'expires_at', 'accepted_by', 'accepted_at']
+        read_only_fields = ['id', 'user', 'rate', 'status', 'created_at', 'expires_at', 'accepted_by', 'accepted_at', 'b1_confirmed', 'b2_confirmed']
 
 class CreateOfferSerializer(serializers.Serializer):
     amount_sell = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=1)

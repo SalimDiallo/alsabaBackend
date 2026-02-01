@@ -371,56 +371,39 @@ class FlutterwaveWebhookView(APIView):
             signature = request.META.get('HTTP_X_FLUTTERWAVE_SIGNATURE') or \
                        request.META.get('HTTP_SIGNATURE') or \
                        request.META.get('HTTP_X_VERIFY_HASH')
-            
-            # Récupérer le corps brut pour la vérification
             raw_body = request.body
-            
-            # Vérifier la signature si configurée
             from Wallet.Services.flutterwave.base import FlutterwaveBaseService
             base_service = FlutterwaveBaseService()
-            
-            if base_service.webhook_secret and signature:
-                if not base_service.verify_webhook_signature(raw_body, signature):
-                    logger.warning(
-                        "webhook_signature_invalid",
-                        signature_provided=signature[:20] + "..." if signature else None
-                    )
-                    return Response(
-                        {"status": "error", "message": "Invalid signature"},
-                        status=status.HTTP_401_UNAUTHORIZED
-                    )
-            elif base_service.webhook_secret and not signature:
+            if not base_service.webhook_secret:
+                logger.error("flutterwave_webhook_secret_missing")
+                return Response({"status": "error", "message": "Webhook secret not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            if not signature:
                 logger.warning("webhook_signature_missing")
+                return Response({"status": "error", "message": "Signature required"}, status=status.HTTP_401_UNAUTHORIZED)
+            if not base_service.verify_webhook_signature(raw_body, signature):
+                logger.warning(
+                    "webhook_signature_invalid",
+                    signature_provided=signature[:20] + "..." if signature else None
+                )
                 return Response(
-                    {"status": "error", "message": "Signature required"},
+                    {"status": "error", "message": "Invalid signature"},
                     status=status.HTTP_401_UNAUTHORIZED
                 )
-
             webhook_data = request.data
-
             logger.info(
                 "webhook_received",
                 event=webhook_data.get("event"),
                 data_id=webhook_data.get("data", {}).get("id"),
                 signature_valid=True
             )
-
             result = wallet_service.process_webhook(webhook_data)
-
             if result["success"]:
-                return Response({"status": "success"}, status=status.HTTP_200_OK)
+                return Response({"status": "success", "message": result.get("message")}, status=status.HTTP_200_OK)
             else:
-                return Response(
-                    {"status": "error", "message": result.get("error")},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
+                return Response({"status": "error", "message": result.get("error")}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            logger.error("webhook_processing_error", error=str(e))
-            return Response(
-                {"status": "error", "message": "Internal server error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            logger.error("flutterwave_webhook_processing_error", error=str(e))
+            return Response({"status": "error", "message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ConfirmDepositView(APIView):

@@ -175,16 +175,17 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
     
     def verify_charge(self, charge_id: str) -> Dict[str, Any]:
         """
-        Vérifie le statut d'un charge Orange Money
+        Vérifie le statut d'un charge Orange Money (Transaction V3)
         
         Args:
-            charge_id: ID du charge
+            charge_id: ID de la transaction Flutterwave
             
         Returns:
             dict: Détails du charge avec statut
         """
         token = self.get_access_token()
-        endpoint = f"/charges/{charge_id}"
+        # Endpoint V3 standard pour la vérification de transaction
+        endpoint = f"/transactions/{charge_id}/verify"
         
         try:
             response = self._make_request("GET", endpoint, token=token)
