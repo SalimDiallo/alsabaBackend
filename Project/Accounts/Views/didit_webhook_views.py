@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
 import structlog
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 
 from Accounts.Services.didit_webhook_service import didit_webhook_service
 
@@ -18,6 +19,12 @@ class DiditWebhookView(APIView):
     """
     permission_classes = []  # Pas d'authentification par token, car c'est un webhook externe
 
+    @extend_schema(
+        summary="Webhook Didit KYC",
+        description="Reçoit les callbacks de statut de vérification KYC.",
+        responses={200: {"description": "Webhook traité avec succès"}},
+        request=OpenApiTypes.OBJECT # Payload JSON générique
+    )
     def post(self, request):
         """
         Traite les webhooks Didit pour les mises à jour KYC avec vérification de signature

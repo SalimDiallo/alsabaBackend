@@ -21,6 +21,10 @@ from ..Serializers.wallet_serializers import (
     TransactionStatusUpdateSerializer
 )
 
+from Project.idempotency import idempotent_endpoint
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes, inline_serializer
+from rest_framework import serializers
+
 logger = structlog.get_logger(__name__)
 
 
@@ -31,6 +35,11 @@ class WalletView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Obtenir le portefeuille",
+        description="Retourne les informations du portefeuille de l'utilisateur connecté (solde, devise, transactions récentes).",
+        responses={200: WalletSerializer}
+    )
     def get(self, request):
         wallet = wallet_service.get_or_create_wallet(request.user)
 
@@ -65,6 +74,17 @@ class DepositView(APIView):
     permission_classes = [IsAuthenticated]
     throttle_scope = 'deposit'
 
+    @extend_schema(
+        summary="Initier un dépôt",
+        description="Initie une transaction de dépôt. Retourne un lien de paiement ou les instructions.",
+        request=DepositSerializer,
+        responses={
+            201: TransactionSerializer,
+            400: {"description": "Erreur de validation"},
+            429: {"description": "Rate limited"}
+        }
+    )
+    @idempotent_endpoint()
     def post(self, request):
         serializer = DepositSerializer(data=request.data, context={'request': request})
         if not serializer.is_valid():
@@ -172,6 +192,17 @@ class WithdrawalView(APIView):
     permission_classes = [IsAuthenticated]
     throttle_scope = 'withdrawal'
 
+    @extend_schema(
+        summary="Initier un retrait",
+        description="Initie une transaction de retrait vers un compte bancaire ou mobile money.",
+        request=WithdrawalSerializer,
+        responses={
+            201: TransactionSerializer,
+            400: {"description": "Fonds insuffisants ou données invalides"},
+            429: {"description": "Rate limited"}
+        }
+    )
+    @idempotent_endpoint()
     def post(self, request):
         serializer = WithdrawalSerializer(data=request.data)
         if not serializer.is_valid():
@@ -268,6 +299,20 @@ class TransactionListView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Lister les transactions",
+        description="Liste l'historique des transactions avec filtrage et pagination.",
+        parameters=[
+            OpenApiParameter(name='transaction_type', type=OpenApiTypes.STR, enum=['deposit', 'withdrawal'], required=False),
+            OpenApiParameter(name='status', type=OpenApiTypes.STR, enum=['pending', 'processing', 'completed', 'failed', 'cancelled'], required=False),
+            OpenApiParameter(name='payment_method', type=OpenApiTypes.STR, enum=['card', 'orange_money'], required=False),
+            OpenApiParameter(name='date_from', type=OpenApiTypes.DATE, required=False),
+            OpenApiParameter(name='date_to', type=OpenApiTypes.DATE, required=False),
+            OpenApiParameter(name='limit', type=OpenApiTypes.INT, required=False, default=20),
+            OpenApiParameter(name='offset', type=OpenApiTypes.INT, required=False, default=0),
+        ],
+        responses={200: TransactionSerializer(many=True)}
+    )
     def get(self, request):
         # Validation des paramètres de filtrage
         filter_serializer = TransactionListSerializer(data=request.query_params)
@@ -332,6 +377,14 @@ class TransactionDetailView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Détail d'une transaction",
+        description="Récupère les détails d'une transaction spécifique par ID.",
+        responses={
+            200: TransactionSerializer,
+            404: {"description": "Transaction introuvable"}
+        }
+    )
     def get(self, request, transaction_id):
         try:
             # Récupération du wallet de l'utilisateur
@@ -413,6 +466,12 @@ class ConfirmDepositView(APIView):
     """
     permission_classes = [IsAdminUser]
 
+    @extend_schema(
+        summary="Confirmer un dépôt (Admin)",
+        description="Confirme manuellement un dépôt.",
+        request=TransactionConfirmSerializer,
+        responses={200: TransactionSerializer}
+    )
     def post(self, request, transaction_id):
         serializer = TransactionConfirmSerializer(data=request.data)
         if not serializer.is_valid():
@@ -458,6 +517,12 @@ class CancelDepositView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Annuler un dépôt",
+        description="Annule un dépôt en attente.",
+        request=TransactionCancelSerializer,
+        responses={200: TransactionSerializer}
+    )
     def post(self, request, transaction_id):
         serializer = TransactionCancelSerializer(data=request.data)
         if not serializer.is_valid():
@@ -502,6 +567,12 @@ class ConfirmWithdrawalView(APIView):
     """
     permission_classes = [IsAdminUser]
 
+    @extend_schema(
+        summary="Confirmer un retrait (Admin)",
+        description="Confirme manuellement un retrait.",
+        request=TransactionConfirmSerializer,
+        responses={200: TransactionSerializer}
+    )
     def post(self, request, transaction_id):
         serializer = TransactionConfirmSerializer(data=request.data)
         if not serializer.is_valid():
@@ -547,6 +618,12 @@ class CancelWithdrawalView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Annuler un retrait",
+        description="Annule un retrait en attente. Rembourse le montant sur le portefeuille.",
+        request=TransactionCancelSerializer,
+        responses={200: TransactionSerializer}
+    )
     def post(self, request, transaction_id):
         serializer = TransactionCancelSerializer(data=request.data)
         if not serializer.is_valid():
@@ -592,6 +669,23 @@ class TransactionStatusView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Vérifier le statut d'une transaction",
+        description="Vérifie le statut (locaux et distant Flutterwave) d'une transaction.",
+        responses={
+             200: inline_serializer(
+                name='TransactionStatusResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'transaction': TransactionSerializer(),
+                    'flutterwave_status': serializers.CharField(),
+                    'can_cancel': serializers.BooleanField(),
+                    'can_confirm': serializers.BooleanField(),
+                    'next_actions': serializers.ListField()
+                }
+             )
+        }
+    )
     def get(self, request, transaction_id):
         try:
             # Récupération du wallet de l'utilisateur
@@ -655,6 +749,12 @@ class UpdateTransactionStatusView(APIView):
     """
     permission_classes = [IsAdminUser]
     
+    @extend_schema(
+        summary="Mettre à jour le statut d'une transaction (Admin)",
+        description="Force la mise à jour du statut d'une transaction.",
+        request=TransactionStatusUpdateSerializer,
+        responses={200: TransactionSerializer}
+    )
     def patch(self, request, transaction_id):
 
         serializer = TransactionStatusUpdateSerializer(data=request.data)
@@ -702,6 +802,11 @@ class WalletStatsView(APIView):
     """
     permission_classes = [IsAdminUser]
     
+    @extend_schema(
+        summary="Statistiques du portefeuille (Admin)",
+        description="Retourne des statistiques globales sur les portefeuilles.",
+        responses={200: OpenApiTypes.OBJECT}
+    )
     def get(self, request):
 
         stats = wallet_service.get_wallet_statistics()
@@ -719,6 +824,14 @@ class RetryTransactionView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Réessayer une transaction échouée",
+        description="Tente de relancer ou confirmer une transaction marquée comme échouée ou annulée.",
+        responses={
+            200: TransactionSerializer,
+            501: {"description": "Non implémenté"}
+        }
+    )
     def post(self, request, transaction_id):
         try:
             wallet = wallet_service.get_or_create_wallet(request.user)
@@ -780,6 +893,31 @@ class EstimateFeesView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Estimer les frais",
+        description="Calcule les frais estimés pour une transaction donnée.",
+        request=inline_serializer(
+            name='EstimateFeesRequest',
+            fields={
+                'transaction_type': serializers.ChoiceField(choices=['deposit', 'withdrawal']),
+                'amount': serializers.DecimalField(max_digits=12, decimal_places=2),
+                'payment_method': serializers.ChoiceField(choices=['card', 'orange_money']),
+                'currency': serializers.CharField(required=False)
+            }
+        ),
+        responses={
+            200: inline_serializer(
+                name='EstimateFeesResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'amount': serializers.FloatField(),
+                    'fee': serializers.FloatField(),
+                    'total': serializers.FloatField(),
+                    'currency': serializers.CharField()
+                }
+            )
+        }
+    )
     def post(self, request):
         """
         Estime les frais pour un dépôt ou retrait

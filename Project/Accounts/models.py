@@ -5,6 +5,7 @@ import uuid
 import phonenumbers
 from phonenumbers import PhoneNumberFormat
 import structlog
+from Accounts.encrypted_storage import encrypted_kyc_storage
 
 logger = structlog.get_logger(__name__)
 
@@ -221,11 +222,28 @@ class KYCDocument(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="kyc_documents")
     document_type = models.CharField(max_length=20, choices=DOCUMENT_TYPES)
     
-    # ✅ SÉCURITÉ AMÉLIORÉE: Images sensibles
-    # Note: django-fernet-fields peut être ajouté pour chiffrement complet
-    front_image = models.ImageField(upload_to="kyc_documents/", help_text="Face avant du document")
-    back_image = models.ImageField(upload_to="kyc_documents/", blank=True, null=True, help_text="Face arrière")
-    selfie_image = models.ImageField(upload_to="kyc_selfies/", blank=True, null=True, help_text="Selfie")
+    # ✅ SÉCURITÉ PCI-DSS: Images chiffrées au repos (At-Rest Encryption)
+    # Utilise EncryptedFileStorage pour chiffrer les fichiers avec Fernet/AES-128
+    
+    front_image = models.ImageField(
+        upload_to="kyc_documents/", 
+        storage=encrypted_kyc_storage,
+        help_text="Face avant du document (Chiffré)"
+    )
+    back_image = models.ImageField(
+        upload_to="kyc_documents/", 
+        storage=encrypted_kyc_storage,
+        blank=True, 
+        null=True, 
+        help_text="Face arrière (Chiffré)"
+    )
+    selfie_image = models.ImageField(
+        upload_to="kyc_selfies/", 
+        storage=encrypted_kyc_storage,
+        blank=True, 
+        null=True, 
+        help_text="Selfie (Chiffré)"
+    )
 
     verification_status = models.CharField(max_length=20, choices=VERIFICATION_STATUS, default="pending")
     verification_note = models.TextField(blank=True)

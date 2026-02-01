@@ -9,6 +9,8 @@ from ..Services.OTP_services import didit_service
 from ..utils import auth_utils
 import structlog
 from datetime import datetime
+from drf_spectacular.utils import extend_schema
+from ..Serializers.delete import AccountDeleteSerializer, AccountDeleteConfirmSerializer
 
 logger = structlog.get_logger(__name__)
 
@@ -19,12 +21,22 @@ class AccountDeleteRequestView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Demander la suppression du compte",
+        description="Initie le processus de supression. Envoie un OTP de confirmation.",
+        request=AccountDeleteSerializer,
+        responses={
+            200: {"description": "OTP envoyé"},
+            400: {"description": "Une demande est déjà en cours"},
+            429: {"description": "Trop de tentatives"}
+        }
+    )
     def post(self, request):
         """
         Initie une demande de suppression de compte.
         Envoie un code OTP de confirmation.
         """
-        from ..Serializers.delete import AccountDeleteSerializer
+        #from ..Serializers.delete import AccountDeleteSerializer # Moved to top
         
         serializer = AccountDeleteSerializer(data=request.data)
         if not serializer.is_valid():
@@ -151,12 +163,23 @@ class AccountDeleteConfirmView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Confirmer la suppression du compte",
+        description="Valide l'OTP et effectue la suppression logicielle (soft delete) du compte.",
+        request=AccountDeleteConfirmSerializer,
+        responses={
+            200: {"description": "Compte supprimé avec succès"},
+            400: {"description": "Code invalide ou session expirée"},
+            403: {"description": "Utilisateur non autorisé"},
+            429: {"description": "Trop de tentatives échouées"}
+        }
+    )
     def post(self, request):
         """
         Confirme la suppression de compte avec le code OTP.
         Effectue un soft delete de l'utilisateur.
         """
-        from ..Serializers.delete import AccountDeleteConfirmSerializer
+        #from ..Serializers.delete import AccountDeleteConfirmSerializer # Moved to top
         
         serializer = AccountDeleteConfirmSerializer(data=request.data)
         if not serializer.is_valid():

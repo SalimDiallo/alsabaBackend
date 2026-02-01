@@ -114,6 +114,7 @@ INSTALLED_APPS = [
     'Suggestions',
     'Notifications',
     'django_celery_beat',
+    'drf_spectacular',
 ]
 
 
@@ -134,11 +135,13 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    # ✅ NOUVEAU: Throttle classes Redis pour environnement distribué
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
-        'rest_framework.throttling.ScopedRateThrottle',
+        'Project.throttling.RedisAnonRateThrottle',
+        'Project.throttling.RedisUserRateThrottle',
+        'Project.throttling.RedisScopedRateThrottle',
     ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_RATES': {
         'anon': '30/hour',
         'user': '1000/day',
@@ -159,6 +162,29 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+# Flutterwave Configuration
+FLUTTERWAVE_SECRET_KEY = os.getenv('FLUTTERWAVE_SECRET_KEY', '')
+FLUTTERWAVE_PUBLIC_KEY = os.getenv('FLUTTERWAVE_PUBLIC_KEY', '')
+FLUTTERWAVE_ENCRYPTION_KEY = os.getenv('FLUTTERWAVE_ENCRYPTION_KEY', '')
+FLUTTERWAVE_WEBHOOK_SECRET = os.getenv('FLUTTERWAVE_WEBHOOK_SECRET', '')
+FLUTTERWAVE_ENVIRONMENT = os.getenv('FLUTTERWAVE_ENVIRONMENT', 'sandbox')
+FLUTTERWAVE_CURRENCY = os.getenv('FLUTTERWAVE_CURRENCY', 'EUR')
+
+
+# Swagger / API Documentation Settings
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Alsaba P2P API',
+    'DESCRIPTION': 'API sécurisée pour l\'échange P2P et le portefeuille Alsaba.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SWAGGER_UI_SETTINGS': {
+        'deepLinking': True,
+        'persistAuthorization': True,
+    },
+}
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -234,28 +260,43 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Caching Configuration
-if DEBUG:
-    CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-            'LOCATION': 'unique-snowflake',
-        }
-    }
-else:
-    CACHES = {
-        'default': {
-            'BACKEND': 'django_redis.cache.RedisCache',
-            'LOCATION': os.getenv('REDIS_URL', 'redis://redis:6379/1'),
-            'OPTIONS': {
-                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-                'CONNECTION_POOL_KWARGS': {'max_connections': 50},
-                'SOCKET_CONNECT_TIMEOUT': 5,
-                'SOCKET_TIMEOUT': 5,
-            },
-            'KEY_PREFIX': 'alsaba',
-            'TIMEOUT': 300,
-        }
-    }
+# Dedicated Redis cache for throttling (works across multiple instances)
+REDIS_THROTTLE_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/2')
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+    } if DEBUG else {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': os.getenv('REDIS_URL', 'redis://redis:6379/1'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {'max_connections': 50},
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+        },
+        'KEY_PREFIX': 'alsaba',
+        'TIMEOUT': 300,
+    },
+    # ✅ NOUVEAU: Cache Redis dédié pour le throttling (distribué)
+    # ✅ NOUVEAU: Cache Redis dédié pour le throttling (distribué)
+    'throttle': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-throttle-snowflake',
+    } if DEBUG else {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': REDIS_THROTTLE_URL,
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {'max_connections': 20},
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+        },
+        'KEY_PREFIX': 'alsaba_throttle',
+        'TIMEOUT': 3600,  # 1 hour default TTL for throttle keys
+    },
+}
 
 
 # Email Configuration (Set to Console for fallback, as project uses SMS-only)

@@ -9,7 +9,9 @@ from django.core.cache import cache
 import structlog
 from rest_framework.permissions import IsAuthenticated
 from ..utils import auth_utils
-from ..Serializers.OTP_serializers import PhoneAuthSerializer, VerifyOTPSerializer
+from ..Serializers.OTP_serializers import PhoneAuthSerializer, VerifyOTPSerializer, ResendOTPSerializer
+
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 #from ..Services.OTP_services import didit_service
 
 from ..Services.OTP_services import didit_service
@@ -25,6 +27,23 @@ class PhoneAuthView(APIView):
     """
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary="Initier l'authentification par téléphone",
+        description="Envoie un code OTP par SMS au numéro fourni. Crée ou récupère l'utilisateur associé.",
+        request=PhoneAuthSerializer,
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "success": {"type": "boolean"},
+                    "session_key": {"type": "string"},
+                    "phone_number": {"type": "string"},
+                }
+            },
+            400: {"description": "Erreur de validation ou échec d'envoi"},
+            429: {"description": "Trop de tentatives"}
+        }
+    )
     def post(self, request):
         """
         Envoie un code OTP au numéro de téléphone fourni.
@@ -215,6 +234,28 @@ class VerifyOTPView(APIView):
     """
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary="Vérifier le code OTP",
+        description="Vérifie le code OTP envoyé par SMS. Si valide, retourne les tokens JWT.",
+        request=VerifyOTPSerializer,
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "success": {"type": "boolean"},
+                    "user": {"type": "object"}, # On pourrait mettre UserSerializer ici si importé
+                    "auth": {
+                        "type": "object",
+                        "properties": {
+                            "access_token": {"type": "string"},
+                            "refresh_token": {"type": "string"}
+                        }
+                    }
+                }
+            },
+            400: {"description": "Code invalide ou expiré"}
+        }
+    )
     def post(self, request):
         """
         Vérifie un code OTP et authentifie l'utilisateur.
@@ -438,6 +479,16 @@ class ResendOTPView(APIView):
     """
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary="Renvoyer le code OTP",
+        description="Envoie un nouveau code OTP si le précédent n'a pas été reçu.",
+        request=ResendOTPSerializer,
+        responses={
+            200: {"description": "Nouveau code envoyé"},
+            400: {"description": "Session expirée ou invalide"},
+            429: {"description": "Trop de demandes de renvoi"}
+        }
+    )
     def post(self, request):
         """
         Renvoie un nouveau code OTP (nouvelle requête Didit).
@@ -530,6 +581,22 @@ class AuthStatusView(APIView):
     """
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary="Vérifier le statut de la session",
+        description="Vérifie si une session d'authentification est toujours valide.",
+        parameters=[
+            OpenApiParameter(name='session_key', description='Clé de session', required=True, type=OpenApiTypes.STR),
+        ],
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "authenticated": {"type": "boolean"},
+                    "session": {"type": "object"}
+                }
+            }
+        }
+    )
     def get(self, request):
         """
         Vérifie si une session est toujours valide et retourne son état.

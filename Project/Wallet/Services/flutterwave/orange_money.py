@@ -25,8 +25,15 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
         self.country_code = getattr(settings, 'FLUTTERWAVE_COUNTRY_CODE', '221')  # Sénégal par défaut
         self.network = getattr(settings, 'FLUTTERWAVE_NETWORK', 'ORANGE')
         
-        if not all([self.client_id, self.client_secret]):
-            raise ValueError("Configuration Flutterwave incomplète pour Orange Money")
+        # Validation: secret_key est requis pour Orange Money
+        # On log un warning au lieu de lever une erreur pour permettre le démarrage sans config
+        self._is_configured = bool(self.secret_key)
+        if not self._is_configured:
+            logger.warning(
+                "flutterwave_orange_service_not_configured",
+                has_secret_key=bool(self.secret_key),
+                message="Service Flutterwave Orange Money non configuré - les opérations échoueront"
+            )
     
     def create_customer(self, email: str, first_name: str, last_name: str, 
                        phone: str, country_code: Optional[str] = None) -> str:

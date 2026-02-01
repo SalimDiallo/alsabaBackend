@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 import structlog
 from datetime import datetime
+from drf_spectacular.utils import extend_schema
 
 from ..utils import auth_utils
 from ..models import User, KYCDocument
@@ -23,6 +24,18 @@ class KYCVerifyView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Soumettre un document KYC",
+        description="Envoie un document d'identité (image base64 ou URL) pour vérification par Didit.",
+        request=KYCVerifySerializer,
+        responses={
+            200: {"description": "Document reçu et approuvé"},
+            202: {"description": "Document reçu, en attente de vérification manuelle"},
+            400: {"description": "Validation échouée ou document rejeté"},
+            403: {"description": "Numéro de téléphone non vérifié"},
+            429: {"description": "Trop de tentatives"}
+        }
+    )
     def post(self, request):
         serializer = KYCVerifySerializer(data=request.data)
         if not serializer.is_valid():

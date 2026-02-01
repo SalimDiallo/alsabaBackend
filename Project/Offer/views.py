@@ -12,6 +12,8 @@ from .serializers import (
     DisputeSerializer, InitiateDisputeSerializer, ResolveDisputeSerializer
 )
 from .services import SecureEscrowService
+from Project.idempotency import idempotent_endpoint
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -24,6 +26,11 @@ class OfferListView(generics.ListAPIView):
     serializer_class = OfferSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        summary="Lister les offres",
+        description="Liste les offres disponibles (OPEN) ou celles impliquant l'utilisateur.",
+        responses={200: OfferSerializer(many=True)}
+    )
     def get_queryset(self):
         user = self.request.user
         return Offer.objects.filter(
@@ -40,6 +47,13 @@ class CreateOfferView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     throttle_scope = 'offer_create'
 
+    @extend_schema(
+        summary="Créer une offre",
+        description="Crée une nouvelle offre de swap de devises.",
+        request=CreateOfferSerializer,
+        responses={201: OfferSerializer}
+    )
+    @idempotent_endpoint()
     def post(self, request):
         serializer = CreateOfferSerializer(data=request.data)
         if serializer.is_valid():
@@ -77,6 +91,12 @@ class UpdateOfferView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        summary="Mettre à jour une offre",
+        description="Permet de modifier une offre existante si elle est encore ouverte et appartient à l'utilisateur.",
+        request=UpdateOfferSerializer,
+        responses={200: OfferSerializer}
+    )
     def put(self, request, id):
         offer = get_object_or_404(Offer, id=id)
         if offer.user != request.user:
@@ -129,6 +149,13 @@ class AcceptOfferView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     throttle_scope = 'offer_accept'
 
+    @extend_schema(
+        summary="Accepter une offre",
+        description="Permet à un second utilisateur d'accepter une offre ouverte.",
+        request=AcceptOfferSerializer,
+        responses={200: OfferSerializer}
+    )
+    @idempotent_endpoint()
     def post(self, request, id):
         serializer = AcceptOfferSerializer(data=request.data)
         if serializer.is_valid():
@@ -162,6 +189,12 @@ class ValidateOfferView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        summary="Valider une offre (Vendeur)",
+        description="Le vendeur (A1) valide l'offre et fournit les détails du bénéficiaire final.",
+        request=ValidateOfferSerializer,
+        responses={200: OfferSerializer}
+    )
     def post(self, request, id):
         serializer = ValidateOfferSerializer(data=request.data)
         if serializer.is_valid():
@@ -195,6 +228,12 @@ class ConfirmOfferView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        summary="Confirmer la transaction",
+        description="Valide et exécute le swap une fois toutes les conditions réunies.",
+        responses={200: OfferSerializer},
+        request=None
+    )
     def post(self, request, id):
         try:
             SecureEscrowService.confirm_transaction(offer_id=id)
@@ -213,6 +252,12 @@ class BeneficiaryConfirmView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        summary="Confirmation bénéficiaire",
+        description="Permet à un bénéficiaire de confirmer la réception des fonds.",
+        responses={200: OfferSerializer},
+        request=None
+    )
     def post(self, request, id):
         try:
             offer = SecureEscrowService.confirm_beneficiary_participation(
@@ -233,6 +278,12 @@ class CancelOfferView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        summary="Annuler une offre",
+        description="Annule une offre existante si elle n'est pas encore finalisée.",
+        responses={200: OfferSerializer},
+        request=None
+    )
     def post(self, request, id):
         offer = get_object_or_404(Offer, id=id)
         if offer.user != request.user and not request.user.is_staff:
@@ -252,6 +303,12 @@ class DisputeOfferView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        summary="Ouvrir un litige (obsolète?)",
+        description="Ouvre un litige sur une offre. (Voir InitiateDisputeView pour la nouvelle version)",
+        request=DisputeOfferSerializer,
+        responses={200: OfferSerializer}
+    )
     def post(self, request, id):
         serializer = DisputeOfferSerializer(data=request.data)
         if serializer.is_valid():
@@ -278,6 +335,12 @@ class InitiateDisputeView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
     
+    @extend_schema(
+        summary="Initier un litige",
+        description="Crée un nouveau litige associé à un offre spécifique.",
+        request=InitiateDisputeSerializer,
+        responses={201: DisputeSerializer}
+    )
     def post(self, request, offer_id):
         serializer = InitiateDisputeSerializer(data=request.data)
         if not serializer.is_valid():
@@ -313,6 +376,11 @@ class DisputeDetailView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
     
+    @extend_schema(
+        summary="Détail d'un litige",
+        description="Récupère les détails d'un litige spécifique.",
+        responses={200: DisputeSerializer}
+    )
     def get(self, request, dispute_id):
         dispute = get_object_or_404(Dispute, id=dispute_id)
         
@@ -336,6 +404,11 @@ class ListDisputesView(generics.ListAPIView):
     serializer_class = DisputeSerializer
     permission_classes = [permissions.IsAuthenticated]
     
+    @extend_schema(
+        summary="Lister les litiges",
+        description="Liste tous les litiges accessibles à l'utilisateur.",
+        responses={200: DisputeSerializer(many=True)}
+    )
     def get_queryset(self):
         user = self.request.user
         
@@ -360,6 +433,12 @@ class ResolveDisputeView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
     
+    @extend_schema(
+        summary="Résoudre un litige (Admin)",
+        description="Permet à un administrateur de résoudre un litige.",
+        request=ResolveDisputeSerializer,
+        responses={200: DisputeSerializer}
+    )
     def post(self, request, dispute_id):
         if not request.user.is_staff:
             return Response(

@@ -4,7 +4,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from ..Serializers.profile import ProfileSerializer
+from ..Serializers.profile import ProfileSerializer, ProfileUpdateSerializer
+from drf_spectacular.utils import extend_schema
 from django.utils import timezone
 import structlog    
 logger = structlog.get_logger(__name__)
@@ -16,6 +17,11 @@ class ProfileView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Récupérer le profil utilisateur",
+        description="Retourne les informations détaillées du profil, y compris le statut de vérification et le pourcentage de complétion.",
+        responses={200: ProfileSerializer} # Idéalement on définit un serializer complet pour la réponse enrichie, mais ProfileSerializer est une bonne base
+    )
     def get(self, request):
         """
         Récupère et retourne le profil de l'utilisateur authentifié.
@@ -44,12 +50,18 @@ class ProfileView(APIView):
             }
         }, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Mettre à jour le profil",
+        description="Permet de mettre à jour partiellement les informations du profil (email, nom, etc.).",
+        request=ProfileUpdateSerializer,
+        responses={200: ProfileSerializer}
+    )
     def patch(self, request):
         """
         Mise à jour partielle du profil
         """
         user = request.user
-        from ..Serializers.profile import ProfileUpdateSerializer
+        #from ..Serializers.profile import ProfileUpdateSerializer # Moved to top
         
         serializer = ProfileUpdateSerializer(
             user, 
@@ -84,7 +96,7 @@ class ProfileView(APIView):
         """
         Prépare les données enrichies du profil
         """
-        from ..Serializers.profile import ProfileSerializer
+        #from ..Serializers.profile import ProfileSerializer # Moved to top
         serializer = ProfileSerializer(user)
         profile_data = serializer.data
         

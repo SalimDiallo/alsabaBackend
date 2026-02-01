@@ -23,8 +23,16 @@ class FlutterwaveCardService(FlutterwaveBaseService):
         # Devise par défaut selon l'environnement
         self.currency = getattr(settings, 'FLUTTERWAVE_CURRENCY', 'EUR')
         
-        if not all([self.client_id, self.client_secret, self.encryption_key]):
-            raise ValueError("Configuration Flutterwave incomplète pour les cartes")
+        # Validation: secret_key et encryption_key sont requis pour les cartes
+        # On log un warning au lieu de lever une erreur pour permettre le démarrage sans config
+        self._is_configured = bool(self.secret_key and self.encryption_key)
+        if not self._is_configured:
+            logger.warning(
+                "flutterwave_card_service_not_configured",
+                has_secret_key=bool(self.secret_key),
+                has_encryption_key=bool(self.encryption_key),
+                message="Service Flutterwave non configuré - les opérations par carte échoueront"
+            )
     
     def create_customer(self, email: str, first_name: str, last_name: str, 
                        phone: str, country_code: str = "33", 
