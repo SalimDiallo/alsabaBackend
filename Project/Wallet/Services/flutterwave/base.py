@@ -276,22 +276,17 @@ class FlutterwaveBaseService:
             return False
         
         try:
-            # 1. Vérification standard Flutterwave (Secret Hash direct)
-            if signature == self.webhook_secret:
+            # 1. Vérification standard Flutterwave V3 (Secret Hash)
+            # Flutterwave transmet le hash secret tel quel dans le header 'verif-hash'
+            # Documentation: https://developer.flutterwave.com/docs/development/webhooks
+            if hmac.compare_digest(str(signature), str(self.webhook_secret)):
                 return True
                 
-            # 2. Fallback HMAC (si configuré comme tel)
-            key = self.webhook_secret.encode('utf-8')
-            computed = hmac.new(key, raw_body, hashlib.sha256).digest()
-            computed_b64 = base64.b64encode(computed).decode('utf-8')
-            
-            # Comparaison sécurisée
-            if hmac.compare_digest(computed_b64, signature):
-                return True
-                
+            # 2. Log d'échec pour diagnostic (sans exposer les secrets)
             logger.warning(
                 "webhook_signature_invalid",
-                provided_signature=signature[:20] + "..." if signature else None
+                provided_signature_prefix=signature[:5] if signature else "None",
+                reason="Signature mismatch with webhook_secret"
             )
             return False
             

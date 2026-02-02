@@ -14,7 +14,7 @@ class DiditVerificationService:
     Documentation : https://docs.didit.me
     Note: Didit ne propose pas d'endpoint resend, on doit renvoyer un nouveau code
     """
-    BASE_URL = "https://verification.didit.me/v2"
+    BASE_URL = "https://verification.didit.me/v3"
     SEND_CODE_URL = f"{BASE_URL}/phone/send"
     VERIFY_CODE_URL = f"{BASE_URL}/phone/check"
     # PAS de RESEND_CODE_URL - Didit ne propose pas cette fonctionnalité

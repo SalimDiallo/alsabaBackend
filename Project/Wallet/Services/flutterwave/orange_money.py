@@ -151,14 +151,45 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
         # FLUTTERWAVE V3 ATTEND DES UNITÉS (EX: 10.50) ET NON DES CENTIMES
         amount_units = float(amount_cents) / 100.0
 
+        # DÉTECTION MOBILE MONEY FRANCOPHONE (V3)
+        # Flutterwave v3 requiert l'endpoint /charges?type=mobile_money_franco pour le Sénégal (XOF)
+        is_franco = self.currency in ['XOF', 'XAF']
+        
+        endpoint = "/charges"
+        if is_franco:
+            endpoint += "?type=mobile_money_franco"
+
         json_data = {
-            "reference": reference,
+            "tx_ref": reference, # V3 mobile_money_franco utilise souvent tx_ref
             "currency": self.currency,
-            "customer_id": customer_id,
-            "payment_method_id": payment_method_id,
             "amount": amount_units,
-            "redirect_url": clean_redirect
+            "redirect_url": clean_redirect,
         }
+
+        if is_franco:
+            # Payload spécifique pour mobile_money_franco
+            # On récupère le customer par son ID pour avoir ses infos
+            try:
+                customer_resp = self._make_request("GET", f"/customers/{customer_id}", token=token)
+                customer_data = customer_resp.get("data", {})
+                json_data.update({
+                    "email": customer_data.get("email"),
+                    "phone_number": customer_data.get("phone", {}).get("number") or kwargs.get("phone_number"),
+                    "country": "SN" if self.currency == "XOF" else "CM", # Déduction simplifiée
+                })
+            except:
+                # Fallback sur les kwargs si le GET customer échoue
+                json_data.update({
+                    "email": kwargs.get("email"),
+                    "phone_number": kwargs.get("phone_number"),
+                    "country": kwargs.get("country", "SN" if self.currency == "XOF" else "CM"),
+                })
+        else:
+            # Mode standard (Nigeria, etc.)
+            json_data.update({
+                "customer_id": customer_id,
+                "payment_method_id": payment_method_id,
+            })
         
         headers = {
             "X-Idempotency-Key": str(uuid.uuid4())
@@ -170,11 +201,13 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
         try:
             response = self._make_request("POST", endpoint, token=token,
                                          json_data=json_data, headers=headers)
-            charge_id = response["data"]["id"]
+            # Flutterwave retourne parfois l'ID dans data.id ou directement
+            charge_id = response.get("data", {}).get("id") or response.get("id")
             logger.info("flutterwave_charge_initiated",
                        charge_id=charge_id,
-                       amount=amount,
-                       reference=reference)
+                       amount=amount_units,
+                       reference=reference,
+                       is_franco=is_franco)
             return charge_id
         except Exception as e:
             logger.error("flutterwave_charge_failed", error=str(e), reference=reference)
@@ -364,7 +397,10 @@ class FlutterwaveOrangeMoneyService(FlutterwaveBaseService):
             # Créer charge
             charge_id = self.charge_mobile_money(
                 customer_id, pm_id, int(amount * 100),
-                redirect_url=kwargs.get('redirect_url')
+                redirect_url=kwargs.get('redirect_url'),
+                email=customer_email,
+                phone_number=customer_phone,
+                country=country_code
             )
             
             return {

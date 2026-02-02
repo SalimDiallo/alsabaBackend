@@ -616,25 +616,35 @@ class FlutterwaveCardService(FlutterwaveBaseService):
                     reference=kwargs.get("reference")
                 )
             else:
-                # Flux Legacy (Server-Side Encryption)
+                # Flux Direct Charge V3 (Aligned with documentation)
+                # On chiffre tout le payload et on l'envoie dans le champ 'client'
                 if not card_details:
                      raise ValueError("card_details required if no card_token provided")
 
-                # Créer payment method
-                pm_id = self.create_card_payment_method(
-                    card_details['number'],
-                    card_details['exp_month'],
-                    card_details['exp_year'],
-                    card_details['cvv']
-                )
+                # 1. Préparation du payload en clair
+                first_name, last_name = self.split_customer_name(customer_name)
+                payload_data = {
+                    "card_number": card_details['number'].replace(" ", ""),
+                    "cvv": card_details['cvv'],
+                    "expiry_month": str(card_details['exp_month']).zfill(2),
+                    "expiry_year": str(card_details['exp_year'])[-2:],
+                    "currency": currency or self.currency,
+                    "amount": float(amount),
+                    "email": customer_email,
+                    "fullname": f"{first_name} {last_name}",
+                    "tx_ref": kwargs.get("reference") or str(uuid.uuid4()),
+                    "redirect_url": kwargs.get('redirect_url') or self.redirect_url,
+                    "enckey": self.encryption_key
+                }
                 
-                # Créer charge
-                logger.info("flutterwave_attempting_charge", customer_id=customer_id, pm_id=pm_id, amount=amount)
-                charge = self.charge_card(
-                    customer_id, pm_id, float(amount),
-                    currency=currency,
-                    redirect_url=kwargs.get('redirect_url')
-                )
+                # 2. Encryption V3 (AES-128-ECB)
+                import json
+                encrypted_payload = EncryptionUtils.encrypt_flutterwave_v3(
+                    json.dumps(payload_data), self.encryption_key)
+                
+                # 3. Appel à l'endpoint /charges avec 'client'
+                logger.info("flutterwave_attempting_direct_v3_charge", customer_email=customer_email, amount=amount)
+                charge = self._make_request("POST", "/charges", json_data={"client": encrypted_payload})
             
             # Note: Tokenized Charges structure response differently usually
             # But standard v3 charge response structure is usually similar inside 'data'

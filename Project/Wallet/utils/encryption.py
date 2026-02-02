@@ -62,3 +62,36 @@ class EncryptionUtils:
         alphabet = string.ascii_letters + string.digits
         nonce_str = ''.join(secrets.choice(alphabet) for _ in range(12))
         return nonce_str.encode('ascii')
+
+    @staticmethod
+    def encrypt_flutterwave_v3(payload_json: str, encryption_key: str) -> str:
+        """
+        Chiffre le payload complet pour Flutterwave V3 direct charge (AES-128-ECB).
+        
+        Args:
+            payload_json: JSON string du payload
+            encryption_key: Clé d'encryption (FLUTTERWAVE_ENCRYPTION_KEY)
+            
+        Returns:
+            str: Payload chiffré en base64
+        """
+        from Crypto.Util.Padding import pad
+        import json
+        
+        try:
+            # 1. Préparation des données (Padding PKCS7 requis pour ECB)
+            raw_data = payload_json.encode('utf-8')
+            padded_data = pad(raw_data, AES.block_size)
+            
+            # 2. Clé d'encryption
+            key_bytes = encryption_key.encode('utf-8')
+            
+            # 3. Encryption AES-128-ECB
+            cipher = AES.new(key_bytes, AES.MODE_ECB)
+            ciphertext = cipher.encrypt(padded_data)
+            
+            # 4. Encodage Base64
+            return base64.b64encode(ciphertext).decode('utf-8')
+        except Exception as e:
+            logger.error("flutterwave_v3_encryption_error", error=str(e))
+            raise

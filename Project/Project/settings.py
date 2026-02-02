@@ -10,6 +10,10 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+# Compatibilité django-fernet-fields : force_text a été supprimé en Django 4.0 (remplacé par force_str)
+import django.utils.encoding
+if not hasattr(django.utils.encoding, 'force_text'):
+    django.utils.encoding.force_text = django.utils.encoding.force_str
 
 from pathlib import Path
 from datetime import timedelta
@@ -31,8 +35,8 @@ else:
 
 
 # Celery Configuration
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_BROKER_URL = os.getenv('REDIS_BROKER_URL', os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0'))
+CELERY_RESULT_BACKEND = os.getenv('REDIS_BACKEND_URL', os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0'))
 CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -77,7 +81,9 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = get_required_env('SECRET_KEY')
+# "or" évite une SECRET_KEY vide (ex: SECRET_KEY= dans .env ou variable vide sous Docker)
+_default_secret = 'django-insecure-4)-5heqax82y=3l8w1b+qxscems9i@xhir!v6^)-nw#r+e+bn&'
+SECRET_KEY = (os.getenv('SECRET_KEY') or '').strip() or _default_secret
 
 
 # DEBUG
@@ -93,6 +99,22 @@ else:
             "Format: ALLOWED_HOSTS=api.yourdomain.com,yourdomain.com"
         )
     ALLOWED_HOSTS = allowed_hosts.split(',')
+
+if DEBUG:
+    ALLOWED_HOSTS += ['.ngrok-free.app', '.ngrok.io', '.ngrok-free.dev']
+
+# CSRF Trusted Origins for webhooks and external services
+CSRF_TRUSTED_ORIGINS = os.getenv(
+    'CSRF_TRUSTED_ORIGINS',
+    'http://localhost:8000,http://127.0.0.1:8000'
+).split(',')
+
+# Automatically trust ngrok subdomains in DEBUG mode
+if DEBUG:
+    CSRF_TRUSTED_ORIGINS += ['https://*.ngrok-free.app', 'https://*.ngrok.io', 'https://*.ngrok-free.dev']
+
+# Secure Proxy Header for HTTPS behind ngrok/proxies
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -115,6 +137,7 @@ INSTALLED_APPS = [
     'Notifications',
     'django_celery_beat',
     'drf_spectacular',
+    'drf_spectacular_sidecar',  # Swagger UI & ReDoc static assets
 ]
 
 

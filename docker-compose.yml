@@ -62,8 +62,8 @@ services:
       - DATABASE_PORT=5432
       - RUN_MIGRATIONS=True
       # Redis Config
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_BROKER_URL=redis://redis:6379/0
+      - REDIS_BACKEND_URL=redis://redis:6379/0
       # Sécurité API
       - DIDIT_API_KEY=${DIDIT_API_KEY:-dp_live_placeholder}
       - DIDIT_WEBHOOK_SECRET=${DIDIT_WEBHOOK_SECRET:-webhook_secret_placeholder}
@@ -96,14 +96,18 @@ services:
     container_name: alsaba_celery_worker
     restart: unless-stopped
     environment:
+      - DEBUG=${DEBUG:-True}
+      - SECRET_KEY=${SECRET_KEY:?err}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:?err}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8080}
       - DATABASE_ENGINE=django.db.backends.postgresql
       - DATABASE_NAME=${POSTGRES_DB:-alsaba_db}
       - DATABASE_USER=${POSTGRES_USER:-alsaba_user}
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-alsaba_password}
       - DATABASE_HOST=db
       - DATABASE_PORT=5432
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_BROKER_URL=redis://redis:6379/0
+      - REDIS_BACKEND_URL=redis://redis:6379/0
     # Commande pour lancer le worker
     command: celery -A Project worker -l info
     volumes:
@@ -125,14 +129,18 @@ services:
     container_name: alsaba_celery_beat
     restart: unless-stopped
     environment:
+      - DEBUG=${DEBUG:-True}
+      - SECRET_KEY=${SECRET_KEY:?err}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:?err}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8080}
       - DATABASE_ENGINE=django.db.backends.postgresql
       - DATABASE_NAME=${POSTGRES_DB:-alsaba_db}
       - DATABASE_USER=${POSTGRES_USER:-alsaba_user}
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-alsaba_password}
       - DATABASE_HOST=db
       - DATABASE_PORT=5432
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_BROKER_URL=redis://redis:6379/0
+      - REDIS_BACKEND_URL=redis://redis:6379/0
     # Commande pour lancer le scheduler
     command: celery -A Project beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
@@ -160,6 +168,21 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - alsaba_network
+
+  # Service ngrok for webhook testing
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: alsaba_ngrok
+    restart: unless-stopped
+    command: "http web:8000 --log stdout"
+    ports:
+      - "4040:4040"
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTH_TOKEN}
+    depends_on:
+      - web
     networks:
       - alsaba_network
 

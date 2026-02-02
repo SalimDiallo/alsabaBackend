@@ -20,6 +20,13 @@ RUN apt-get update && apt-get install -y \
     libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Fix locale issue for Click/Celery
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+# Nettoyage des fichiers __pycache__ potentiellement montés
+RUN find . -type d -name "__pycache__" -exec rm -rf {} +
+
 # Copie du requirements.txt
 COPY Project/requirements.txt ./requirements.txt
 
