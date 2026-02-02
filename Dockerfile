@@ -16,11 +16,12 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     build-essential \
     netcat-openbsd \
-    postgresql-client \   
+    postgresql-client \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copie du requirements.txt
-COPY requirements.txt .
+COPY Project/requirements.txt ./requirements.txt
 
 # Upgrade pip et installation des dépendances Python
 RUN pip install --upgrade pip

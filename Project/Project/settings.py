@@ -175,14 +175,35 @@ FLUTTERWAVE_CURRENCY = os.getenv('FLUTTERWAVE_CURRENCY', 'EUR')
 # Swagger / API Documentation Settings
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Alsaba P2P API',
-    'DESCRIPTION': 'API sécurisée pour l\'échange P2P et le portefeuille Alsaba.',
+    'DESCRIPTION': (
+        'API sécurisée pour l\'échange P2P et le portefeuille financier Alsaba.\n\n'
+        'Cette API gère l\'authentification, le KYC (Didit), les transactions financières '
+        '(Dépôts/Retraits via Flutterwave) et le flux Escrow sécurisé pour le swap de devises.'
+    ),
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
     'SWAGGER_UI_SETTINGS': {
         'deepLinking': True,
         'persistAuthorization': True,
+        'displayOperationId': False,
     },
+    'REDOC_UI_SETTINGS': {
+        'hideDownloadButton': True,
+        'disableSearch': False,
+    },
+    # Force l'utilisation de versions spécifiques stables pour les UI
+    'SWAGGER_UI_DIST': 'SIDECAR', # Utilise npm package si installé
+    'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
+    'REDOC_DIST': 'SIDECAR',
+    'TAGS': [
+        {'name': 'Authentification', 'description': 'Endpoints de connexion et inscription (JWT)'},
+        {'name': 'Profil & KYC', 'description': 'Gestion du profil utilisateur et vérification d\'identité'},
+        {'name': 'Portefeuille', 'description': 'Opérations financières et historique des transactions'},
+        {'name': 'Offres P2P', 'description': 'Cycle de vie des offres de swap et Escrow'},
+        {'name': 'Suggestions', 'description': 'Flux de recommandations personnalisé'},
+        {'name': 'Notifications', 'description': 'Gestion des alertes utilisateur'},
+    ],
 }
 
 
@@ -364,6 +385,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles/')
 
 import structlog
 import os

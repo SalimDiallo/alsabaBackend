@@ -31,6 +31,7 @@ class PhoneAuthView(APIView):
         summary="Initier l'authentification par téléphone",
         description="Envoie un code OTP par SMS au numéro fourni. Crée ou récupère l'utilisateur associé.",
         request=PhoneAuthSerializer,
+        tags=['Authentification'],
         responses={
             200: {
                 "type": "object",
@@ -238,12 +239,13 @@ class VerifyOTPView(APIView):
         summary="Vérifier le code OTP",
         description="Vérifie le code OTP envoyé par SMS. Si valide, retourne les tokens JWT.",
         request=VerifyOTPSerializer,
+        tags=['Authentification'],
         responses={
             200: {
                 "type": "object",
                 "properties": {
                     "success": {"type": "boolean"},
-                    "user": {"type": "object"}, # On pourrait mettre UserSerializer ici si importé
+                    "user": {"type": "object"}, 
                     "auth": {
                         "type": "object",
                         "properties": {
@@ -253,7 +255,9 @@ class VerifyOTPView(APIView):
                     }
                 }
             },
-            400: {"description": "Code invalide ou expiré"}
+            400: {"description": "Code invalide ou expiré"},
+            403: {"description": "Numéro frauduleux ou jetable"},
+            404: {"description": "Utilisateur non trouvé"}
         }
     )
     def post(self, request):
@@ -483,6 +487,7 @@ class ResendOTPView(APIView):
         summary="Renvoyer le code OTP",
         description="Envoie un nouveau code OTP si le précédent n'a pas été reçu.",
         request=ResendOTPSerializer,
+        tags=['Authentification'],
         responses={
             200: {"description": "Nouveau code envoyé"},
             400: {"description": "Session expirée ou invalide"},
@@ -584,6 +589,7 @@ class AuthStatusView(APIView):
     @extend_schema(
         summary="Vérifier le statut de la session",
         description="Vérifie si une session d'authentification est toujours valide.",
+        tags=['Authentification'],
         parameters=[
             OpenApiParameter(name='session_key', description='Clé de session', required=True, type=OpenApiTypes.STR),
         ],

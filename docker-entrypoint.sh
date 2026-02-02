@@ -21,9 +21,11 @@ done
 
 echo "✅ PostgreSQL est prêt !"
 
-# Application des migrations
-echo "🔄 Application des migrations..."
-python manage.py migrate --noinput
+# Application des migrations seulement si demandé
+if [ "$RUN_MIGRATIONS" = "True" ]; then
+    echo "🔄 Application des migrations..."
+    python manage.py migrate --noinput
+fi
 
 # Collection des fichiers statiques seulement si DEBUG=False (production)
 if [ "$DEBUG" = "False" ]; then

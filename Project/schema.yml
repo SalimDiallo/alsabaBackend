@@ -1,0 +1,3194 @@
+openapi: 3.0.3
+info:
+  title: Alsaba P2P API
+  version: 1.0.0
+  description: |-
+    API sécurisée pour l'échange P2P et le portefeuille financier Alsaba.
+
+    Cette API gère l'authentification, le KYC (Didit), les transactions financières (Dépôts/Retraits via Flutterwave) et le flux Escrow sécurisé pour le swap de devises.
+paths:
+  /api/accounts/auth/phone/:
+    post:
+      operationId: accounts_auth_phone_create
+      description: Envoie un code OTP par SMS au numéro fourni. Crée ou récupère l'utilisateur
+        associé.
+      summary: Initier l'authentification par téléphone
+      tags:
+      - Authentification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhoneAuthRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PhoneAuthRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PhoneAuthRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  session_key:
+                    type: string
+                  phone_number:
+                    type: string
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Erreur de validation ou échec d'envoi
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                description: Trop de tentatives
+          description: ''
+  /api/accounts/auth/refresh/:
+    post:
+      operationId: accounts_auth_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/accounts/auth/resend/:
+    post:
+      operationId: accounts_auth_resend_create
+      description: Envoie un nouveau code OTP si le précédent n'a pas été reçu.
+      summary: Renvoyer le code OTP
+      tags:
+      - Authentification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendOTPRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ResendOTPRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ResendOTPRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                description: Nouveau code envoyé
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Session expirée ou invalide
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                description: Trop de demandes de renvoi
+          description: ''
+  /api/accounts/auth/status/:
+    get:
+      operationId: accounts_auth_status_retrieve
+      description: Vérifie si une session d'authentification est toujours valide.
+      summary: Vérifier le statut de la session
+      parameters:
+      - in: query
+        name: session_key
+        schema:
+          type: string
+        description: Clé de session
+        required: true
+      tags:
+      - Authentification
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated:
+                    type: boolean
+                  session:
+                    type: object
+          description: ''
+  /api/accounts/auth/verify/:
+    post:
+      operationId: accounts_auth_verify_create
+      description: Vérifie le code OTP envoyé par SMS. Si valide, retourne les tokens
+        JWT.
+      summary: Vérifier le code OTP
+      tags:
+      - Authentification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyOTPRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VerifyOTPRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VerifyOTPRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  user:
+                    type: object
+                  auth:
+                    type: object
+                    properties:
+                      access_token:
+                        type: string
+                      refresh_token:
+                        type: string
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Code invalide ou expiré
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                description: Numéro frauduleux ou jetable
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                description: Utilisateur non trouvé
+          description: ''
+  /api/accounts/delete/:
+    post:
+      operationId: accounts_delete_create
+      description: Initie le processus de supression. Envoie un OTP de confirmation.
+      summary: Demander la suppression du compte
+      tags:
+      - Authentification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountDeleteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AccountDeleteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AccountDeleteRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                description: OTP envoyé
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Une demande est déjà en cours
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                description: Trop de tentatives
+          description: ''
+  /api/accounts/delete/confirm/:
+    post:
+      operationId: accounts_delete_confirm_create
+      description: Valide l'OTP et effectue la suppression logicielle (soft delete)
+        du compte.
+      summary: Confirmer la suppression du compte
+      tags:
+      - Authentification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountDeleteConfirmRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AccountDeleteConfirmRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AccountDeleteConfirmRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                description: Compte supprimé avec succès
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Code invalide ou session expirée
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                description: Utilisateur non autorisé
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                description: Trop de tentatives échouées
+          description: ''
+  /api/accounts/kyc/verify/:
+    post:
+      operationId: accounts_kyc_verify_create
+      description: Envoie un document d'identité (image base64 ou URL) pour vérification
+        par Didit.
+      summary: Soumettre un document KYC
+      tags:
+      - Profil & KYC
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KYCVerifyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/KYCVerifyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/KYCVerifyRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                description: Document reçu et approuvé
+          description: ''
+        '202':
+          content:
+            application/json:
+              schema:
+                description: Document reçu, en attente de vérification manuelle
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Validation échouée ou document rejeté
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                description: Numéro de téléphone non vérifié
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                description: Trop de tentatives
+          description: ''
+  /api/accounts/profile/:
+    get:
+      operationId: accounts_profile_retrieve
+      description: Retourne les informations détaillées du profil, y compris le statut
+        de vérification et le pourcentage de complétion.
+      summary: Récupérer le profil utilisateur
+      tags:
+      - Profil & KYC
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+          description: ''
+    patch:
+      operationId: accounts_profile_partial_update
+      description: Permet de mettre à jour partiellement les informations du profil
+        (email, nom, etc.).
+      summary: Mettre à jour le profil
+      tags:
+      - Profil & KYC
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedProfileUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedProfileUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedProfileUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+          description: ''
+  /api/accounts/webhooks/didit/kyc/:
+    post:
+      operationId: accounts_webhooks_didit_kyc_create
+      description: Reçoit les callbacks de statut de vérification KYC.
+      summary: Webhook Didit KYC
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                description: Webhook traité avec succès
+          description: ''
+  /api/notifications/:
+    get:
+      operationId: notifications_list
+      description: |-
+        Liste les notifications de l'utilisateur connecté.
+        Permet de marquer comme lu.
+      tags:
+      - notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/notifications/{id}/read/:
+    post:
+      operationId: notifications_read_create
+      description: Marque une notification spécifique comme lue.
+      summary: Marquer une notification comme lue
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                description: Succès
+          description: ''
+  /api/notifications/read_all/:
+    post:
+      operationId: notifications_read_all_create
+      description: Marque toutes les notifications de l'utilisateur comme lues.
+      summary: Tout marquer comme lu
+      tags:
+      - Notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                description: Succès
+          description: ''
+  /api/notifications/register-device/:
+    post:
+      operationId: notifications_register_device_create
+      description: Enregistre un token FCM pour recevoir les notifications push.
+      summary: Enregistrer un appareil (FCM)
+      tags:
+      - Notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                description: Appareil enregistré
+          description: ''
+  /api/offers/:
+    get:
+      operationId: offers_list
+      description: |-
+        GET /api/offers/
+        Liste les offres visibles (OPEN ou les miennes).
+      tags:
+      - offers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Offer'
+          description: ''
+  /api/offers/{id}/:
+    get:
+      operationId: offers_retrieve
+      description: Récupère les informations complètes d'une offre spécifique.
+      summary: Détail d'une offre P2P
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Offres P2P
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                description: Offre introuvable
+          description: ''
+  /api/offers/{id}/accept/:
+    post:
+      operationId: offers_accept_create
+      description: Permet à un second utilisateur d'accepter une offre ouverte. L'accepteur
+        doit fournir les détails de son bénéficiaire (celui qui recevra les fonds).
+      summary: Accepter une offre P2P
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Offres P2P
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptOfferRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AcceptOfferRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AcceptOfferRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Offre non disponible ou déjà acceptée
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                description: L'auteur ne peut pas accepter sa propre offre
+          description: ''
+  /api/offers/{id}/beneficiary-confirm/:
+    post:
+      operationId: offers_beneficiary_confirm_create
+      description: Permet à l'un des bénéficiaires impliqués dans le swap de confirmer
+        manuellement la réception des fonds hors-plateforme si nécessaire.
+      summary: Confirmation bénéficiaire P2P
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Offres P2P
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+          description: ''
+  /api/offers/{id}/cancel/:
+    post:
+      operationId: offers_cancel_create
+      description: Annule une offre existante. Si l'offre était en cours de traitement,
+        les fonds en escrow sont restitués.
+      summary: Annuler une offre P2P
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Offres P2P
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Annulation impossible à ce stade
+          description: ''
+  /api/offers/{id}/confirm/:
+    post:
+      operationId: offers_confirm_create
+      description: Valide et exécute techniquement le swap (transfert des fonds entre
+        les wallets et libération de l'escrow) une fois toutes les conditions réunies.
+      summary: Confirmer la transaction P2P
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Offres P2P
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Conditions de swap non remplies
+          description: ''
+  /api/offers/{id}/dispute/:
+    post:
+      operationId: offers_dispute_create
+      description: Ouvre un litige formel sur une offre en cours de transaction. Bloque
+        l'exécution jusqu'à résolution par un admin.
+      summary: Ouvrir un litige
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Offres P2P
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisputeOfferRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DisputeOfferRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DisputeOfferRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Litige impossible
+          description: ''
+  /api/offers/{id}/update/:
+    put:
+      operationId: offers_update_update
+      description: Permet de modifier une offre existante si elle est encore ouverte
+        (OPEN) et appartient à l'utilisateur.
+      summary: Modifier une offre P2P
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Offres P2P
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOfferRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UpdateOfferRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateOfferRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                description: Non autorisé
+          description: ''
+  /api/offers/{id}/validate/:
+    post:
+      operationId: offers_validate_create
+      description: Le créateur de l'offre (Vendeur) valide l'acceptation et fournit
+        les détails du bénéficiaire qui recevra les fondus de l'accepteur.
+      summary: Valider une offre (Vendeur)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Offres P2P
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateOfferRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ValidateOfferRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidateOfferRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Action non autorisée à ce stade
+          description: ''
+  /api/offers/{offer_id}/disputes/:
+    post:
+      operationId: offers_disputes_create
+      description: Crée un nouveau litige associé à un offre spécifique. Bloque le
+        swap si celui-ci n'a pas été confirmé.
+      summary: Initier un litige
+      parameters:
+      - in: path
+        name: offer_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Offres P2P
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitiateDisputeRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/InitiateDisputeRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/InitiateDisputeRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dispute'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Litige déjà existant ou offre terminée
+          description: ''
+  /api/offers/create/:
+    post:
+      operationId: offers_create_create
+      description: Crée une nouvelle offre de swap de devises. L'utilisateur doit
+        avoir un solde suffisant dans la devise de vente.
+      summary: Créer une offre P2P
+      tags:
+      - Offres P2P
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOfferRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CreateOfferRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateOfferRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Solde insuffisant ou données invalides
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                description: Limite de création atteinte
+          description: ''
+  /api/offers/disputes/:
+    get:
+      operationId: offers_disputes_list
+      description: Liste tous les litiges accessibles à l'utilisateur connecté (ses
+        propres litiges ou tous pour les admins).
+      summary: Lister les litiges
+      tags:
+      - Offres P2P
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Dispute'
+          description: ''
+  /api/offers/disputes/{dispute_id}/:
+    get:
+      operationId: offers_disputes_retrieve
+      description: Récupère les détails d'un litige spécifique (raisons, preuves,
+        statut).
+      summary: Détail d'un litige
+      parameters:
+      - in: path
+        name: dispute_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Offres P2P
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dispute'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                description: Non autorisé
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                description: Introuvable
+          description: ''
+  /api/offers/disputes/{dispute_id}/resolve/:
+    post:
+      operationId: offers_disputes_resolve_create
+      description: Permet à un administrateur de trancher un litige, soit par annulation
+        du swap, soit par exécution forcée.
+      summary: Résoudre un litige (Admin)
+      parameters:
+      - in: path
+        name: dispute_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Offres P2P
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveDisputeRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ResolveDisputeRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ResolveDisputeRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dispute'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                description: Action réservée aux admins
+          description: ''
+  /api/suggestions/:
+    get:
+      operationId: suggestions_list
+      description: |-
+        GET /api/suggestions/
+        Flux "Pour Vous" basé sur le type 'suggestion'.
+      tags:
+      - suggestions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Suggestion'
+          description: ''
+  /api/suggestions/{id}/read/:
+    post:
+      operationId: suggestions_read_create
+      description: Marque une suggestion spécifique comme lue.
+      summary: Marquer comme lu
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Suggestions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                description: OK
+          description: ''
+  /api/wallet/:
+    get:
+      operationId: wallet_retrieve
+      description: Retourne les informations du portefeuille de l'utilisateur connecté
+        (solde, devise, transactions récentes).
+      summary: Obtenir le portefeuille
+      tags:
+      - Portefeuille
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+          description: ''
+  /api/wallet/deposit/:
+    post:
+      operationId: wallet_deposit_create
+      description: Initie une transaction de dépôt via Flutterwave. Retourne un lien
+        de paiement (v3) ou les instructions de redirection.
+      summary: Initier un dépôt
+      tags:
+      - Portefeuille
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepositRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DepositRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DepositRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Erreur de validation ou configuration incorrecte
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                description: Limite de taux atteinte (throttle)
+          description: ''
+  /api/wallet/deposit/{transaction_id}/cancel/:
+    post:
+      operationId: wallet_deposit_cancel_create
+      description: Annule un dépôt en attente.
+      summary: Annuler un dépôt
+      parameters:
+      - in: path
+        name: transaction_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Portefeuille
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionCancelRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransactionCancelRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransactionCancelRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+          description: ''
+  /api/wallet/deposit/{transaction_id}/confirm/:
+    post:
+      operationId: wallet_deposit_confirm_create
+      description: Confirme manuellement un dépôt.
+      summary: Confirmer un dépôt (Admin)
+      parameters:
+      - in: path
+        name: transaction_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Portefeuille
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionConfirmRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransactionConfirmRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransactionConfirmRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+          description: ''
+  /api/wallet/fees/estimate/:
+    post:
+      operationId: wallet_fees_estimate_create
+      description: Calcule les frais estimés pour une transaction donnée.
+      summary: Estimer les frais
+      tags:
+      - Portefeuille
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstimateFeesRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EstimateFeesRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EstimateFeesRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstimateFeesResponse'
+          description: ''
+  /api/wallet/payment-methods/:
+    get:
+      operationId: wallet_payment_methods_list
+      description: Récupère les méthodes de paiement sauvegardées (cartes, comptes).
+      summary: Lister les méthodes de paiement
+      parameters:
+      - in: query
+        name: active_only
+        schema:
+          type: boolean
+          default: true
+      - in: query
+        name: method_type
+        schema:
+          type: string
+          enum:
+          - bank_account
+          - card
+          - orange_money
+      tags:
+      - Portefeuille
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaymentMethod'
+          description: ''
+    post:
+      operationId: wallet_payment_methods_create
+      description: Ajoute une nouvelle méthode de paiement. 'method_type' détermine
+        les champs requis.
+      summary: Créer une méthode de paiement
+      tags:
+      - Portefeuille
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCardPaymentMethodRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CreateCardPaymentMethodRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateCardPaymentMethodRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentMethod'
+          description: ''
+  /api/wallet/payment-methods/{payment_method_id}/:
+    get:
+      operationId: wallet_payment_methods_retrieve
+      description: Récupère une méthode de paiement
+      summary: Détail d'une méthode de paiement
+      parameters:
+      - in: path
+        name: payment_method_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Portefeuille
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentMethod'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                description: Non trouvée
+          description: ''
+    patch:
+      operationId: wallet_payment_methods_partial_update
+      description: Met à jour le label ou le statut par défaut.
+      summary: Mettre à jour une méthode de paiement
+      parameters:
+      - in: path
+        name: payment_method_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Portefeuille
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUpdatePaymentMethodRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUpdatePaymentMethodRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUpdatePaymentMethodRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentMethod'
+          description: ''
+    delete:
+      operationId: wallet_payment_methods_destroy
+      description: Désactive (soft delete) une méthode de paiement. Elle ne sera plus
+        proposée pour les paiements.
+      summary: Supprimer une méthode de paiement
+      parameters:
+      - in: path
+        name: payment_method_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Portefeuille
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                description: Succès
+          description: ''
+  /api/wallet/payment-methods/{payment_method_id}/set-default/:
+    post:
+      operationId: wallet_payment_methods_set_default_create
+      description: Définit cette méthode de paiement comme celle par défaut pour son
+        type.
+      summary: Définir comme défaut
+      parameters:
+      - in: path
+        name: payment_method_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Portefeuille
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentMethod'
+          description: ''
+  /api/wallet/stats/:
+    get:
+      operationId: wallet_stats_retrieve
+      description: Retourne des statistiques globales sur les portefeuilles.
+      summary: Statistiques du portefeuille (Admin)
+      tags:
+      - Portefeuille
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/wallet/transactions/:
+    get:
+      operationId: wallet_transactions_list
+      description: Liste l'historique des transactions avec filtrage et pagination.
+      summary: Lister les transactions
+      parameters:
+      - in: query
+        name: date_from
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: date_to
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          default: 20
+      - in: query
+        name: offset
+        schema:
+          type: integer
+          default: 0
+      - in: query
+        name: payment_method
+        schema:
+          type: string
+          enum:
+          - card
+          - orange_money
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - cancelled
+          - completed
+          - failed
+          - pending
+          - processing
+      - in: query
+        name: transaction_type
+        schema:
+          type: string
+          enum:
+          - deposit
+          - withdrawal
+      tags:
+      - Portefeuille
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Transaction'
+          description: ''
+  /api/wallet/transactions/{transaction_id}/:
+    get:
+      operationId: wallet_transactions_retrieve
+      description: Récupère les détails d'une transaction spécifique par ID.
+      summary: Détail d'une transaction
+      parameters:
+      - in: path
+        name: transaction_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Portefeuille
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                description: Transaction introuvable
+          description: ''
+  /api/wallet/transactions/{transaction_id}/retry/:
+    post:
+      operationId: wallet_transactions_retry_create
+      description: Tente de relancer ou confirmer une transaction marquée comme échouée
+        ou annulée.
+      summary: Réessayer une transaction échouée
+      parameters:
+      - in: path
+        name: transaction_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Portefeuille
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+          description: ''
+        '501':
+          content:
+            application/json:
+              schema:
+                description: Non implémenté
+          description: ''
+  /api/wallet/transactions/{transaction_id}/status/:
+    get:
+      operationId: wallet_transactions_status_retrieve
+      description: Vérifie le statut (locaux et distant Flutterwave) d'une transaction.
+      summary: Vérifier le statut d'une transaction
+      parameters:
+      - in: path
+        name: transaction_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Portefeuille
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionStatusResponse'
+          description: ''
+  /api/wallet/transactions/{transaction_id}/update-status/:
+    patch:
+      operationId: wallet_transactions_update_status_partial_update
+      description: Force la mise à jour du statut d'une transaction.
+      summary: Mettre à jour le statut d'une transaction (Admin)
+      parameters:
+      - in: path
+        name: transaction_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Portefeuille
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTransactionStatusUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTransactionStatusUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTransactionStatusUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+          description: ''
+  /api/wallet/webhook/:
+    post:
+      operationId: wallet_webhook_create
+      description: Point de terminaison pour recevoir les notifications de paiement
+        asynchrones de Flutterwave.
+      summary: Webhook Flutterwave
+      tags:
+      - Portefeuille
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                description: Webhook reçu
+          description: ''
+  /api/wallet/withdraw/:
+    post:
+      operationId: wallet_withdraw_create
+      description: Initie une transaction de retrait depuis le portefeuille vers un
+        compte bancaire ou mobile money via Flutterwave.
+      summary: Initier un retrait
+      tags:
+      - Portefeuille
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WithdrawalRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WithdrawalRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WithdrawalRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WithdrawalResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Solde insuffisant ou coordonnées bancaires invalides
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                description: Limite de taux atteinte (throttle)
+          description: ''
+  /api/wallet/withdraw/{transaction_id}/cancel/:
+    post:
+      operationId: wallet_withdraw_cancel_create
+      description: Annule un retrait en attente. Rembourse le montant sur le portefeuille.
+      summary: Annuler un retrait
+      parameters:
+      - in: path
+        name: transaction_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Portefeuille
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionCancelRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransactionCancelRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransactionCancelRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+          description: ''
+  /api/wallet/withdraw/{transaction_id}/confirm/:
+    post:
+      operationId: wallet_withdraw_confirm_create
+      description: Confirme manuellement un retrait.
+      summary: Confirmer un retrait (Admin)
+      parameters:
+      - in: path
+        name: transaction_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Portefeuille
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionConfirmRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransactionConfirmRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransactionConfirmRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+          description: ''
+components:
+  schemas:
+    AcceptOfferRequest:
+      type: object
+      properties:
+        offer_id:
+          type: string
+          format: uuid
+        beneficiary_name:
+          type: string
+          minLength: 1
+        beneficiary_phone:
+          type: string
+          minLength: 1
+      required:
+      - offer_id
+    AccountDeleteConfirmRequest:
+      type: object
+      description: Confirmation avec OTP
+      properties:
+        code:
+          type: string
+          minLength: 6
+          maxLength: 6
+        session_key:
+          type: string
+          minLength: 1
+      required:
+      - code
+      - session_key
+    AccountDeleteRequest:
+      type: object
+      description: Demande de suppression
+      properties:
+        reason:
+          type: string
+          maxLength: 100
+    CreateCardPaymentMethodRequest:
+      type: object
+      description: Sérialiseur pour créer une méthode de paiement carte
+      properties:
+        label:
+          type: string
+          minLength: 1
+          description: 'Nom donné à cette carte (ex: ''Ma carte principale'')'
+          maxLength: 100
+        card_number:
+          type: string
+          minLength: 1
+          description: Numéro de carte complet
+          maxLength: 19
+        card_expiry_month:
+          type: integer
+          maximum: 12
+          minimum: 1
+          description: Mois d'expiration (1-12)
+        card_expiry_year:
+          type: integer
+          maximum: 2035
+          minimum: 2024
+          description: Année d'expiration
+        card_cvv:
+          type: string
+          minLength: 1
+          description: CVV de la carte (requis pour la sauvegarde mais ne sera pas
+            stocké)
+          maxLength: 4
+        is_default:
+          type: boolean
+          default: false
+          description: Définir comme méthode par défaut pour les dépôts par carte
+      required:
+      - card_cvv
+      - card_expiry_month
+      - card_expiry_year
+      - card_number
+      - label
+    CreateOfferRequest:
+      type: object
+      properties:
+        amount_sell:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency_sell:
+          type: string
+          minLength: 1
+          maxLength: 3
+        amount_buy:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency_buy:
+          type: string
+          minLength: 1
+          maxLength: 3
+        expiry_hours:
+          type: integer
+          maximum: 72
+          minimum: 1
+          default: 24
+        beneficiary_name:
+          type: string
+          minLength: 1
+        beneficiary_phone:
+          type: string
+          minLength: 1
+      required:
+      - amount_buy
+      - amount_sell
+      - currency_buy
+      - currency_sell
+    DepositPaymentMethodEnum:
+      enum:
+      - card
+      - orange_money
+      type: string
+      description: |-
+        * `card` - Carte bancaire
+        * `orange_money` - Orange Money
+    DepositRequest:
+      type: object
+      description: |-
+        Sérialiseur pour l'initiation d'un dépôt
+        Accepte soit un payment_method_id (méthode sauvegardée) soit les détails complets
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          description: Montant du dépôt dans la devise du portefeuille
+        payment_method:
+          allOf:
+          - $ref: '#/components/schemas/DepositPaymentMethodEnum'
+          description: |-
+            Méthode de paiement
+
+            * `card` - Carte bancaire
+            * `orange_money` - Orange Money
+        redirect_url:
+          type: string
+          format: uri
+          minLength: 1
+          description: URL de redirection après paiement (optionnel)
+        payment_method_id:
+          type: string
+          format: uuid
+          description: ID d'une méthode de paiement sauvegardée (alternative aux détails
+            ci-dessous)
+        card_number:
+          type: string
+          minLength: 1
+          description: Numéro de carte (requis si pas de payment_method_id)
+          maxLength: 19
+        card_expiry_month:
+          type: integer
+          maximum: 12
+          minimum: 1
+          description: Mois d'expiration (requis si pas de payment_method_id)
+        card_expiry_year:
+          type: integer
+          maximum: 2035
+          minimum: 2024
+          description: Année d'expiration (requis si pas de payment_method_id)
+        card_cvv:
+          type: string
+          minLength: 1
+          description: CVV de la carte (toujours requis même avec payment_method_id)
+          maxLength: 4
+        card_token:
+          type: string
+          minLength: 1
+          description: Token de carte généré par le frontend (alternative aux détails
+            complets)
+        save_payment_method:
+          type: boolean
+          default: false
+          description: Sauvegarder cette méthode de paiement pour usage futur
+        payment_method_label:
+          type: string
+          minLength: 1
+          description: Nom à donner à la méthode sauvegardée (si save_payment_method=True)
+          maxLength: 100
+      required:
+      - amount
+      - payment_method
+    DepositResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        transaction:
+          $ref: '#/components/schemas/Transaction'
+        payment_link:
+          type: string
+          format: uri
+        reference:
+          type: string
+        amount:
+          type: number
+          format: double
+        fee:
+          type: number
+          format: double
+        total:
+          type: number
+          format: double
+        currency:
+          type: string
+      required:
+      - amount
+      - currency
+      - fee
+      - message
+      - payment_link
+      - reference
+      - success
+      - total
+      - transaction
+    DeviceRequest:
+      type: object
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+          description: 'Numéro de téléphone au format E.164 (ex: +221771234567)'
+          maxLength: 20
+        platform:
+          $ref: '#/components/schemas/PlatformEnum'
+        is_active:
+          type: boolean
+      required:
+      - phone_number
+    Dispute:
+      type: object
+      description: Sérializer pour afficher un litige
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        offer:
+          type: string
+          format: uuid
+        initiated_by:
+          allOf:
+          - $ref: '#/components/schemas/UserMinimal'
+          readOnly: true
+        reason:
+          type: string
+          maxLength: 500
+        evidence: {}
+        status:
+          allOf:
+          - $ref: '#/components/schemas/DisputeStatusEnum'
+          readOnly: true
+        resolution:
+          allOf:
+          - $ref: '#/components/schemas/DisputeResolutionEnum'
+          readOnly: true
+        reviewed_by:
+          allOf:
+          - $ref: '#/components/schemas/UserMinimal'
+          readOnly: true
+        admin_notes:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        reviewed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        resolved_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - admin_notes
+      - created_at
+      - id
+      - initiated_by
+      - offer
+      - reason
+      - resolution
+      - resolved_at
+      - reviewed_at
+      - reviewed_by
+      - status
+      - updated_at
+    DisputeOfferRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+      required:
+      - reason
+    DisputeResolutionEnum:
+      enum:
+      - refund_a1
+      - refund_a2
+      - split
+      - pending
+      type: string
+      description: |-
+        * `refund_a1` - Remboursement A1
+        * `refund_a2` - Remboursement A2
+        * `split` - Partage 50/50
+        * `pending` - En attente
+    DisputeStatusEnum:
+      enum:
+      - open
+      - under_review
+      - resolved
+      - escalated
+      type: string
+      description: |-
+        * `open` - Ouvert
+        * `under_review` - Sous revue
+        * `resolved` - Résolu
+        * `escalated` - Escaladé (Support manuel)
+    DocumentTypeEnum:
+      enum:
+      - id_card
+      - passport
+      - drivers_license
+      - residence_permit
+      type: string
+      description: |-
+        * `id_card` - Carte d'identité
+        * `passport` - Passeport
+        * `drivers_license` - Permis de conduire
+        * `residence_permit` - Titre de séjour
+    EstimateFeesRequestPaymentMethodEnum:
+      enum:
+      - card
+      - orange_money
+      type: string
+      description: |-
+        * `card` - card
+        * `orange_money` - orange_money
+    EstimateFeesRequestRequest:
+      type: object
+      properties:
+        transaction_type:
+          $ref: '#/components/schemas/EstimateFeesRequestTransactionTypeEnum'
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        payment_method:
+          $ref: '#/components/schemas/EstimateFeesRequestPaymentMethodEnum'
+        currency:
+          type: string
+          minLength: 1
+      required:
+      - amount
+      - payment_method
+      - transaction_type
+    EstimateFeesRequestTransactionTypeEnum:
+      enum:
+      - deposit
+      - withdrawal
+      type: string
+      description: |-
+        * `deposit` - deposit
+        * `withdrawal` - withdrawal
+    EstimateFeesResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        amount:
+          type: number
+          format: double
+        fee:
+          type: number
+          format: double
+        total:
+          type: number
+          format: double
+        currency:
+          type: string
+      required:
+      - amount
+      - currency
+      - fee
+      - success
+      - total
+    InconsistentDataActionEnum:
+      enum:
+      - NO_ACTION
+      - DECLINE
+      type: string
+      description: |-
+        * `NO_ACTION` - Ignorer
+        * `DECLINE` - Refuser
+    InitiateDisputeRequest:
+      type: object
+      description: Sérializer pour initier un litige
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+        evidence: {}
+      required:
+      - reason
+    KYCVerifyRequest:
+      type: object
+      properties:
+        document_type:
+          allOf:
+          - $ref: '#/components/schemas/DocumentTypeEnum'
+          description: |-
+            Type de document d'identité
+
+            * `id_card` - Carte d'identité
+            * `passport` - Passeport
+            * `drivers_license` - Permis de conduire
+            * `residence_permit` - Titre de séjour
+        front_image:
+          type: string
+          format: binary
+          description: Recto du document (JPEG, PNG, WebP, TIFF, PDF - max 5MB)
+        back_image:
+          type: string
+          format: binary
+          nullable: true
+          description: Verso du document (requis pour documents recto-verso - JPEG,
+            PNG, WebP, TIFF, PDF - max 5MB)
+        perform_document_liveness:
+          type: boolean
+          default: false
+          description: Active la détection de fraude sur le document (photo de photo,
+            copie d'écran, etc.)
+        minimum_age:
+          type: integer
+          maximum: 120
+          minimum: 1
+          nullable: true
+          description: Âge minimum requis (1-120). Utilisateurs plus jeunes seront
+            refusés.
+        expiration_date_not_detected_action:
+          allOf:
+          - $ref: '#/components/schemas/InconsistentDataActionEnum'
+          default: DECLINE
+          description: |-
+            Action si date d'expiration non détectée
+
+            * `NO_ACTION` - Ignorer
+            * `DECLINE` - Refuser
+        invalid_mrz_action:
+          allOf:
+          - $ref: '#/components/schemas/InconsistentDataActionEnum'
+          default: DECLINE
+          description: |-
+            Action si échec lecture MRZ
+
+            * `NO_ACTION` - Ignorer
+            * `DECLINE` - Refuser
+        inconsistent_data_action:
+          allOf:
+          - $ref: '#/components/schemas/InconsistentDataActionEnum'
+          default: DECLINE
+          description: |-
+            Action si incohérence entre VIZ et MRZ
+
+            * `NO_ACTION` - Ignorer
+            * `DECLINE` - Refuser
+        preferred_characters:
+          allOf:
+          - $ref: '#/components/schemas/PreferredCharactersEnum'
+          default: latin
+          description: |-
+            Jeu de caractères préféré quand plusieurs scripts sont disponibles
+
+            * `latin` - Latin
+            * `non_latin` - Non-latin
+        save_api_request:
+          type: boolean
+          default: true
+          description: Enregistrer cette requête dans la console Didit (Manual Checks)
+        vendor_data:
+          type: string
+          description: Identifiant unique vendor/user (UUID, email, etc.) pour tracking
+          maxLength: 100
+      required:
+      - document_type
+      - front_image
+    KycStatusEnum:
+      enum:
+      - unverified
+      - pending
+      - verified
+      - rejected
+      type: string
+      description: |-
+        * `unverified` - Non vérifié
+        * `pending` - En attente de vérification
+        * `verified` - Vérifié
+        * `rejected` - Rejeté
+    MethodTypeEnum:
+      enum:
+      - card
+      - bank_account
+      - orange_money
+      type: string
+      description: |-
+        * `card` - Carte bancaire
+        * `bank_account` - Compte bancaire
+        * `orange_money` - Orange Money
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        body:
+          type: string
+          readOnly: true
+        notification_type:
+          allOf:
+          - $ref: '#/components/schemas/NotificationTypeEnum'
+          readOnly: true
+        data:
+          readOnly: true
+        is_read:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - body
+      - created_at
+      - data
+      - id
+      - notification_type
+      - title
+    NotificationRequest:
+      type: object
+      properties:
+        is_read:
+          type: boolean
+    NotificationTypeEnum:
+      enum:
+      - system
+      - security
+      - transaction
+      - offer
+      - marketing
+      - suggestion
+      type: string
+      description: |-
+        * `system` - Système
+        * `security` - Sécurité
+        * `transaction` - Transaction
+        * `offer` - Offre P2P
+        * `marketing` - Promotion
+        * `suggestion` - Suggestion IA
+    Offer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        user:
+          allOf:
+          - $ref: '#/components/schemas/UserMinimal'
+          readOnly: true
+        amount_sell:
+          type: number
+          format: double
+          readOnly: true
+        currency_sell:
+          type: string
+          maxLength: 3
+        amount_buy:
+          type: number
+          format: double
+          readOnly: true
+        currency_buy:
+          type: string
+          maxLength: 3
+        rate:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,6})?$
+          readOnly: true
+          description: 'Taux: 1 Unit Sell = X Unit Buy'
+        status:
+          allOf:
+          - $ref: '#/components/schemas/OfferStatusEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        expires_at:
+          type: string
+          format: date-time
+          readOnly: true
+        accepted_by:
+          allOf:
+          - $ref: '#/components/schemas/UserMinimal'
+          readOnly: true
+        accepted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        b1_confirmed:
+          type: boolean
+          readOnly: true
+          description: Le bénéficiaire B1 a confirmé la réception/participation
+        b2_confirmed:
+          type: boolean
+          readOnly: true
+          description: Le bénéficiaire B2 a confirmé la réception/participation
+      required:
+      - accepted_at
+      - accepted_by
+      - amount_buy
+      - amount_sell
+      - b1_confirmed
+      - b2_confirmed
+      - created_at
+      - currency_buy
+      - currency_sell
+      - expires_at
+      - id
+      - rate
+      - status
+      - user
+    OfferStatusEnum:
+      enum:
+      - OPEN
+      - ACCEPTED
+      - LOCKED
+      - COMPLETED
+      - CANCELLED
+      - EXPIRED
+      - DISPUTE
+      type: string
+      description: |-
+        * `OPEN` - Ouverte
+        * `ACCEPTED` - Acceptée (En attente de fonds)
+        * `LOCKED` - Fonds Bloqués (Escrow)
+        * `COMPLETED` - Terminée
+        * `CANCELLED` - Annulée
+        * `EXPIRED` - Expirée
+        * `DISPUTE` - En Litige
+    PatchedProfileUpdateRequest:
+      type: object
+      description: Serializer pour la mise à jour des informations du profil
+      properties:
+        first_name:
+          type: string
+          maxLength: 100
+        last_name:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        city:
+          type: string
+          nullable: true
+          maxLength: 100
+        postal_code:
+          type: string
+          nullable: true
+          maxLength: 20
+        state:
+          type: string
+          nullable: true
+          maxLength: 100
+    PatchedTransactionStatusUpdateRequest:
+      type: object
+      description: Sérialiseur pour la mise à jour du statut d'une transaction (admin)
+      properties:
+        status:
+          $ref: '#/components/schemas/StatusD8aEnum'
+        error_message:
+          type: string
+          minLength: 1
+          maxLength: 500
+        error_code:
+          type: string
+          minLength: 1
+          maxLength: 100
+        notes:
+          type: string
+          minLength: 1
+          maxLength: 500
+    PatchedUpdatePaymentMethodRequest:
+      type: object
+      description: Sérialiseur pour mettre à jour une méthode de paiement
+      properties:
+        label:
+          type: string
+          minLength: 1
+          description: Nouveau nom
+          maxLength: 100
+        is_default:
+          type: boolean
+          description: Définir comme méthode par défaut
+        is_active:
+          type: boolean
+          description: Activer/désactiver la méthode
+    PaymentMethod:
+      type: object
+      description: Sérialiseur pour afficher une méthode de paiement sauvegardée
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        method_type:
+          $ref: '#/components/schemas/MethodTypeEnum'
+        method_type_display:
+          type: string
+          readOnly: true
+        label:
+          type: string
+          description: Nom donné par l'utilisateur
+          maxLength: 100
+        card_last_four:
+          type: string
+          nullable: true
+          description: 4 derniers chiffres
+          maxLength: 4
+        card_brand:
+          type: string
+          nullable: true
+          description: Visa, Mastercard, etc.
+          maxLength: 50
+        card_expiry_month:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+          description: Mois d'expiration (1-12)
+        card_expiry_year:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+          nullable: true
+          description: Année d'expiration
+        account_number_last_four:
+          type: string
+          nullable: true
+          description: 4 derniers chiffres
+          maxLength: 4
+        bank_name:
+          type: string
+          nullable: true
+          description: Nom de la banque
+          maxLength: 200
+        account_name:
+          type: string
+          nullable: true
+          description: Nom du titulaire
+          maxLength: 200
+        bank_country:
+          type: string
+          nullable: true
+          description: Code pays de la banque
+          maxLength: 2
+        orange_money_number:
+          type: string
+          nullable: true
+          description: Numéro Orange Money (Chiffré)
+          maxLength: 100
+        is_default:
+          type: boolean
+          description: Méthode par défaut pour ce type
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        last_used_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - id
+      - label
+      - last_used_at
+      - method_type
+      - method_type_display
+      - updated_at
+    PhoneAuthRequest:
+      type: object
+      description: |-
+        Validation pour la demande d'envoi de code OTP
+        Retourne le numéro au format E.164 complet (+336...)
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+          maxLength: 20
+        country_code:
+          type: string
+          minLength: 1
+          default: '+33'
+          description: 'Code pays avec +, ex: +33, +1, +44'
+          maxLength: 5
+      required:
+      - phone_number
+    PlatformEnum:
+      enum:
+      - android
+      - ios
+      - web
+      type: string
+      description: |-
+        * `android` - Android
+        * `ios` - iOS
+        * `web` - Web
+    PreferredCharactersEnum:
+      enum:
+      - latin
+      - non_latin
+      type: string
+      description: |-
+        * `latin` - Latin
+        * `non_latin` - Non-latin
+    Profile:
+      type: object
+      description: Serializer complet pour afficher le profil de l'utilisateur connecté
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        full_phone_number:
+          type: string
+          readOnly: true
+        country_code:
+          type: string
+          readOnly: true
+        phone_number:
+          type: string
+          readOnly: true
+          nullable: true
+        phone_verified:
+          type: boolean
+          readOnly: true
+        phone_verified_display:
+          type: string
+          readOnly: true
+        phone_verified_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        first_name:
+          type: string
+          readOnly: true
+        last_name:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+          nullable: true
+        city:
+          type: string
+          readOnly: true
+          nullable: true
+        postal_code:
+          type: string
+          readOnly: true
+          nullable: true
+        state:
+          type: string
+          readOnly: true
+          nullable: true
+        kyc_status:
+          allOf:
+          - $ref: '#/components/schemas/KycStatusEnum'
+          readOnly: true
+        kyc_status_display:
+          type: string
+          readOnly: true
+        kyc_verified_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        kyc_submitted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        kyc_retry_count:
+          type: integer
+          readOnly: true
+        kyc_document_type:
+          type: string
+          readOnly: true
+          nullable: true
+        kyc_document_number:
+          type: string
+          readOnly: true
+          nullable: true
+        kyc_date_of_birth:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        kyc_expiration_date:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        kyc_gender:
+          type: string
+          readOnly: true
+          nullable: true
+        kyc_nationality:
+          type: string
+          readOnly: true
+          nullable: true
+        kyc_place_of_birth:
+          type: string
+          readOnly: true
+          nullable: true
+        kyc_address:
+          type: string
+          readOnly: true
+          nullable: true
+        date_joined:
+          type: string
+          format: date-time
+          readOnly: true
+        last_login:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        is_active:
+          type: boolean
+          readOnly: true
+      required:
+      - city
+      - country_code
+      - date_joined
+      - email
+      - first_name
+      - full_phone_number
+      - id
+      - is_active
+      - kyc_address
+      - kyc_date_of_birth
+      - kyc_document_number
+      - kyc_document_type
+      - kyc_expiration_date
+      - kyc_gender
+      - kyc_nationality
+      - kyc_place_of_birth
+      - kyc_retry_count
+      - kyc_status
+      - kyc_status_display
+      - kyc_submitted_at
+      - kyc_verified_at
+      - last_login
+      - last_name
+      - phone_number
+      - phone_verified
+      - phone_verified_at
+      - phone_verified_display
+      - postal_code
+      - state
+    ResendOTPRequest:
+      type: object
+      description: Validation pour le renvoi du code OTP
+      properties:
+        session_key:
+          type: string
+          minLength: 1
+      required:
+      - session_key
+    ResolveDisputeRequest:
+      type: object
+      description: Sérializer pour résoudre un litige (Admin only)
+      properties:
+        resolution:
+          $ref: '#/components/schemas/ResolveDisputeResolutionEnum'
+        notes:
+          type: string
+          maxLength: 1000
+      required:
+      - resolution
+    ResolveDisputeResolutionEnum:
+      enum:
+      - refund_a1
+      - refund_a2
+      - split
+      type: string
+      description: |-
+        * `refund_a1` - Rembourser A1
+        * `refund_a2` - Rembourser A2
+        * `split` - Partager 50/50
+    StatusD8aEnum:
+      enum:
+      - pending
+      - processing
+      - completed
+      - failed
+      - cancelled
+      type: string
+      description: |-
+        * `pending` - En attente
+        * `processing` - En cours
+        * `completed` - Terminée
+        * `failed` - Échouée
+        * `cancelled` - Annulée
+    Suggestion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          maxLength: 255
+        body:
+          type: string
+        score:
+          type: string
+          readOnly: true
+        is_read:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        offer_id:
+          type: string
+          readOnly: true
+        data: {}
+      required:
+      - body
+      - created_at
+      - id
+      - offer_id
+      - score
+      - title
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    TokenRefreshRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          minLength: 1
+      required:
+      - refresh
+    Transaction:
+      type: object
+      description: Sérialiseur pour les transactions
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        transaction_type:
+          $ref: '#/components/schemas/TransactionTransactionTypeEnum'
+        transaction_type_display:
+          type: string
+          readOnly: true
+        payment_method:
+          $ref: '#/components/schemas/TransactionPaymentMethodEnum'
+        payment_method_display:
+          type: string
+          readOnly: true
+        payment_method_saved:
+          type: string
+          format: uuid
+          nullable: true
+          description: Méthode de paiement sauvegardée utilisée
+        payment_method_saved_info:
+          type: string
+          readOnly: true
+        amount:
+          type: string
+          readOnly: true
+        fee:
+          type: string
+          readOnly: true
+        currency:
+          type: string
+          description: Devise de la transaction
+          maxLength: 3
+        currency_display:
+          type: string
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/StatusD8aEnum'
+        status_display:
+          type: string
+          readOnly: true
+        flutterwave_reference:
+          type: string
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        completed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - amount
+      - completed_at
+      - created_at
+      - currency
+      - currency_display
+      - fee
+      - flutterwave_reference
+      - id
+      - payment_method
+      - payment_method_display
+      - payment_method_saved_info
+      - status_display
+      - transaction_type
+      - transaction_type_display
+      - updated_at
+    TransactionCancelRequest:
+      type: object
+      description: Sérialiseur pour l'annulation d'une transaction
+      properties:
+        transaction_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          minLength: 1
+          description: Raison de l'annulation
+          maxLength: 500
+        notes:
+          type: string
+          minLength: 1
+          description: Notes supplémentaires
+          maxLength: 500
+      required:
+      - reason
+    TransactionConfirmRequest:
+      type: object
+      description: Sérialiseur pour la confirmation d'une transaction
+      properties:
+        transaction_id:
+          type: string
+          format: uuid
+        confirmation_code:
+          type: string
+          minLength: 1
+          description: Code de confirmation si requis
+          maxLength: 10
+        notes:
+          type: string
+          minLength: 1
+          description: Notes supplémentaires
+          maxLength: 500
+    TransactionPaymentMethodEnum:
+      enum:
+      - card
+      - orange_money
+      - internal
+      type: string
+      description: |-
+        * `card` - Carte bancaire
+        * `orange_money` - Orange Money
+        * `internal` - Interne (Wallet)
+    TransactionStatusResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        transaction:
+          $ref: '#/components/schemas/Transaction'
+        flutterwave_status:
+          type: string
+        can_cancel:
+          type: boolean
+        can_confirm:
+          type: boolean
+        next_actions:
+          type: array
+          items: {}
+      required:
+      - can_cancel
+      - can_confirm
+      - flutterwave_status
+      - next_actions
+      - success
+      - transaction
+    TransactionTransactionTypeEnum:
+      enum:
+      - deposit
+      - withdrawal
+      - refund
+      - p2p_debit
+      - p2p_credit
+      type: string
+      description: |-
+        * `deposit` - Dépôt
+        * `withdrawal` - Retrait
+        * `refund` - Remboursement
+        * `p2p_debit` - Débit P2P
+        * `p2p_credit` - Crédit P2P
+    UpdateOfferRequest:
+      type: object
+      properties:
+        amount_sell:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency_sell:
+          type: string
+          minLength: 1
+          maxLength: 3
+        amount_buy:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency_buy:
+          type: string
+          minLength: 1
+          maxLength: 3
+    UserMinimal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        first_name:
+          type: string
+          maxLength: 100
+        last_name:
+          type: string
+          maxLength: 100
+        country_code:
+          type: string
+          maxLength: 4
+        kyc_status:
+          $ref: '#/components/schemas/KycStatusEnum'
+        kyc_nationality:
+          type: string
+          nullable: true
+          maxLength: 100
+      required:
+      - country_code
+      - id
+    ValidateOfferRequest:
+      type: object
+      properties:
+        offer_id:
+          type: string
+          format: uuid
+        beneficiary_name:
+          type: string
+          minLength: 1
+        beneficiary_phone:
+          type: string
+          minLength: 1
+      required:
+      - offer_id
+    VerifyOTPRequest:
+      type: object
+      description: Validation pour la vérification du code OTP
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+          maxLength: 20
+        code:
+          type: string
+          minLength: 6
+          maxLength: 6
+        session_key:
+          type: string
+      required:
+      - code
+      - phone_number
+    Wallet:
+      type: object
+      description: Sérialiseur pour le portefeuille
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        balance:
+          type: string
+          readOnly: true
+        currency:
+          type: string
+          description: Devise du portefeuille (déterminée par le pays du numéro de
+            téléphone)
+          maxLength: 3
+        currency_display:
+          type: string
+          readOnly: true
+        user_phone:
+          type: string
+          readOnly: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - balance
+      - created_at
+      - currency
+      - currency_display
+      - id
+      - updated_at
+      - user_phone
+    WithdrawalPaymentMethodEnum:
+      enum:
+      - card
+      - orange_money
+      type: string
+      description: |-
+        * `card` - Compte bancaire
+        * `orange_money` - Orange Money
+    WithdrawalRequest:
+      type: object
+      description: |-
+        Sérialiseur pour l'initiation d'un retrait
+        Accepte soit un payment_method_id (méthode sauvegardée) soit les détails complets
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          description: Montant du retrait dans la devise du portefeuille
+        payment_method:
+          allOf:
+          - $ref: '#/components/schemas/WithdrawalPaymentMethodEnum'
+          description: |-
+            Méthode de retrait
+
+            * `card` - Compte bancaire
+            * `orange_money` - Orange Money
+        payment_method_id:
+          type: string
+          format: uuid
+          description: ID d'une méthode de paiement sauvegardée (alternative aux détails
+            ci-dessous)
+        account_number:
+          type: string
+          minLength: 1
+          description: Numéro de compte bancaire (requis si pas de payment_method_id)
+          maxLength: 50
+        bank_code:
+          type: string
+          minLength: 1
+          description: Code de la banque (requis si pas de payment_method_id)
+          maxLength: 20
+        account_name:
+          type: string
+          minLength: 1
+          description: Nom du titulaire du compte (requis si pas de payment_method_id)
+          maxLength: 200
+        bank_country:
+          type: string
+          minLength: 1
+          description: 'Code pays de la banque (ex: FR, SN, CI) - optionnel'
+          maxLength: 2
+        bank_name:
+          type: string
+          minLength: 1
+          description: Nom de la banque (optionnel)
+          maxLength: 200
+        orange_money_number:
+          type: string
+          minLength: 1
+          description: Numéro Orange Money (requis si pas de payment_method_id)
+          maxLength: 20
+        save_payment_method:
+          type: boolean
+          default: false
+          description: Sauvegarder cette méthode de paiement pour usage futur
+        payment_method_label:
+          type: string
+          minLength: 1
+          description: Nom à donner à la méthode sauvegardée (si save_payment_method=True)
+          maxLength: 100
+      required:
+      - amount
+      - payment_method
+    WithdrawalResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        transaction:
+          $ref: '#/components/schemas/Transaction'
+        reference:
+          type: string
+        amount:
+          type: number
+          format: double
+        fee:
+          type: number
+          format: double
+        total_deducted:
+          type: number
+          format: double
+        currency:
+          type: string
+      required:
+      - amount
+      - currency
+      - fee
+      - message
+      - reference
+      - success
+      - total_deducted
+      - transaction
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+tags:
+- name: Authentification
+  description: Endpoints de connexion et inscription (JWT)
+- name: Profil & KYC
+  description: Gestion du profil utilisateur et vérification d'identité
+- name: Portefeuille
+  description: Opérations financières et historique des transactions
+- name: Offres P2P
+  description: Cycle de vie des offres de swap et Escrow
+- name: Suggestions
+  description: Flux de recommandations personnalisé
+- name: Notifications
+  description: Gestion des alertes utilisateur

@@ -28,6 +28,7 @@ class KYCVerifyView(APIView):
         summary="Soumettre un document KYC",
         description="Envoie un document d'identité (image base64 ou URL) pour vérification par Didit.",
         request=KYCVerifySerializer,
+        tags=['Profil & KYC'],
         responses={
             200: {"description": "Document reçu et approuvé"},
             202: {"description": "Document reçu, en attente de vérification manuelle"},

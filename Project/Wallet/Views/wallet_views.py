@@ -38,6 +38,7 @@ class WalletView(APIView):
     @extend_schema(
         summary="Obtenir le portefeuille",
         description="Retourne les informations du portefeuille de l'utilisateur connecté (solde, devise, transactions récentes).",
+        tags=['Portefeuille'],
         responses={200: WalletSerializer}
     )
     def get(self, request):
@@ -76,12 +77,26 @@ class DepositView(APIView):
 
     @extend_schema(
         summary="Initier un dépôt",
-        description="Initie une transaction de dépôt. Retourne un lien de paiement ou les instructions.",
+        description="Initie une transaction de dépôt via Flutterwave. Retourne un lien de paiement (v3) ou les instructions de redirection.",
         request=DepositSerializer,
+        tags=['Portefeuille'],
         responses={
-            201: TransactionSerializer,
-            400: {"description": "Erreur de validation"},
-            429: {"description": "Rate limited"}
+            201: inline_serializer(
+                name='DepositResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'transaction': TransactionSerializer(),
+                    'payment_link': serializers.URLField(),
+                    'reference': serializers.CharField(),
+                    'amount': serializers.FloatField(),
+                    'fee': serializers.FloatField(),
+                    'total': serializers.FloatField(),
+                    'currency': serializers.CharField(),
+                }
+            ),
+            400: {"description": "Erreur de validation ou configuration incorrecte"},
+            429: {"description": "Limite de taux atteinte (throttle)"}
         }
     )
     @idempotent_endpoint()
@@ -194,12 +209,25 @@ class WithdrawalView(APIView):
 
     @extend_schema(
         summary="Initier un retrait",
-        description="Initie une transaction de retrait vers un compte bancaire ou mobile money.",
+        description="Initie une transaction de retrait depuis le portefeuille vers un compte bancaire ou mobile money via Flutterwave.",
         request=WithdrawalSerializer,
+        tags=['Portefeuille'],
         responses={
-            201: TransactionSerializer,
-            400: {"description": "Fonds insuffisants ou données invalides"},
-            429: {"description": "Rate limited"}
+            201: inline_serializer(
+                name='WithdrawalResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'transaction': TransactionSerializer(),
+                    'reference': serializers.CharField(),
+                    'amount': serializers.FloatField(),
+                    'fee': serializers.FloatField(),
+                    'total_deducted': serializers.FloatField(),
+                    'currency': serializers.CharField(),
+                }
+            ),
+            400: {"description": "Solde insuffisant ou coordonnées bancaires invalides"},
+            429: {"description": "Limite de taux atteinte (throttle)"}
         }
     )
     @idempotent_endpoint()
@@ -302,6 +330,7 @@ class TransactionListView(APIView):
     @extend_schema(
         summary="Lister les transactions",
         description="Liste l'historique des transactions avec filtrage et pagination.",
+        tags=['Portefeuille'],
         parameters=[
             OpenApiParameter(name='transaction_type', type=OpenApiTypes.STR, enum=['deposit', 'withdrawal'], required=False),
             OpenApiParameter(name='status', type=OpenApiTypes.STR, enum=['pending', 'processing', 'completed', 'failed', 'cancelled'], required=False),
@@ -380,6 +409,7 @@ class TransactionDetailView(APIView):
     @extend_schema(
         summary="Détail d'une transaction",
         description="Récupère les détails d'une transaction spécifique par ID.",
+        tags=['Portefeuille'],
         responses={
             200: TransactionSerializer,
             404: {"description": "Transaction introuvable"}
@@ -415,6 +445,13 @@ class FlutterwaveWebhookView(APIView):
     """
     permission_classes = []  # Pas d'authentification pour les webhooks
 
+    @extend_schema(
+        summary="Webhook Flutterwave",
+        description="Point de terminaison pour recevoir les notifications de paiement asynchrones de Flutterwave.",
+        tags=['Portefeuille'],
+        responses={200: {"description": "Webhook reçu"}},
+        request=None
+    )
     def post(self, request):
         """
         Traite les webhooks Flutterwave avec vérification de signature
@@ -470,6 +507,7 @@ class ConfirmDepositView(APIView):
         summary="Confirmer un dépôt (Admin)",
         description="Confirme manuellement un dépôt.",
         request=TransactionConfirmSerializer,
+        tags=['Portefeuille'],
         responses={200: TransactionSerializer}
     )
     def post(self, request, transaction_id):
@@ -521,6 +559,7 @@ class CancelDepositView(APIView):
         summary="Annuler un dépôt",
         description="Annule un dépôt en attente.",
         request=TransactionCancelSerializer,
+        tags=['Portefeuille'],
         responses={200: TransactionSerializer}
     )
     def post(self, request, transaction_id):
@@ -571,6 +610,7 @@ class ConfirmWithdrawalView(APIView):
         summary="Confirmer un retrait (Admin)",
         description="Confirme manuellement un retrait.",
         request=TransactionConfirmSerializer,
+        tags=['Portefeuille'],
         responses={200: TransactionSerializer}
     )
     def post(self, request, transaction_id):
@@ -622,6 +662,7 @@ class CancelWithdrawalView(APIView):
         summary="Annuler un retrait",
         description="Annule un retrait en attente. Rembourse le montant sur le portefeuille.",
         request=TransactionCancelSerializer,
+        tags=['Portefeuille'],
         responses={200: TransactionSerializer}
     )
     def post(self, request, transaction_id):
@@ -672,6 +713,7 @@ class TransactionStatusView(APIView):
     @extend_schema(
         summary="Vérifier le statut d'une transaction",
         description="Vérifie le statut (locaux et distant Flutterwave) d'une transaction.",
+        tags=['Portefeuille'],
         responses={
              200: inline_serializer(
                 name='TransactionStatusResponse',
@@ -753,6 +795,7 @@ class UpdateTransactionStatusView(APIView):
         summary="Mettre à jour le statut d'une transaction (Admin)",
         description="Force la mise à jour du statut d'une transaction.",
         request=TransactionStatusUpdateSerializer,
+        tags=['Portefeuille'],
         responses={200: TransactionSerializer}
     )
     def patch(self, request, transaction_id):
@@ -805,6 +848,7 @@ class WalletStatsView(APIView):
     @extend_schema(
         summary="Statistiques du portefeuille (Admin)",
         description="Retourne des statistiques globales sur les portefeuilles.",
+        tags=['Portefeuille'],
         responses={200: OpenApiTypes.OBJECT}
     )
     def get(self, request):
@@ -827,6 +871,7 @@ class RetryTransactionView(APIView):
     @extend_schema(
         summary="Réessayer une transaction échouée",
         description="Tente de relancer ou confirmer une transaction marquée comme échouée ou annulée.",
+        tags=['Portefeuille'],
         responses={
             200: TransactionSerializer,
             501: {"description": "Non implémenté"}
@@ -896,6 +941,7 @@ class EstimateFeesView(APIView):
     @extend_schema(
         summary="Estimer les frais",
         description="Calcule les frais estimés pour une transaction donnée.",
+        tags=['Portefeuille'],
         request=inline_serializer(
             name='EstimateFeesRequest',
             fields={

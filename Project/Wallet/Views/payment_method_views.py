@@ -34,6 +34,7 @@ class PaymentMethodListView(APIView):
     @extend_schema(
         summary="Lister les méthodes de paiement",
         description="Récupère les méthodes de paiement sauvegardées (cartes, comptes).",
+        tags=['Portefeuille'],
         parameters=[
             OpenApiParameter(name='method_type', type=OpenApiTypes.STR, enum=['card', 'bank_account', 'orange_money'], required=False),
             OpenApiParameter(name='active_only', type=OpenApiTypes.BOOL, required=False, default=True),
@@ -63,6 +64,7 @@ class PaymentMethodListView(APIView):
         summary="Créer une méthode de paiement",
         description="Ajoute une nouvelle méthode de paiement. 'method_type' détermine les champs requis.",
         request=CreateCardPaymentMethodSerializer, # Simplification pour la doc, idéalement polymorphique
+        tags=['Portefeuille'],
         responses={201: PaymentMethodSerializer}
     )
     def post(self, request):
@@ -158,6 +160,7 @@ class PaymentMethodDetailView(APIView):
 
     @extend_schema(
         summary="Détail d'une méthode de paiement",
+        tags=['Portefeuille'],
         responses={
             200: PaymentMethodSerializer,
             404: {"description": "Non trouvée"}
@@ -193,6 +196,7 @@ class PaymentMethodDetailView(APIView):
         summary="Mettre à jour une méthode de paiement",
         description="Met à jour le label ou le statut par défaut.",
         request=UpdatePaymentMethodSerializer,
+        tags=['Portefeuille'],
         responses={200: PaymentMethodSerializer}
     )
     def patch(self, request, payment_method_id):
@@ -253,6 +257,7 @@ class PaymentMethodDetailView(APIView):
     @extend_schema(
         summary="Supprimer une méthode de paiement",
         description="Désactive (soft delete) une méthode de paiement. Elle ne sera plus proposée pour les paiements.",
+        tags=['Portefeuille'],
         responses={200: {"description": "Succès"}}
     )
     def delete(self, request, payment_method_id):
@@ -295,6 +300,7 @@ class PaymentMethodSetDefaultView(APIView):
     @extend_schema(
         summary="Définir comme défaut",
         description="Définit cette méthode de paiement comme celle par défaut pour son type.",
+        tags=['Portefeuille'],
         responses={200: PaymentMethodSerializer},
         request=None
     )

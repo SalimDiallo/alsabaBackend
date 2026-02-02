@@ -13,12 +13,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-alsaba_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alsaba_password}
     ports:
-      - "5432:5432"  # À retirer en production
+      - "5432:5432" # À retirer en production
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres/init:/docker-entrypoint-initdb.d
+      # - ./docker/postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-alsaba_user} -d ${POSTGRES_DB:-alsaba_db}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-alsaba_user} -d ${POSTGRES_DB:-alsaba_db}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,7 +36,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -60,24 +60,24 @@ services:
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?err}
       - DATABASE_HOST=db
       - DATABASE_PORT=5432
+      - RUN_MIGRATIONS=True
       # Redis Config
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       # Sécurité API
-      - DIDIT_API_KEY=${DIDIT_API_KEY:?err}
-      - DIDIT_WEBHOOK_SECRET=${DIDIT_WEBHOOK_SECRET:?err}
-      - FLUTTERWAVE_SECRET_KEY=${FLUTTERWAVE_SECRET_KEY:?err}
-      - FLUTTERWAVE_WEBHOOK_SECRET=${FLUTTERWAVE_WEBHOOK_SECRET:?err}
-      - EMAIL_HOST=${EMAIL_HOST:?err}
-      - EMAIL_HOST_USER=${EMAIL_HOST_USER:?err}
-      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD:?err}
+      - DIDIT_API_KEY=${DIDIT_API_KEY:-dp_live_placeholder}
+      - DIDIT_WEBHOOK_SECRET=${DIDIT_WEBHOOK_SECRET:-webhook_secret_placeholder}
+      - FLUTTERWAVE_SECRET_KEY=${FLUTTERWAVE_SECRET_KEY:-fw_live_placeholder}
+      - FLUTTERWAVE_PUBLIC_KEY=${FLUTTERWAVE_PUBLIC_KEY:-fw_pub_placeholder}
+      - FLUTTERWAVE_ENCRYPTION_KEY=${FLUTTERWAVE_ENCRYPTION_KEY:-fw_enc_placeholder}
+      - FLUTTERWAVE_WEBHOOK_SECRET=${FLUTTERWAVE_WEBHOOK_SECRET:-webhook_secret_placeholder}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/1}
       - SENTRY_DSN=${SENTRY_DSN:-}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
     ports:
       - "8000:8000"
     volumes:
-      - ./Project:/app  # Montage du code pour dev (hot reload)
+      - ./Project:/app # Montage du code pour dev (hot reload)
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     depends_on:
@@ -169,6 +169,7 @@ volumes:
   static_volume:
   media_volume:
   pgadmin_data:
+
 
 networks:
   alsaba_network:

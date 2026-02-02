@@ -17,12 +17,13 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     @extend_schema(
         summary="Lister les notifications",
         description="Récupère la liste des notifications de l'utilisateur.",
+        tags=['Notifications'],
         responses={200: NotificationSerializer(many=True)}
     )
     def get_queryset(self):
         return Notification.objects.filter(user=self.request.user)
 
-    @extend_schema(summary="Marquer une notification comme lue", description="Marque une notification spécifique comme lue.", responses={200: {"description": "Succès"}})
+    @extend_schema(summary="Marquer une notification comme lue", description="Marque une notification spécifique comme lue.", tags=['Notifications'], responses={200: {"description": "Succès"}})
     @action(detail=True, methods=['post'])
     def read(self, request, pk=None):
         """Mark notification as read"""
@@ -31,7 +32,7 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         notification.save()
         return Response({'status': 'marked as read'})
 
-    @extend_schema(summary="Tout marquer comme lu", description="Marque toutes les notifications de l'utilisateur comme lues.", responses={200: {"description": "Succès"}})
+    @extend_schema(summary="Tout marquer comme lu", description="Marque toutes les notifications de l'utilisateur comme lues.", tags=['Notifications'], responses={200: {"description": "Succès"}})
     @action(detail=False, methods=['post'])
     def read_all(self, request):
         """Mark all notifications as read"""
@@ -51,6 +52,7 @@ class DeviceViewSet(viewsets.GenericViewSet):
         summary="Enregistrer un appareil (FCM)",
         description="Enregistre un token FCM pour recevoir les notifications push.",
         request=DeviceSerializer,
+        tags=['Notifications'],
         responses={201: {"description": "Appareil enregistré"}}
     )
     def create(self, request):

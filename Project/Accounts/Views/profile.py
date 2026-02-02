@@ -20,7 +20,8 @@ class ProfileView(APIView):
     @extend_schema(
         summary="Récupérer le profil utilisateur",
         description="Retourne les informations détaillées du profil, y compris le statut de vérification et le pourcentage de complétion.",
-        responses={200: ProfileSerializer} # Idéalement on définit un serializer complet pour la réponse enrichie, mais ProfileSerializer est une bonne base
+        tags=['Profil & KYC'],
+        responses={200: ProfileSerializer}
     )
     def get(self, request):
         """
@@ -54,6 +55,7 @@ class ProfileView(APIView):
         summary="Mettre à jour le profil",
         description="Permet de mettre à jour partiellement les informations du profil (email, nom, etc.).",
         request=ProfileUpdateSerializer,
+        tags=['Profil & KYC'],
         responses={200: ProfileSerializer}
     )
     def patch(self, request):

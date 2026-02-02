@@ -29,7 +29,8 @@ class SuggestionListView(generics.ListAPIView):
 
     @extend_schema(
         summary="Lister les suggestions",
-        description="Obtenir le flux de suggestions (matchs potentiels) pour l'utilisateur.",
+        description="Obtenir le flux de suggestions personnalisées (matchs potentiels) pour l'utilisateur connecté.",
+        tags=['Suggestions'],
         responses={200: SuggestionSerializer(many=True)}
     )
     def get_queryset(self):
@@ -47,7 +48,8 @@ class NotificationReadView(APIView):
 
     @extend_schema(
         summary="Marquer comme lu",
-        description="Marquer une suggestion ou notification comme lue.",
+        description="Marque une suggestion spécifique comme lue.",
+        tags=['Suggestions'],
         responses={200: {"description": "OK"}},
         request=None
     )

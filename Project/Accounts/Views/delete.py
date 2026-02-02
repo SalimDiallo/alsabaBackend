@@ -25,6 +25,7 @@ class AccountDeleteRequestView(APIView):
         summary="Demander la suppression du compte",
         description="Initie le processus de supression. Envoie un OTP de confirmation.",
         request=AccountDeleteSerializer,
+        tags=['Authentification'],
         responses={
             200: {"description": "OTP envoyé"},
             400: {"description": "Une demande est déjà en cours"},
@@ -167,6 +168,7 @@ class AccountDeleteConfirmView(APIView):
         summary="Confirmer la suppression du compte",
         description="Valide l'OTP et effectue la suppression logicielle (soft delete) du compte.",
         request=AccountDeleteConfirmSerializer,
+        tags=['Authentification'],
         responses={
             200: {"description": "Compte supprimé avec succès"},
             400: {"description": "Code invalide ou session expirée"},
