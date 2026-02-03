@@ -1,6 +1,7 @@
 import structlog
 from django.conf import settings
 from .models import Notification, Device
+from django.utils import timezone
 from twilio.request_validator import RequestValidator
 
 logger = structlog.get_logger(__name__)
@@ -38,13 +39,12 @@ class NotificationService:
             channels (list): Liste des canaux ['db', 'sms']. Défaut: tous.
         """
         if channels is None:
-            channels = ['db', 'sms'] # Par défaut SMS au lieu de Push
+            channels = ['db', 'sms', 'ws', 'push'] # Ajout de 'push' par défaut
 
         if data is None:
             data = {}
 
         # 1. Enregistrement en base de données (In-App History)
-        # On le fait de manière synchrone pour immédiateté dans l'UI si l'user refresh
         if 'db' in channels:
             try:
                 Notification.objects.create(
@@ -57,7 +57,52 @@ class NotificationService:
             except Exception as e:
                 logger.error("notification_db_create_failed", error=str(e), user_id=str(user.id))
 
-        # 2. SMS Notification (Twilio) - Async
+        # 2. WebSocket Notification (Real-time)
+        if 'ws' in channels:
+            try:
+                from channels.layers import get_channel_layer
+                from asgiref.sync import async_to_sync
+                
+                channel_layer = get_channel_layer()
+                group_name = f"user_notifs_{user.id}"
+                
+                async_to_sync(channel_layer.group_send)(
+                    group_name,
+                    {
+                        "type": "send_notification",
+                        "message": {
+                            "title": title,
+                            "body": body,
+                            "type": notification_type,
+                            "data": data,
+                            "timestamp": str(timezone.now())
+                        }
+                    }
+                )
+            except Exception as e:
+                logger.error("notification_ws_send_failed", error=str(e), user_id=str(user.id))
+
+        # 3. Push Notification (FCM) - Async
+        if 'push' in channels:
+            # Récupérer les tokens FCM actifs pour cet utilisateur
+            registration_ids = list(Device.objects.filter(
+                user=user, 
+                is_active=True, 
+                registration_id__isnull=False
+            ).values_list('registration_id', flat=True))
+
+            if registration_ids:
+                from .tasks import send_push_notification_task
+                send_push_notification_task.delay(
+                    registration_ids=registration_ids,
+                    title=title,
+                    body=body,
+                    data=data
+                )
+            else:
+                logger.debug("no_fcm_tokens_for_push", user_id=str(user.id))
+
+        # 4. SMS Notification (Twilio) - Async
         if 'sms' in channels:
             # On récupère tous les numéros de téléphone actifs de l'utilisateur
             phone_numbers = list(Device.objects.filter(user=user, is_active=True).values_list('phone_number', flat=True))

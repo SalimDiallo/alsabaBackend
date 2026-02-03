@@ -12,6 +12,7 @@ from .serializers import (
     DisputeSerializer, InitiateDisputeSerializer, ResolveDisputeSerializer
 )
 from .services import SecureEscrowService
+from .exchange_service import ExchangeRateService
 from Project.idempotency import idempotent_endpoint
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 import structlog
@@ -128,6 +129,7 @@ class UpdateOfferView(APIView):
                 
                 # Recalcul du taux si montants changés
                 if 'amount_sell' in data or 'amount_buy' in data:
+                    from decimal import Decimal
                     offer.rate = Decimal(offer.amount_buy_cents) / Decimal(offer.amount_sell_cents)
 
                 offer.save()
@@ -501,3 +503,35 @@ class ResolveDisputeView(APIView):
                 {'error': 'Erreur lors de la résolution'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+class ExchangeRateView(APIView):
+    """
+    GET /api/offers/exchange-rates/
+    Récupère les taux de change officiels pour une devise donnée.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        summary="Obtenir les taux de change officiels",
+        description="Récupère les taux de change actuels depuis ExchangeRate-API (avec mise en cache Redis). Utile pour guider l'utilisateur lors de la création d'une offre.",
+        tags=['Offres P2P'],
+        parameters=[
+            OpenApiParameter(name='base', type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Devise de base (ex: EUR, XOF, NGN). Défaut: EUR")
+        ],
+        responses={200: OpenApiTypes.OBJECT}
+    )
+    def get(self, request):
+        base_currency = request.query_params.get('base', 'EUR').upper()
+        rates = ExchangeRateService.get_rates(base_currency)
+        
+        if rates:
+            return Response({
+                "base": base_currency,
+                "rates": rates,
+                "provider": "ExchangeRate-API",
+                "cached": True
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            "error": "Impossible de récupérer les taux pour le moment."
+        }, status=status.HTTP_503_SERVICE_UNAVAILABLE)

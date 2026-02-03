@@ -43,16 +43,43 @@ class CreateOfferSerializer(serializers.Serializer):
 
     def validate(self, data):
         """
-        Validation globale de l'offre.
+        Validation globale de l'offre incluant le taux de change.
         """
-        if data.get('currency_sell') == data.get('currency_buy'):
+        from .exchange_service import ExchangeRateService
+        from decimal import Decimal
+
+        currency_sell = data.get('currency_sell')
+        currency_buy = data.get('currency_buy')
+        amount_sell = data.get('amount_sell')
+        amount_buy = data.get('amount_buy')
+
+        if currency_sell == currency_buy:
             raise serializers.ValidationError({
                 "currency_buy": "La devise d'achat doit être différente de la devise de vente."
             })
         
-        # Le taux est calculé par le service, mais on peut vérifier la cohérence ici
-        if data.get('amount_sell') <= 0 or data.get('amount_buy') <= 0:
+        if amount_sell <= 0 or amount_buy <= 0:
              raise serializers.ValidationError("Les montants doivent être supérieurs à zéro.")
+
+        # Vérification du taux par rapport au marché
+        market_rate = ExchangeRateService.get_rate(currency_sell, currency_buy)
+        if market_rate:
+            market_rate = Decimal(str(market_rate))
+            user_rate = amount_buy / amount_sell
+            
+            # Calcul de l'écart en pourcentage
+            deviation = abs((user_rate - market_rate) / market_rate) * 100
+            
+            # Si l'écart est supérieur à 15%, on bloque (sécurité anti-erreur/fraude)
+            if deviation > 15:
+                logger.warning("offer_rate_deviation_too_high", 
+                               user_rate=float(user_rate), 
+                               market_rate=float(market_rate), 
+                               deviation=float(deviation))
+                raise serializers.ValidationError(
+                    f"Le taux proposé ({user_rate:.4f}) s'éloigne trop du taux du marché ({market_rate:.4f}). "
+                    f"L'écart maximum autorisé est de 15%."
+                )
              
         return data
 

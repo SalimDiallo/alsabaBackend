@@ -16,13 +16,19 @@ class Device(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='devices')
     
-    # Numéro de téléphone au format E.164 pour l'envoi de SMS via Twilio
     phone_number = models.CharField(
         max_length=20, 
-        unique=True, 
         null=True,
         blank=True,
         help_text="Numéro de téléphone au format E.164 (ex: +221771234567)"
+    )
+    
+    registration_id = models.CharField(
+        max_length=255,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Token FCM unique de l'appareil (Push Notification)"
     )
     
     platform = models.CharField(max_length=10, choices=PLATFORM_CHOICES, default='android')

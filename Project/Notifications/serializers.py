@@ -16,16 +16,20 @@ class NotificationSerializer(serializers.ModelSerializer):
 class DeviceSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(
         max_length=20,
+        required=False,
+        allow_null=True,
         help_text="Numéro de téléphone au format E.164 (ex: +221771234567)"
     )
     
     class Meta:
         model = Device
-        fields = ['id', 'phone_number', 'platform', 'is_active', 'created_at', 'last_used_at']
+        fields = ['id', 'phone_number', 'registration_id', 'platform', 'is_active', 'created_at', 'last_used_at']
         read_only_fields = ['id', 'created_at', 'last_used_at']
 
     def validate_phone_number(self, value):
-        """Valide le format E.164 du numéro de téléphone"""
+        """Valide le format E.164 du numéro de téléphone s'il est fourni"""
+        if not value:
+            return value
         import re
         if not re.match(r'^\+[1-9]\d{1,14}$', value):
             raise serializers.ValidationError(
@@ -35,13 +39,32 @@ class DeviceSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         user = self.context['request'].user
-        # get_or_create pour éviter les doublons et mettre à jour le last_used_at
-        device, created = Device.objects.get_or_create(
-            user=user, 
-            phone_number=validated_data['phone_number'],
-            defaults={'platform': validated_data.get('platform', 'android')}
-        )
-        if not created:
-            device.is_active = True # Réactiver si c'était désactivé
+        phone_number = validated_data.get('phone_number')
+        registration_id = validated_data.get('registration_id')
+
+        if not phone_number and not registration_id:
+            raise serializers.ValidationError("Vous devez fournir soit un phone_number, soit un registration_id.")
+
+        # Logique de recherche pour éviter les doublons
+        # On cherche d'abord par registration_id s'il existe (prioritaire pour le Push)
+        device = None
+        if registration_id:
+            device = Device.objects.filter(registration_id=registration_id).first()
+        
+        # Sinon par phone_number
+        if not device and phone_number:
+            device = Device.objects.filter(user=user, phone_number=phone_number).first()
+
+        if device:
+            # Mise à jour de l'existant
+            device.is_active = True
+            if phone_number:
+                device.phone_number = phone_number
+            if registration_id:
+                device.registration_id = registration_id
             device.save()
+        else:
+            # Création
+            device = Device.objects.create(user=user, **validated_data)
+            
         return device

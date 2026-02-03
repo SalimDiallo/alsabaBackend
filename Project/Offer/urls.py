@@ -13,10 +13,14 @@ from .views import (
     InitiateDisputeView,
     DisputeDetailView,
     ListDisputesView,
-    ResolveDisputeView
+    ResolveDisputeView,
+    ExchangeRateView
 )
 
 urlpatterns = [
+    # Taux de change
+    path('exchange-rates/', ExchangeRateView.as_view(), name='exchange_rates'),
+
     # Lister et Créer
     path('', OfferListView.as_view(), name='offer_list'),
     path('create/', CreateOfferView.as_view(), name='create_offer'),

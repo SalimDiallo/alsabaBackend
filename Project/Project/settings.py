@@ -120,6 +120,7 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -130,6 +131,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',  
+    'channels',
     'Accounts',
     'Wallet',
     'Offer',
@@ -193,6 +195,10 @@ FLUTTERWAVE_ENCRYPTION_KEY = os.getenv('FLUTTERWAVE_ENCRYPTION_KEY', '')
 FLUTTERWAVE_WEBHOOK_SECRET = os.getenv('FLUTTERWAVE_WEBHOOK_SECRET', '')
 FLUTTERWAVE_ENVIRONMENT = os.getenv('FLUTTERWAVE_ENVIRONMENT', 'sandbox')
 FLUTTERWAVE_CURRENCY = os.getenv('FLUTTERWAVE_CURRENCY', 'EUR')
+
+# ExchangeRate-API Configuration
+EXCHANGERATE_API_KEY = os.getenv('EXCHANGERATE_API_KEY', '')
+EXCHANGERATE_BASE_URL = "https://v6.exchangerate-api.com/v6/"
 
 
 # Swagger / API Documentation Settings
@@ -270,6 +276,17 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'Project.wsgi.application'
+ASGI_APPLICATION = 'Project.asgi.application'
+
+# Channels / WebSocket Configuration
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [os.getenv('REDIS_URL', 'redis://redis:6379/1')],
+        },
+    },
+}
 
 
 # Database
