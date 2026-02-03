@@ -11,7 +11,8 @@ from rest_framework.permissions import IsAuthenticated
 from ..utils import auth_utils
 from ..Serializers.OTP_serializers import PhoneAuthSerializer, VerifyOTPSerializer, ResendOTPSerializer
 
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
+from rest_framework import serializers
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes, inline_serializer
 #from ..Services.OTP_services import didit_service
 
 from ..Services.OTP_services import didit_service
@@ -33,15 +34,24 @@ class PhoneAuthView(APIView):
         request=PhoneAuthSerializer,
         tags=['Authentification'],
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "success": {"type": "boolean"},
-                    "session_key": {"type": "string"},
-                    "phone_number": {"type": "string"},
+            200: inline_serializer(
+                name='PhoneAuthResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'session_key': serializers.CharField(),
+                    'phone_number': serializers.CharField(),
+                    'action': serializers.ChoiceField(choices=['login', 'register']),
+                    'message': serializers.CharField(),
+                    'expires_in': serializers.IntegerField(),
                 }
-            },
-            400: {"description": "Erreur de validation ou échec d'envoi"},
+            ),
+            400: inline_serializer(
+                name='PhoneAuthError',
+                fields={
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField()
+                }
+            ),
             429: {"description": "Trop de tentatives"}
         }
     )
@@ -241,21 +251,42 @@ class VerifyOTPView(APIView):
         request=VerifyOTPSerializer,
         tags=['Authentification'],
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "success": {"type": "boolean"},
-                    "user": {"type": "object"}, 
-                    "auth": {
-                        "type": "object",
-                        "properties": {
-                            "access_token": {"type": "string"},
-                            "refresh_token": {"type": "string"}
+            200: inline_serializer(
+                name='VerifyOTPResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'action': serializers.CharField(),
+                    'message': serializers.CharField(),
+                    'user': serializers.JSONField(), # Full user data
+                    'auth': inline_serializer(
+                        name='TokenInfo',
+                        fields={
+                            'access_token': serializers.CharField(),
+                            'refresh_token': serializers.CharField(),
+                            'expires_in': serializers.IntegerField(),
+                            'token_type': serializers.CharField()
                         }
-                    }
+                    ),
+                    'kyc_info': inline_serializer(
+                        name='KYCBriefInfo',
+                        fields={
+                            'status': serializers.CharField(),
+                            'required': serializers.BooleanField(),
+                            'next_step': serializers.CharField()
+                        }
+                    ),
+                    'otp_verified': serializers.BooleanField(),
+                    'metadata': serializers.JSONField()
                 }
-            },
-            400: {"description": "Code invalide ou expiré"},
+            ),
+            400: inline_serializer(
+                name='VerifyOTPError',
+                fields={
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField(),
+                    'remaining_attempts': serializers.IntegerField()
+                }
+            ),
             403: {"description": "Numéro frauduleux ou jetable"},
             404: {"description": "Utilisateur non trouvé"}
         }
@@ -489,8 +520,24 @@ class ResendOTPView(APIView):
         request=ResendOTPSerializer,
         tags=['Authentification'],
         responses={
-            200: {"description": "Nouveau code envoyé"},
-            400: {"description": "Session expirée ou invalide"},
+            200: inline_serializer(
+                name='ResendOTPResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'request_id': serializers.CharField(),
+                    'session_key': serializers.CharField(),
+                    'expires_in': serializers.IntegerField(),
+                    'metadata': serializers.JSONField()
+                }
+            ),
+            400: inline_serializer(
+                name='ResendOTPError',
+                fields={
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField()
+                }
+            ),
             429: {"description": "Trop de demandes de renvoi"}
         }
     )
@@ -594,13 +641,16 @@ class AuthStatusView(APIView):
             OpenApiParameter(name='session_key', description='Clé de session', required=True, type=OpenApiTypes.STR),
         ],
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "authenticated": {"type": "boolean"},
-                    "session": {"type": "object"}
+            200: inline_serializer(
+                name='AuthStatusResponse',
+                fields={
+                    'authenticated': serializers.BooleanField(),
+                    'session': serializers.JSONField(),
+                    'user': serializers.JSONField(),
+                    'next_steps': serializers.ListField(child=serializers.CharField()),
+                    'metadata': serializers.JSONField(required=False)
                 }
-            }
+            )
         }
     )
     def get(self, request):

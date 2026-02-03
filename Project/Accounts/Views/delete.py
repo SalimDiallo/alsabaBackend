@@ -9,7 +9,8 @@ from ..Services.OTP_services import didit_service
 from ..utils import auth_utils
 import structlog
 from datetime import datetime
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from ..Serializers.delete import AccountDeleteSerializer, AccountDeleteConfirmSerializer
 
 logger = structlog.get_logger(__name__)
@@ -27,8 +28,24 @@ class AccountDeleteRequestView(APIView):
         request=AccountDeleteSerializer,
         tags=['Authentification'],
         responses={
-            200: {"description": "OTP envoyé"},
-            400: {"description": "Une demande est déjà en cours"},
+            200: inline_serializer(
+                name='AccountDeleteRequestResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'session_key': serializers.CharField(),
+                    'expires_in': serializers.IntegerField(),
+                    'next_step': serializers.CharField(),
+                    'warning': serializers.CharField(required=False)
+                }
+            ),
+            400: inline_serializer(
+                name='AccountDeleteRequestError',
+                fields={
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField()
+                }
+            ),
             429: {"description": "Trop de tentatives"}
         }
     )
@@ -170,8 +187,23 @@ class AccountDeleteConfirmView(APIView):
         request=AccountDeleteConfirmSerializer,
         tags=['Authentification'],
         responses={
-            200: {"description": "Compte supprimé avec succès"},
-            400: {"description": "Code invalide ou session expirée"},
+            200: inline_serializer(
+                name='AccountDeleteConfirmResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'action': serializers.CharField(),
+                    'metadata': serializers.JSONField()
+                }
+            ),
+            400: inline_serializer(
+                name='AccountDeleteConfirmError',
+                fields={
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField(),
+                    'remaining_attempts': serializers.IntegerField(required=False)
+                }
+            ),
             403: {"description": "Utilisateur non autorisé"},
             429: {"description": "Trop de tentatives échouées"}
         }

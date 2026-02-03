@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from Notifications.models import Notification
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes, extend_schema_field
 
 class SuggestionSerializer(serializers.ModelSerializer):
     offer_id = serializers.SerializerMethodField()
@@ -13,9 +13,11 @@ class SuggestionSerializer(serializers.ModelSerializer):
         model = Notification
         fields = ['id', 'title', 'body', 'score', 'is_read', 'created_at', 'offer_id', 'data']
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_offer_id(self, obj):
         return obj.data.get('offer_id')
 
+    @extend_schema_field(OpenApiTypes.FLOAT)
     def get_score(self, obj):
         return obj.data.get('score', 0)
 

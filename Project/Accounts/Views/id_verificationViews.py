@@ -5,7 +5,8 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 import structlog
 from datetime import datetime
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 
 from ..utils import auth_utils
 from ..models import User, KYCDocument
@@ -30,11 +31,49 @@ class KYCVerifyView(APIView):
         request=KYCVerifySerializer,
         tags=['Profil & KYC'],
         responses={
-            200: {"description": "Document reçu et approuvé"},
+            200: inline_serializer(
+                name='KYCApprovalResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'kyc_status': serializers.CharField(),
+                    'vendor_data': serializers.CharField(),
+                    'request_id': serializers.CharField(),
+                    'extracted_data': serializers.JSONField(),
+                    'metadata': serializers.JSONField()
+                }
+            ),
             202: {"description": "Document reçu, en attente de vérification manuelle"},
-            400: {"description": "Validation échouée ou document rejeté"},
+            400: inline_serializer(
+                name='KYCRejectionResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'didit_status': serializers.CharField(),
+                    'decline_reason': serializers.CharField(),
+                    'vendor_data': serializers.CharField(),
+                    'request_id': serializers.CharField(),
+                    'retry_allowed': serializers.BooleanField(),
+                    'retry_count': serializers.IntegerField(),
+                    'remaining_attempts': serializers.IntegerField(),
+                    'suggestions': serializers.ListField(child=serializers.CharField()),
+                    'next_step': serializers.CharField()
+                }
+            ),
             403: {"description": "Numéro de téléphone non vérifié"},
-            429: {"description": "Trop de tentatives"}
+            429: {"description": "Trop de tentatives"},
+            502: inline_serializer(
+                name='KYCTechnicalError',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField(),
+                    'vendor_data': serializers.CharField(),
+                    'retry_count': serializers.IntegerField(),
+                    'remaining_attempts': serializers.IntegerField(),
+                    'next_step': serializers.CharField()
+                }
+            )
         }
     )
     def post(self, request):

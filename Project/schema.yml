@@ -35,20 +35,13 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  session_key:
-                    type: string
-                  phone_number:
-                    type: string
+                $ref: '#/components/schemas/PhoneAuthResponse'
           description: ''
         '400':
           content:
             application/json:
               schema:
-                description: Erreur de validation ou échec d'envoi
+                $ref: '#/components/schemas/PhoneAuthError'
           description: ''
         '429':
           content:
@@ -110,13 +103,13 @@ paths:
           content:
             application/json:
               schema:
-                description: Nouveau code envoyé
+                $ref: '#/components/schemas/ResendOTPResponse'
           description: ''
         '400':
           content:
             application/json:
               schema:
-                description: Session expirée ou invalide
+                $ref: '#/components/schemas/ResendOTPError'
           description: ''
         '429':
           content:
@@ -146,12 +139,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  authenticated:
-                    type: boolean
-                  session:
-                    type: object
+                $ref: '#/components/schemas/AuthStatusResponse'
           description: ''
   /api/accounts/auth/verify/:
     post:
@@ -181,25 +169,13 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  user:
-                    type: object
-                  auth:
-                    type: object
-                    properties:
-                      access_token:
-                        type: string
-                      refresh_token:
-                        type: string
+                $ref: '#/components/schemas/VerifyOTPResponse'
           description: ''
         '400':
           content:
             application/json:
               schema:
-                description: Code invalide ou expiré
+                $ref: '#/components/schemas/VerifyOTPError'
           description: ''
         '403':
           content:
@@ -238,13 +214,13 @@ paths:
           content:
             application/json:
               schema:
-                description: OTP envoyé
+                $ref: '#/components/schemas/AccountDeleteRequestResponse'
           description: ''
         '400':
           content:
             application/json:
               schema:
-                description: Une demande est déjà en cours
+                $ref: '#/components/schemas/AccountDeleteRequestError'
           description: ''
         '429':
           content:
@@ -279,13 +255,13 @@ paths:
           content:
             application/json:
               schema:
-                description: Compte supprimé avec succès
+                $ref: '#/components/schemas/AccountDeleteConfirmResponse'
           description: ''
         '400':
           content:
             application/json:
               schema:
-                description: Code invalide ou session expirée
+                $ref: '#/components/schemas/AccountDeleteConfirmError'
           description: ''
         '403':
           content:
@@ -326,7 +302,7 @@ paths:
           content:
             application/json:
               schema:
-                description: Document reçu et approuvé
+                $ref: '#/components/schemas/KYCApprovalResponse'
           description: ''
         '202':
           content:
@@ -338,7 +314,7 @@ paths:
           content:
             application/json:
               schema:
-                description: Validation échouée ou document rejeté
+                $ref: '#/components/schemas/KYCRejectionResponse'
           description: ''
         '403':
           content:
@@ -351,6 +327,12 @@ paths:
             application/json:
               schema:
                 description: Trop de tentatives
+          description: ''
+        '502':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KYCTechnicalError'
           description: ''
   /api/accounts/profile/:
     get:
@@ -367,7 +349,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Profile'
+                $ref: '#/components/schemas/ProfileResponse'
           description: ''
     patch:
       operationId: accounts_profile_partial_update
@@ -394,7 +376,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Profile'
+                $ref: '#/components/schemas/ProfileUpdateResponse'
           description: ''
   /api/accounts/webhooks/didit/kyc/:
     post:
@@ -455,6 +437,7 @@ paths:
         name: id
         schema:
           type: string
+        description: ID de la notification
         required: true
       tags:
       - Notifications
@@ -476,7 +459,7 @@ paths:
           content:
             application/json:
               schema:
-                description: Succès
+                $ref: '#/components/schemas/NotificationReadResponse'
           description: ''
   /api/notifications/read_all/:
     post:
@@ -503,7 +486,7 @@ paths:
           content:
             application/json:
               schema:
-                description: Succès
+                $ref: '#/components/schemas/NotificationReadAllResponse'
           description: ''
   /api/notifications/register-device/:
     post:
@@ -531,7 +514,7 @@ paths:
           content:
             application/json:
               schema:
-                description: Appareil enregistré
+                $ref: '#/components/schemas/DeviceRegisterResponse'
           description: ''
   /api/offers/:
     get:
@@ -1075,7 +1058,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Wallet'
+                $ref: '#/components/schemas/WalletResponse'
           description: ''
   /api/wallet/deposit/:
     post:
@@ -1110,7 +1093,7 @@ paths:
           content:
             application/json:
               schema:
-                description: Erreur de validation ou configuration incorrecte
+                $ref: '#/components/schemas/DepositError'
           description: ''
         '429':
           content:
@@ -1150,7 +1133,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Transaction'
+                $ref: '#/components/schemas/CancelDepositResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelDepositError'
           description: ''
   /api/wallet/deposit/{transaction_id}/confirm/:
     post:
@@ -1183,7 +1172,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Transaction'
+                $ref: '#/components/schemas/ConfirmDepositResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmDepositError'
           description: ''
   /api/wallet/fees/estimate/:
     post:
@@ -1213,6 +1208,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/EstimateFeesResponse'
           description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstimateFeesError'
+          description: ''
   /api/wallet/payment-methods/:
     get:
       operationId: wallet_payment_methods_list
@@ -1241,9 +1242,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/PaymentMethod'
+                $ref: '#/components/schemas/PaymentMethodListResponse'
           description: ''
     post:
       operationId: wallet_payment_methods_create
@@ -1271,7 +1270,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaymentMethod'
+                $ref: '#/components/schemas/PaymentMethodCreateResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentMethodCreateError'
           description: ''
   /api/wallet/payment-methods/{payment_method_id}/:
     get:
@@ -1293,7 +1298,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaymentMethod'
+                $ref: '#/components/schemas/PaymentMethodDetailResponse'
           description: ''
         '404':
           content:
@@ -1302,7 +1307,7 @@ paths:
                 description: Non trouvée
           description: ''
     patch:
-      operationId: wallet_payment_methods_partial_update
+      operationId: wallet_payment_methods_update
       description: Met à jour le label ou le statut par défaut.
       summary: Mettre à jour une méthode de paiement
       parameters:
@@ -1331,7 +1336,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaymentMethod'
+                $ref: '#/components/schemas/PaymentMethodUpdateResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                description: Données invalides
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                description: Non trouvée
           description: ''
     delete:
       operationId: wallet_payment_methods_destroy
@@ -1353,7 +1370,7 @@ paths:
           content:
             application/json:
               schema:
-                description: Succès
+                $ref: '#/components/schemas/PaymentMethodDeleteResponse'
           description: ''
   /api/wallet/payment-methods/{payment_method_id}/set-default/:
     post:
@@ -1376,7 +1393,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaymentMethod'
+                $ref: '#/components/schemas/PaymentMethodSetDefaultResponse'
           description: ''
   /api/wallet/stats/:
     get:
@@ -1620,7 +1637,7 @@ paths:
           content:
             application/json:
               schema:
-                description: Solde insuffisant ou coordonnées bancaires invalides
+                $ref: '#/components/schemas/WithdrawalError'
           description: ''
         '429':
           content:
@@ -1711,6 +1728,18 @@ components:
           minLength: 1
       required:
       - offer_id
+    AccountDeleteConfirmError:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        remaining_attempts:
+          type: integer
+      required:
+      - code
+      - error
     AccountDeleteConfirmRequest:
       type: object
       description: Confirmation avec OTP
@@ -1725,6 +1754,21 @@ components:
       required:
       - code
       - session_key
+    AccountDeleteConfirmResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        action:
+          type: string
+        metadata: {}
+      required:
+      - action
+      - message
+      - metadata
+      - success
     AccountDeleteRequest:
       type: object
       description: Demande de suppression
@@ -1732,6 +1776,126 @@ components:
         reason:
           type: string
           maxLength: 100
+    AccountDeleteRequestError:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+      required:
+      - code
+      - error
+    AccountDeleteRequestResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        session_key:
+          type: string
+        expires_in:
+          type: integer
+        next_step:
+          type: string
+        warning:
+          type: string
+      required:
+      - expires_in
+      - message
+      - next_step
+      - session_key
+      - success
+    ActionEnum:
+      enum:
+      - login
+      - register
+      type: string
+      description: |-
+        * `login` - login
+        * `register` - register
+    AuthStatusResponse:
+      type: object
+      properties:
+        authenticated:
+          type: boolean
+        session: {}
+        user: {}
+        next_steps:
+          type: array
+          items:
+            type: string
+        metadata: {}
+      required:
+      - authenticated
+      - next_steps
+      - session
+      - user
+    CancelDepositError:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+        code:
+          type: string
+      required:
+      - code
+      - error
+      - success
+    CancelDepositResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        transaction:
+          $ref: '#/components/schemas/Transaction'
+        refund_amount:
+          type: number
+          format: double
+      required:
+      - message
+      - refund_amount
+      - success
+      - transaction
+    ConfirmDepositError:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+        code:
+          type: string
+      required:
+      - code
+      - error
+      - success
+    ConfirmDepositResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        transaction:
+          $ref: '#/components/schemas/Transaction'
+        wallet_balance:
+          type: number
+          format: double
+        amount_credited:
+          type: number
+          format: double
+      required:
+      - amount_credited
+      - message
+      - success
+      - transaction
+      - wallet_balance
     CreateCardPaymentMethodRequest:
       type: object
       description: Sérialiseur pour créer une méthode de paiement carte
@@ -1807,6 +1971,21 @@ components:
       - amount_sell
       - currency_buy
       - currency_sell
+    DepositError:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+        code:
+          type: string
+        available_balance:
+          type: number
+          format: double
+      required:
+      - error
+      - success
     DepositPaymentMethodEnum:
       enum:
       - card
@@ -1906,9 +2085,14 @@ components:
           format: double
         currency:
           type: string
+        currency_info: {}
+        expires_in:
+          type: integer
       required:
       - amount
       - currency
+      - currency_info
+      - expires_in
       - fee
       - message
       - payment_link
@@ -1916,6 +2100,13 @@ components:
       - success
       - total
       - transaction
+    DeviceRegisterResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+      - status
     DeviceRequest:
       type: object
       properties:
@@ -2040,6 +2231,19 @@ components:
         * `passport` - Passeport
         * `drivers_license` - Permis de conduire
         * `residence_permit` - Titre de séjour
+    EstimateFeesError:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+        code:
+          type: string
+      required:
+      - code
+      - error
+      - success
     EstimateFeesRequestPaymentMethodEnum:
       enum:
       - card
@@ -2079,6 +2283,14 @@ components:
       properties:
         success:
           type: boolean
+        estimation:
+          $ref: '#/components/schemas/FeesEstimationDetail'
+      required:
+      - estimation
+      - success
+    FeesEstimationDetail:
+      type: object
+      properties:
         amount:
           type: number
           format: double
@@ -2090,20 +2302,19 @@ components:
           format: double
         currency:
           type: string
+        currency_info: {}
+        transaction_type:
+          type: string
+        payment_method:
+          type: string
       required:
       - amount
       - currency
+      - currency_info
       - fee
-      - success
+      - payment_method
       - total
-    InconsistentDataActionEnum:
-      enum:
-      - NO_ACTION
-      - DECLINE
-      type: string
-      description: |-
-        * `NO_ACTION` - Ignorer
-        * `DECLINE` - Refuser
+      - transaction_type
     InitiateDisputeRequest:
       type: object
       description: Sérializer pour initier un litige
@@ -2115,6 +2326,106 @@ components:
         evidence: {}
       required:
       - reason
+    KYCApprovalResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        kyc_status:
+          type: string
+        vendor_data:
+          type: string
+        request_id:
+          type: string
+        extracted_data: {}
+        metadata: {}
+      required:
+      - extracted_data
+      - kyc_status
+      - message
+      - metadata
+      - request_id
+      - success
+      - vendor_data
+    KYCBriefInfo:
+      type: object
+      properties:
+        status:
+          type: string
+        required:
+          type: boolean
+        next_step:
+          type: string
+      required:
+      - next_step
+      - required
+      - status
+    KYCRejectionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        didit_status:
+          type: string
+        decline_reason:
+          type: string
+        vendor_data:
+          type: string
+        request_id:
+          type: string
+        retry_allowed:
+          type: boolean
+        retry_count:
+          type: integer
+        remaining_attempts:
+          type: integer
+        suggestions:
+          type: array
+          items:
+            type: string
+        next_step:
+          type: string
+      required:
+      - decline_reason
+      - didit_status
+      - message
+      - next_step
+      - remaining_attempts
+      - request_id
+      - retry_allowed
+      - retry_count
+      - success
+      - suggestions
+      - vendor_data
+    KYCTechnicalError:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+        code:
+          type: string
+        vendor_data:
+          type: string
+        retry_count:
+          type: integer
+        remaining_attempts:
+          type: integer
+        next_step:
+          type: string
+      required:
+      - code
+      - error
+      - next_step
+      - remaining_attempts
+      - retry_count
+      - success
+      - vendor_data
     KYCVerifyRequest:
       type: object
       properties:
@@ -2152,7 +2463,7 @@ components:
             refusés.
         expiration_date_not_detected_action:
           allOf:
-          - $ref: '#/components/schemas/InconsistentDataActionEnum'
+          - $ref: '#/components/schemas/KycActionEnum'
           default: DECLINE
           description: |-
             Action si date d'expiration non détectée
@@ -2161,7 +2472,7 @@ components:
             * `DECLINE` - Refuser
         invalid_mrz_action:
           allOf:
-          - $ref: '#/components/schemas/InconsistentDataActionEnum'
+          - $ref: '#/components/schemas/KycActionEnum'
           default: DECLINE
           description: |-
             Action si échec lecture MRZ
@@ -2170,7 +2481,7 @@ components:
             * `DECLINE` - Refuser
         inconsistent_data_action:
           allOf:
-          - $ref: '#/components/schemas/InconsistentDataActionEnum'
+          - $ref: '#/components/schemas/KycActionEnum'
           default: DECLINE
           description: |-
             Action si incohérence entre VIZ et MRZ
@@ -2197,6 +2508,14 @@ components:
       required:
       - document_type
       - front_image
+    KycActionEnum:
+      enum:
+      - NO_ACTION
+      - DECLINE
+      type: string
+      description: |-
+        * `NO_ACTION` - Ignorer
+        * `DECLINE` - Refuser
     KycStatusEnum:
       enum:
       - unverified
@@ -2251,6 +2570,20 @@ components:
       - id
       - notification_type
       - title
+    NotificationReadAllResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+      - status
+    NotificationReadResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+      - status
     NotificationRequest:
       type: object
       properties:
@@ -2397,7 +2730,7 @@ components:
       description: Sérialiseur pour la mise à jour du statut d'une transaction (admin)
       properties:
         status:
-          $ref: '#/components/schemas/StatusD8aEnum'
+          $ref: '#/components/schemas/TransactionStatusEnum'
         error_message:
           type: string
           minLength: 1
@@ -2515,6 +2848,103 @@ components:
       - method_type
       - method_type_display
       - updated_at
+    PaymentMethodCreateError:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+        code:
+          type: string
+        details: {}
+      required:
+      - error
+      - success
+    PaymentMethodCreateResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        payment_method:
+          $ref: '#/components/schemas/PaymentMethod'
+      required:
+      - message
+      - payment_method
+      - success
+    PaymentMethodDeleteResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+      - message
+      - success
+    PaymentMethodDetailResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        payment_method:
+          $ref: '#/components/schemas/PaymentMethod'
+      required:
+      - payment_method
+      - success
+    PaymentMethodListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        payment_methods:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentMethod'
+        count:
+          type: integer
+      required:
+      - count
+      - payment_methods
+      - success
+    PaymentMethodSetDefaultResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        payment_method:
+          $ref: '#/components/schemas/PaymentMethod'
+      required:
+      - message
+      - payment_method
+      - success
+    PaymentMethodUpdateResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        payment_method:
+          $ref: '#/components/schemas/PaymentMethod'
+      required:
+      - message
+      - payment_method
+      - success
+    PhoneAuthError:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+      required:
+      - code
+      - error
     PhoneAuthRequest:
       type: object
       description: |-
@@ -2533,6 +2963,28 @@ components:
           maxLength: 5
       required:
       - phone_number
+    PhoneAuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        session_key:
+          type: string
+        phone_number:
+          type: string
+        action:
+          $ref: '#/components/schemas/ActionEnum'
+        message:
+          type: string
+        expires_in:
+          type: integer
+      required:
+      - action
+      - expires_in
+      - message
+      - phone_number
+      - session_key
+      - success
     PlatformEnum:
       enum:
       - android
@@ -2669,8 +3121,21 @@ components:
         is_active:
           type: boolean
           readOnly: true
+        completion_percentage:
+          type: integer
+          description: Calcule le pourcentage de complétion du profil.
+          readOnly: true
+        next_steps:
+          type: array
+          items: {}
+          readOnly: true
+        verification_status:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
       - city
+      - completion_percentage
       - country_code
       - date_joined
       - email
@@ -2693,12 +3158,61 @@ components:
       - kyc_verified_at
       - last_login
       - last_name
+      - next_steps
       - phone_number
       - phone_verified
       - phone_verified_at
       - phone_verified_display
       - postal_code
       - state
+      - verification_status
+    ProfileMetadata:
+      type: object
+      properties:
+        retrieved_at:
+          type: string
+          format: date-time
+        requires_kyc:
+          type: boolean
+      required:
+      - requires_kyc
+      - retrieved_at
+    ProfileResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        profile:
+          $ref: '#/components/schemas/Profile'
+        metadata:
+          $ref: '#/components/schemas/ProfileMetadata'
+      required:
+      - metadata
+      - profile
+      - success
+    ProfileUpdateResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        profile:
+          $ref: '#/components/schemas/Profile'
+      required:
+      - message
+      - profile
+      - success
+    ResendOTPError:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+      required:
+      - code
+      - error
     ResendOTPRequest:
       type: object
       description: Validation pour le renvoi du code OTP
@@ -2708,6 +3222,27 @@ components:
           minLength: 1
       required:
       - session_key
+    ResendOTPResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        request_id:
+          type: string
+        session_key:
+          type: string
+        expires_in:
+          type: integer
+        metadata: {}
+      required:
+      - expires_in
+      - message
+      - metadata
+      - request_id
+      - session_key
+      - success
     ResolveDisputeRequest:
       type: object
       description: Sérializer pour résoudre un litige (Admin only)
@@ -2729,20 +3264,6 @@ components:
         * `refund_a1` - Rembourser A1
         * `refund_a2` - Rembourser A2
         * `split` - Partager 50/50
-    StatusD8aEnum:
-      enum:
-      - pending
-      - processing
-      - completed
-      - failed
-      - cancelled
-      type: string
-      description: |-
-        * `pending` - En attente
-        * `processing` - En cours
-        * `completed` - Terminée
-        * `failed` - Échouée
-        * `cancelled` - Annulée
     Suggestion:
       type: object
       properties:
@@ -2756,7 +3277,8 @@ components:
         body:
           type: string
         score:
-          type: string
+          type: number
+          format: float
           readOnly: true
         is_read:
           type: boolean
@@ -2775,6 +3297,22 @@ components:
       - offer_id
       - score
       - title
+    TokenInfo:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+        token_type:
+          type: string
+      required:
+      - access_token
+      - expires_in
+      - refresh_token
+      - token_type
     TokenRefresh:
       type: object
       properties:
@@ -2818,13 +3356,18 @@ components:
           nullable: true
           description: Méthode de paiement sauvegardée utilisée
         payment_method_saved_info:
-          type: string
+          type: object
+          additionalProperties: {}
+          description: Retourne les informations de la méthode de paiement sauvegardée
+            si disponible
           readOnly: true
         amount:
-          type: string
+          type: number
+          format: float
           readOnly: true
         fee:
-          type: string
+          type: number
+          format: float
           readOnly: true
         currency:
           type: string
@@ -2832,9 +3375,10 @@ components:
           maxLength: 3
         currency_display:
           type: string
+          description: Retourne le nom complet de la devise
           readOnly: true
         status:
-          $ref: '#/components/schemas/StatusD8aEnum'
+          $ref: '#/components/schemas/TransactionStatusEnum'
         status_display:
           type: string
           readOnly: true
@@ -2917,6 +3461,20 @@ components:
         * `card` - Carte bancaire
         * `orange_money` - Orange Money
         * `internal` - Interne (Wallet)
+    TransactionStatusEnum:
+      enum:
+      - pending
+      - processing
+      - completed
+      - failed
+      - cancelled
+      type: string
+      description: |-
+        * `pending` - En attente
+        * `processing` - En cours
+        * `completed` - Terminée
+        * `failed` - Échouée
+        * `cancelled` - Annulée
     TransactionStatusResponse:
       type: object
       properties:
@@ -3012,6 +3570,19 @@ components:
           minLength: 1
       required:
       - offer_id
+    VerifyOTPError:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        remaining_attempts:
+          type: integer
+      required:
+      - code
+      - error
+      - remaining_attempts
     VerifyOTPRequest:
       type: object
       description: Validation pour la vérification du code OTP
@@ -3029,6 +3600,32 @@ components:
       required:
       - code
       - phone_number
+    VerifyOTPResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        action:
+          type: string
+        message:
+          type: string
+        user: {}
+        auth:
+          $ref: '#/components/schemas/TokenInfo'
+        kyc_info:
+          $ref: '#/components/schemas/KYCBriefInfo'
+        otp_verified:
+          type: boolean
+        metadata: {}
+      required:
+      - action
+      - auth
+      - kyc_info
+      - message
+      - metadata
+      - otp_verified
+      - success
+      - user
     Wallet:
       type: object
       description: Sérialiseur pour le portefeuille
@@ -3038,7 +3635,8 @@ components:
           format: uuid
           readOnly: true
         balance:
-          type: string
+          type: number
+          format: float
           readOnly: true
         currency:
           type: string
@@ -3047,6 +3645,7 @@ components:
           maxLength: 3
         currency_display:
           type: string
+          description: Retourne le nom complet de la devise
           readOnly: true
         user_phone:
           type: string
@@ -3061,14 +3660,56 @@ components:
           type: string
           format: date-time
           readOnly: true
+        transactions_count:
+          type: integer
+          readOnly: true
+        recent_transactions:
+          type: array
+          items: {}
+          readOnly: true
+        currency_info:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
       - balance
       - created_at
       - currency
       - currency_display
+      - currency_info
       - id
+      - recent_transactions
+      - transactions_count
       - updated_at
       - user_phone
+    WalletResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        wallet:
+          $ref: '#/components/schemas/Wallet'
+      required:
+      - success
+      - wallet
+    WithdrawalError:
+      type: object
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+        code:
+          type: string
+        available_balance:
+          type: number
+          format: double
+        required_amount:
+          type: number
+          format: double
+      required:
+      - error
+      - success
     WithdrawalPaymentMethodEnum:
       enum:
       - card
@@ -3165,9 +3806,11 @@ components:
           format: double
         currency:
           type: string
+        currency_info: {}
       required:
       - amount
       - currency
+      - currency_info
       - fee
       - message
       - reference

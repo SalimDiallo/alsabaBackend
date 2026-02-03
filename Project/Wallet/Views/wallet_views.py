@@ -18,7 +18,8 @@ from ..Serializers.wallet_serializers import (
     TransactionListSerializer,
     TransactionConfirmSerializer,
     TransactionCancelSerializer,
-    TransactionStatusUpdateSerializer
+    TransactionStatusUpdateSerializer,
+    EstimateFeesSerializer, # Added
 )
 
 from Project.idempotency import idempotent_endpoint
@@ -39,31 +40,25 @@ class WalletView(APIView):
         summary="Obtenir le portefeuille",
         description="Retourne les informations du portefeuille de l'utilisateur connecté (solde, devise, transactions récentes).",
         tags=['Portefeuille'],
-        responses={200: WalletSerializer}
+        responses={
+            200: inline_serializer(
+                name='WalletResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'wallet': WalletSerializer()
+                }
+            )
+        }
     )
     def get(self, request):
         wallet = wallet_service.get_or_create_wallet(request.user)
-
         serializer = WalletSerializer(wallet)
-        data = serializer.data
-
-        # Ajout d'informations supplémentaires
-        data['transactions_count'] = wallet.transactions.count()
-        data['recent_transactions'] = TransactionSerializer(
-            wallet.transactions.order_by('-created_at')[:5],
-            many=True
-        ).data
-        data['currency_info'] = {
-            'code': wallet.currency,
-            'symbol': WalletService._get_currency_symbol(wallet.currency),
-            'name': WalletService._get_currency_name(wallet.currency)
-        }
-
+        
         logger.info("wallet_viewed", user_id=str(request.user.id), balance=wallet.balance)
 
         return Response({
             "success": True,
-            "wallet": data
+            "wallet": serializer.data
         }, status=status.HTTP_200_OK)
 
 
@@ -93,9 +88,19 @@ class DepositView(APIView):
                     'fee': serializers.FloatField(),
                     'total': serializers.FloatField(),
                     'currency': serializers.CharField(),
+                    'currency_info': serializers.JSONField(),
+                    'expires_in': serializers.IntegerField()
                 }
             ),
-            400: {"description": "Erreur de validation ou configuration incorrecte"},
+            400: inline_serializer(
+                name='DepositError',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField(required=False),
+                    'available_balance': serializers.FloatField(required=False)
+                }
+            ),
             429: {"description": "Limite de taux atteinte (throttle)"}
         }
     )
@@ -224,9 +229,19 @@ class WithdrawalView(APIView):
                     'fee': serializers.FloatField(),
                     'total_deducted': serializers.FloatField(),
                     'currency': serializers.CharField(),
+                    'currency_info': serializers.JSONField()
                 }
             ),
-            400: {"description": "Solde insuffisant ou coordonnées bancaires invalides"},
+            400: inline_serializer(
+                name='WithdrawalError',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField(required=False),
+                    'available_balance': serializers.FloatField(required=False),
+                    'required_amount': serializers.FloatField(required=False)
+                }
+            ),
             429: {"description": "Limite de taux atteinte (throttle)"}
         }
     )
@@ -508,7 +523,26 @@ class ConfirmDepositView(APIView):
         description="Confirme manuellement un dépôt.",
         request=TransactionConfirmSerializer,
         tags=['Portefeuille'],
-        responses={200: TransactionSerializer}
+        responses={
+            200: inline_serializer(
+                name='ConfirmDepositResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'transaction': TransactionSerializer(),
+                    'wallet_balance': serializers.FloatField(),
+                    'amount_credited': serializers.FloatField()
+                }
+            ),
+            400: inline_serializer(
+                name='ConfirmDepositError',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField()
+                }
+            )
+        }
     )
     def post(self, request, transaction_id):
         serializer = TransactionConfirmSerializer(data=request.data)
@@ -560,7 +594,25 @@ class CancelDepositView(APIView):
         description="Annule un dépôt en attente.",
         request=TransactionCancelSerializer,
         tags=['Portefeuille'],
-        responses={200: TransactionSerializer}
+        responses={
+            200: inline_serializer(
+                name='CancelDepositResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'transaction': TransactionSerializer(),
+                    'refund_amount': serializers.FloatField()
+                }
+            ),
+            400: inline_serializer(
+                name='CancelDepositError',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField()
+                }
+            )
+        }
     )
     def post(self, request, transaction_id):
         serializer = TransactionCancelSerializer(data=request.data)
@@ -867,11 +919,13 @@ class RetryTransactionView(APIView):
     Réessaie une transaction échouée
     """
     permission_classes = [IsAuthenticated]
+    serializer_class = TransactionSerializer
 
     @extend_schema(
         summary="Réessayer une transaction échouée",
         description="Tente de relancer ou confirmer une transaction marquée comme échouée ou annulée.",
         tags=['Portefeuille'],
+        request=None,
         responses={
             200: TransactionSerializer,
             501: {"description": "Non implémenté"}
@@ -956,10 +1010,26 @@ class EstimateFeesView(APIView):
                 name='EstimateFeesResponse',
                 fields={
                     'success': serializers.BooleanField(),
-                    'amount': serializers.FloatField(),
-                    'fee': serializers.FloatField(),
-                    'total': serializers.FloatField(),
-                    'currency': serializers.CharField()
+                    'estimation': inline_serializer(
+                        name='FeesEstimationDetail',
+                        fields={
+                            'amount': serializers.FloatField(),
+                            'fee': serializers.FloatField(),
+                            'total': serializers.FloatField(),
+                            'currency': serializers.CharField(),
+                            'currency_info': serializers.JSONField(),
+                            'transaction_type': serializers.CharField(),
+                            'payment_method': serializers.CharField()
+                        }
+                    )
+                }
+            ),
+            400: inline_serializer(
+                name='EstimateFeesError',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField()
                 }
             )
         }

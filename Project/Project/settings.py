@@ -227,6 +227,17 @@ SPECTACULAR_SETTINGS = {
         {'name': 'Suggestions', 'description': 'Flux de recommandations personnalisé'},
         {'name': 'Notifications', 'description': 'Gestion des alertes utilisateur'},
     ],
+    'ENUM_NAME_OVERRIDES': {
+        'KycStatusEnum': 'Accounts.models.User.KYC_STATUS_CHOICES',
+        'TransactionStatusEnum': 'Wallet.models.Transaction.STATUS_CHOICES',
+        'OfferStatusEnum': 'Offer.models.Offer.STATUS_CHOICES',
+        'EscrowLockStatusEnum': 'Offer.models.EscrowLock.STATUS_CHOICES',
+        'DisputeStatusEnum': 'Offer.models.Dispute.STATUS_CHOICES',
+        'KycActionEnum': [
+            ('NO_ACTION', 'Ignorer'),
+            ('DECLINE', 'Refuser'),
+        ],
+    },
 }
 
 
