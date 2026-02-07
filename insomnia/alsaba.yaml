@@ -1,11 +1,11 @@
 type: collection.insomnia.rest/5.0
 schema_version: "5.1"
-name: ALSABA COMPLET (v2.0)
+name: ALSABA COMPLET (v2.1)
 meta:
   id: wrk_8c38339d2576430f82211f9be4fa00b5
   created: 1738183041000
-  modified: 1738354000000 
-  description: "Collection exhaustive pour l'API Alsaba - Version 2.0 (Security & Performance)"
+  modified: 1738605000000 
+  description: "Collection exhaustive pour l'API Alsaba - Version 2.1 (Security, P2P & Disputes)"
 collection:
   # ==========================================
   # AUTHENTIFICATION (Accounts)
@@ -93,7 +93,21 @@ collection:
     name: "Wallet: Deposit Initiate"
     meta: { id: req_wallet_dep }
     method: POST
-    body: { mimeType: application/json, text: '{"amount": 100.00, "payment_method": "card", "card_number": "4242424242424242", "card_expiry_month": 12, "card_expiry_year": 2026, "card_cvv": "123"}' }
+    body: { mimeType: application/json, text: '{"amount": 100.00, "payment_method": "card", "card_number": "4242424242424242", "card_expiry_month": 12, "card_expiry_year": 2026, "card_cvv": "123", "save_payment_method": false, "redirect_url": "https://example.com"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer {{ access_token }}" }, { name: Idempotency-Key, value: "{{ $guid }}" }]
+
+  - url: "{{ base_url }}/api/wallet/deposit/"
+    name: "Wallet: Deposit (Saved Method)"
+    meta: { id: req_wallet_dep_saved }
+    method: POST
+    body: { mimeType: application/json, text: '{"amount": 50.00, "payment_method": "card", "payment_method_id": "UUID_ICI", "card_cvv": "123"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer {{ access_token }}" }, { name: Idempotency-Key, value: "{{ $guid }}" }]
+
+  - url: "{{ base_url }}/api/wallet/deposit/"
+    name: "Wallet: Deposit (Token PCI)"
+    meta: { id: req_wallet_dep_token }
+    method: POST
+    body: { mimeType: application/json, text: '{"amount": 75.00, "payment_method": "card", "card_token": "flw-t1ns-xxxx"}' }
     headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer {{ access_token }}" }, { name: Idempotency-Key, value: "{{ $guid }}" }]
 
   - url: "{{ base_url }}/api/wallet/deposit/TRANSACTION_ID/confirm/"
@@ -114,7 +128,14 @@ collection:
     name: "Wallet: Withdrawal Initiate"
     meta: { id: req_wallet_with }
     method: POST
-    body: { mimeType: application/json, text: '{"amount": 50.00, "payment_method": "orange_money", "orange_money_number": "221770000000"}' }
+    body: { mimeType: application/json, text: '{"amount": 50.00, "payment_method": "orange_money", "orange_money_number": "221770000000", "save_payment_method": true, "payment_method_label": "Mon Orange Money"}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer {{ access_token }}" }, { name: Idempotency-Key, value: "{{ $guid }}" }]
+
+  - url: "{{ base_url }}/api/wallet/withdraw/"
+    name: "Wallet: Withdrawal (Bank Account)"
+    meta: { id: req_wallet_with_bank }
+    method: POST
+    body: { mimeType: application/json, text: '{"amount": 15000, "payment_method": "card", "account_number": "0690000034", "bank_code": "044", "account_name": "Salim Diallo", "bank_country": "NG"}' }
     headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer {{ access_token }}" }, { name: Idempotency-Key, value: "{{ $guid }}" }]
 
   - url: "{{ base_url }}/api/wallet/withdraw/TRANSACTION_ID/confirm/"
@@ -145,6 +166,12 @@ collection:
     name: "Wallet: Transaction Retry"
     meta: { id: req_wallet_tx_r }
     method: POST
+    headers: [{ name: Authorization, value: "Bearer {{ access_token }}" }, { name: Idempotency-Key, value: "{{ $guid }}" }]
+
+  - url: "{{ base_url }}/api/wallet/transactions/TRANSACTION_ID/status/"
+    name: "Wallet: Transaction Status"
+    meta: { id: req_wallet_tx_s }
+    method: GET
     headers: [{ name: Authorization, value: "Bearer {{ access_token }}" }]
 
   - url: "{{ base_url }}/api/wallet/fees/estimate/"
@@ -179,6 +206,13 @@ collection:
     method: DELETE
     headers: [{ name: Authorization, value: "Bearer {{ access_token }}" }]
 
+  - url: "{{ base_url }}/api/wallet/payment-methods/PM_ID/"
+    name: "Wallet: PM Update"
+    meta: { id: req_wallet_pm_patch }
+    method: PATCH
+    body: { mimeType: application/json, text: '{"label": "Nouveau Nom", "is_default": true}' }
+    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer {{ access_token }}" }]
+
   - url: "{{ base_url }}/api/wallet/payment-methods/PM_ID/set-default/"
     name: "Wallet: PM Set Default"
     meta: { id: req_wallet_pm_def }
@@ -198,7 +232,7 @@ collection:
     name: "Offer: Create"
     meta: { id: req_offer_create }
     method: POST
-    body: { mimeType: application/json, text: '{"amount_sell": 100, "currency_sell": "EUR", "amount_buy": 65595, "currency_buy": "XAF"}' }
+    body: { mimeType: application/json, text: '{"amount_sell": 100, "currency_sell": "EUR", "amount_buy": 65595, "currency_buy": "XAF", "beneficiary_name": "Vendeur A1", "beneficiary_phone": "+221770000000"}' }
     headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer {{ access_token }}" }, { name: Idempotency-Key, value: "{{ $guid }}" }]
 
   - url: "{{ base_url }}/api/offers/OFFER_ID/"
@@ -218,14 +252,14 @@ collection:
     name: "Offer: Accept (Buyer)"
     meta: { id: req_offer_accept }
     method: POST
-    body: { mimeType: application/json, text: '{"offer_id": "OFFER_ID", "beneficiary_name": "Buyer", "beneficiary_phone": "336..."}' }
+    body: { mimeType: application/json, text: '{"offer_id": "OFFER_ID", "beneficiary_name": "Acheteur A2", "beneficiary_phone": "+33600000000"}' }
     headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer {{ access_token }}" }, { name: Idempotency-Key, value: "{{ $guid }}" }]
 
   - url: "{{ base_url }}/api/offers/OFFER_ID/validate/"
     name: "Offer: Validate (Seller)"
     meta: { id: req_offer_validate }
     method: POST
-    body: { mimeType: application/json, text: '{"offer_id": "OFFER_ID", "beneficiary_name": "Seller", "beneficiary_phone": "221..."}' }
+    body: { mimeType: application/json, text: '{"offer_id": "OFFER_ID", "beneficiary_name": "Vendeur A1", "beneficiary_phone": "+221770000000"}' }
     headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer {{ access_token }}" }]
 
   - url: "{{ base_url }}/api/offers/OFFER_ID/confirm/"
@@ -249,18 +283,11 @@ collection:
   # ==========================================
   # DISPUTES (Gestion des Litiges)
   # ==========================================
-  - url: "{{ base_url }}/api/offers/OFFER_ID/dispute/"
-    name: "Dispute: Initiate (Old Method)"
-    meta: { id: req_offer_dispute_old }
-    method: POST
-    body: { mimeType: application/json, text: '{"reason": "Fonds non reçus"}' }
-    headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer {{ access_token }}" }]
-
   - url: "{{ base_url }}/api/offers/OFFER_ID/disputes/"
-    name: "Dispute: Initiate (New)"
+    name: "Dispute: Initiate"
     meta: { id: req_dispute_init }
     method: POST
-    body: { mimeType: application/json, text: '{"reason": "Arnaque suspectée", "evidence": {"screenshot": "url"}}' }
+    body: { mimeType: application/json, text: '{"reason": "Le vendeur n''a pas envoyé les fonds après 2h.", "evidence": {"screenshot_url": "https://imgur.com/xxx"}}' }
     headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer {{ access_token }}" }]
 
   - url: "{{ base_url }}/api/offers/disputes/"
@@ -279,7 +306,7 @@ collection:
     name: "Dispute: Resolve (Admin)"
     meta: { id: req_dispute_resolve }
     method: POST
-    body: { mimeType: application/json, text: '{"resolution": "refund_a1", "notes": "Remboursement vendeur"}' }
+    body: { mimeType: application/json, text: '{"resolution": "refund_a1", "notes": "Litige tranché suite à la preuve d''A1."}' }
     headers: [{ name: Content-Type, value: application/json }, { name: Authorization, value: "Bearer {{ access_token }}" }]
 
   # ==========================================
@@ -365,4 +392,4 @@ collection:
     headers: [{ name: Content-Type, value: application/json }]
 
 cookieJar: { name: Default Jar, meta: { id: jar_alsaba } }
-environments: { name: Base Environment, meta: { id: env_alsaba }, data: { base_url: "http://127.0.0.1:8000", access_token: "Mettez_votre_token_ici" } }
+environments: { name: Base Environment, meta: { id: env_alsaba }, data: { base_url: "https://unjokingly-biosocial-cecile.ngrok-free.dev", access_token: "Mettez_votre_token_ici" } }
