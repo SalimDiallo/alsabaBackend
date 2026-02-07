@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
 import structlog
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 
 from Accounts.Services.didit_webhook_service import didit_webhook_service
 
@@ -18,6 +19,12 @@ class DiditWebhookView(APIView):
     """
     permission_classes = []  # Pas d'authentification par token, car c'est un webhook externe
 
+    @extend_schema(
+        summary="Webhook Didit KYC",
+        description="Reçoit les callbacks de statut de vérification KYC.",
+        responses={200: {"description": "Webhook traité avec succès"}},
+        request=OpenApiTypes.OBJECT # Payload JSON générique
+    )
     def post(self, request):
         """
         Traite les webhooks Didit pour les mises à jour KYC avec vérification de signature
@@ -26,33 +33,28 @@ class DiditWebhookView(APIView):
             # 1. Vérification de la signature (Sécurité Critique)
             signature = request.META.get('HTTP_X_DIDIT_SIGNATURE')
             webhook_secret = getattr(settings, 'DIDIT_WEBHOOK_SECRET', None)
-            
-            if webhook_secret:
-                if not signature:
-                    logger.warning("didit_webhook_signature_missing")
-                    return Response({"error": "Signature missing"}, status=status.HTTP_401_UNAUTHORIZED)
-                
-                # Vérification HMAC-SHA256
-                computed_hash = hmac.new(
-                    webhook_secret.encode('utf-8'),
-                    request.body,
-                    hashlib.sha256
-                ).hexdigest()
-                
-                if not hmac.compare_digest(computed_hash, signature):
-                    logger.warning("didit_webhook_signature_invalid", received=signature[:10])
-                    return Response({"error": "Invalid signature"}, status=status.HTTP_401_UNAUTHORIZED)
-            
+            if not webhook_secret:
+                logger.error("didit_webhook_secret_missing")
+                return Response({"error": "Webhook secret not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            if not signature:
+                logger.warning("didit_webhook_signature_missing")
+                return Response({"error": "Signature missing"}, status=status.HTTP_401_UNAUTHORIZED)
+            # Vérification HMAC-SHA256
+            computed_hash = hmac.new(
+                webhook_secret.encode('utf-8'),
+                request.body,
+                hashlib.sha256
+            ).hexdigest()
+            if not hmac.compare_digest(computed_hash, signature):
+                logger.warning("didit_webhook_signature_invalid", received=signature[:10])
+                return Response({"error": "Invalid signature"}, status=status.HTTP_401_UNAUTHORIZED)
             webhook_data = request.data
-            
             logger.info(
                 "didit_webhook_received",
                 request_id=webhook_data.get("request_id"),
                 status=webhook_data.get("status")
             )
-
             result = didit_webhook_service.process_kyc_webhook(webhook_data)
-
             if result["success"]:
                 return Response(
                     {"status": "success", "message": result.get("message")},
@@ -63,10 +65,9 @@ class DiditWebhookView(APIView):
                     {"status": "error", "message": result.get("error")},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
         except Exception as e:
             logger.error("didit_webhook_processing_error", error=str(e))
             return Response(
-                {"status": "error", "message": "Internal server error"},
+                {"status": "error", "message": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

@@ -4,6 +4,8 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from .models import Notification
 from .serializers import NotificationSerializer, DeviceSerializer
+from drf_spectacular.utils import extend_schema, inline_serializer, OpenApiParameter, OpenApiTypes
+from rest_framework import serializers
 
 class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     """
@@ -12,10 +14,31 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     """
     permission_classes = [IsAuthenticated]
     serializer_class = NotificationSerializer
+    lookup_field = 'id'
 
+    @extend_schema(
+        summary="Lister les notifications",
+        description="Récupère la liste des notifications de l'utilisateur.",
+        tags=['Notifications'],
+        responses={200: NotificationSerializer(many=True)}
+    )
     def get_queryset(self):
         return Notification.objects.filter(user=self.request.user)
 
+    @extend_schema(
+        summary="Marquer une notification comme lue", 
+        description="Marque une notification spécifique comme lue.", 
+        tags=['Notifications'], 
+        parameters=[
+            OpenApiParameter(name='id', type=OpenApiTypes.STR, location=OpenApiParameter.PATH, description="ID de la notification")
+        ],
+        responses={
+            200: inline_serializer(
+                name='NotificationReadResponse',
+                fields={'status': serializers.CharField()}
+            )
+        }
+    )
     @action(detail=True, methods=['post'])
     def read(self, request, pk=None):
         """Mark notification as read"""
@@ -24,6 +47,17 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         notification.save()
         return Response({'status': 'marked as read'})
 
+    @extend_schema(
+        summary="Tout marquer comme lu", 
+        description="Marque toutes les notifications de l'utilisateur comme lues.", 
+        tags=['Notifications'], 
+        responses={
+            200: inline_serializer(
+                name='NotificationReadAllResponse',
+                fields={'status': serializers.CharField()}
+            )
+        }
+    )
     @action(detail=False, methods=['post'])
     def read_all(self, request):
         """Mark all notifications as read"""
@@ -39,6 +73,18 @@ class DeviceViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = DeviceSerializer
 
+    @extend_schema(
+        summary="Enregistrer un appareil (FCM)",
+        description="Enregistre un token FCM pour recevoir les notifications push.",
+        request=DeviceSerializer,
+        tags=['Notifications'],
+        responses={
+            201: inline_serializer(
+                name='DeviceRegisterResponse',
+                fields={'status': serializers.CharField()}
+            )
+        }
+    )
     def create(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)

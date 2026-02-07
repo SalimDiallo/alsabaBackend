@@ -151,7 +151,8 @@ class WalletService:
             customer_email=user.email,
             customer_phone=user.phone_number, # Numéro national (7-10 chiffres)
             country_code=user.country_code.replace('+', ''), # Ex: 33
-            customer_name=f"{user.first_name} {user.last_name}".strip() or user.full_phone_number,
+            customer_name=(f"{user.first_name} {user.last_name}".strip() or 
+                           f"User {user.full_phone_number}"),
             card_details=card_details,
             card_token=card_token,
             address=address_data,
@@ -202,7 +203,16 @@ class WalletService:
             transaction.flutterwave_reference = flutterwave_result["reference"]
             # Utiliser charge_id pour les dépôts (carte ou Orange Money)
             transaction.flutterwave_transaction_id = str(flutterwave_result.get("charge_id", ""))
-            transaction.status = 'processing'
+            
+            # Utiliser le statut retourné par Flutterwave s'il est cohérent
+            flw_status = flutterwave_result.get("status")
+            if flw_status == "requires_authorization":
+                transaction.status = 'pending' # En attente d'action user
+            elif flw_status == "successful":
+                transaction.status = 'processing' # Sera finalisé par webhook
+            else:
+                transaction.status = 'processing'
+                
             transaction.save()
 
             logger.info(
@@ -749,14 +759,18 @@ class WalletService:
             dict: Résultat de l'opération
         """
         try:
-            # Récupération du wallet
-            wallet = WalletService.get_or_create_wallet(user)
-
-            # Récupération de la transaction
-            transaction = wallet.transactions.get(
-                id=transaction_id,
-                transaction_type='deposit'
-            )
+            # Récupération de la transaction (globale pour staff, scopée au wallet pour user normal)
+            if user.is_staff or user.is_superuser:
+                transaction = Transaction.objects.get(
+                    id=transaction_id,
+                    transaction_type='deposit'
+                )
+            else:
+                wallet = WalletService.get_or_create_wallet(user)
+                transaction = wallet.transactions.get(
+                    id=transaction_id,
+                    transaction_type='deposit'
+                )
 
             # Vérification du statut
             if transaction.status not in ['pending', 'processing']:
@@ -776,21 +790,21 @@ class WalletService:
                 transaction.save()
 
                 # Rafraîchir le wallet pour obtenir le solde à jour
-                wallet.refresh_from_db()
+                transaction.wallet.refresh_from_db()
 
                 logger.info(
                     "deposit_confirmed",
                     user_id=str(user.id),
                     transaction_id=str(transaction.id),
                     amount=amount_to_credit,
-                    wallet_balance=wallet.balance
+                    wallet_balance=transaction.wallet.balance
                 )
 
                 return {
                     "success": True,
                     "transaction": transaction,
                     "amount_credited": amount_to_credit,
-                    "wallet_balance": wallet.balance
+                    "wallet_balance": transaction.wallet.balance
                 }
 
         except Transaction.DoesNotExist:
@@ -886,14 +900,18 @@ class WalletService:
             dict: Résultat de l'opération
         """
         try:
-            # Récupération du wallet
-            wallet = WalletService.get_or_create_wallet(user)
-
-            # Récupération de la transaction
-            transaction = wallet.transactions.get(
-                id=transaction_id,
-                transaction_type='withdrawal'
-            )
+            # Récupération de la transaction (globale pour staff, scopée au wallet pour user normal)
+            if user.is_staff or user.is_superuser:
+                transaction = Transaction.objects.get(
+                    id=transaction_id,
+                    transaction_type='withdrawal'
+                )
+            else:
+                wallet = WalletService.get_or_create_wallet(user)
+                transaction = wallet.transactions.get(
+                    id=transaction_id,
+                    transaction_type='withdrawal'
+                )
 
             # Vérification du statut
             if transaction.status not in ['pending', 'processing']:
@@ -914,14 +932,14 @@ class WalletService:
                     user_id=str(user.id),
                     transaction_id=str(transaction.id),
                     amount=Decimal(str(transaction.amount_cents)) / Decimal('100'),
-                    wallet_balance=wallet.balance
+                    wallet_balance=transaction.wallet.balance
                 )
 
                 return {
                     "success": True,
                     "transaction": transaction,
                     "amount_debited": Decimal(str(transaction.amount_cents)) / Decimal('100'),
-                    "wallet_balance": wallet.balance
+                    "wallet_balance": transaction.wallet.balance
                 }
 
         except Transaction.DoesNotExist:

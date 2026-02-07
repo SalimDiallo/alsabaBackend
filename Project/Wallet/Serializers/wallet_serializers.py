@@ -2,6 +2,8 @@ from rest_framework import serializers
 from django.utils import timezone
 from decimal import Decimal
 from ..models import Wallet, Transaction
+from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.types import OpenApiTypes
 
 
 class WalletSerializer(serializers.ModelSerializer):
@@ -11,6 +13,9 @@ class WalletSerializer(serializers.ModelSerializer):
     balance = serializers.SerializerMethodField()
     currency_display = serializers.SerializerMethodField()
     user_phone = serializers.CharField(source='user.full_phone_number', read_only=True)
+    transactions_count = serializers.SerializerMethodField()
+    recent_transactions = serializers.SerializerMethodField()
+    currency_info = serializers.SerializerMethodField()
 
     class Meta:
         model = Wallet
@@ -22,16 +27,44 @@ class WalletSerializer(serializers.ModelSerializer):
             'user_phone',
             'is_active',
             'created_at',
-            'updated_at'
+            'updated_at',
+
+            # Champs calculés
+            'transactions_count',
+            'recent_transactions',
+            'currency_info',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    @extend_schema_field(OpenApiTypes.FLOAT)
     def get_balance(self, obj):
         return float(obj.balance)
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_currency_display(self, obj):
         """Retourne le nom complet de la devise"""
         return obj.currency_name
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_transactions_count(self, obj):
+        return obj.transactions.count()
+
+    @extend_schema_field(serializers.ListField(child=serializers.JSONField()))
+    def get_recent_transactions(self, obj):
+        from ..Serializers.wallet_serializers import TransactionSerializer
+        return TransactionSerializer(
+            obj.transactions.order_by('-created_at')[:5],
+            many=True
+        ).data
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_currency_info(self, obj):
+        from ..Services.wallet_service import WalletService
+        return {
+            'code': obj.currency,
+            'symbol': WalletService._get_currency_symbol(obj.currency),
+            'name': WalletService._get_currency_name(obj.currency)
+        }
 
 
 class TransactionSerializer(serializers.ModelSerializer):
@@ -69,17 +102,21 @@ class TransactionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'flutterwave_reference', 'created_at', 'updated_at', 'completed_at']
 
+    @extend_schema_field(OpenApiTypes.FLOAT)
     def get_amount(self, obj):
         return float(obj.amount_euros)
 
+    @extend_schema_field(OpenApiTypes.FLOAT)
     def get_fee(self, obj):
         return float(obj.fee_euros)
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_currency_display(self, obj):
         """Retourne le nom complet de la devise"""
         # On utilise le modèle Wallet pour centraliser les noms de devises
         return obj.wallet.currency_name
     
+    @extend_schema_field(OpenApiTypes.OBJECT)
     def get_payment_method_saved_info(self, obj):
         """Retourne les informations de la méthode de paiement sauvegardée si disponible"""
         if obj.payment_method_saved:
@@ -388,7 +425,7 @@ class TransactionConfirmSerializer(serializers.Serializer):
     """
     Sérialiseur pour la confirmation d'une transaction
     """
-    transaction_id = serializers.UUIDField(required=True)
+    transaction_id = serializers.UUIDField(required=False)
     confirmation_code = serializers.CharField(max_length=10, required=False, help_text="Code de confirmation si requis")
     notes = serializers.CharField(max_length=500, required=False, help_text="Notes supplémentaires")
 
@@ -397,7 +434,7 @@ class TransactionCancelSerializer(serializers.Serializer):
     """
     Sérialiseur pour l'annulation d'une transaction
     """
-    transaction_id = serializers.UUIDField(required=True)
+    transaction_id = serializers.UUIDField(required=False)
     reason = serializers.CharField(max_length=500, required=True, help_text="Raison de l'annulation")
     notes = serializers.CharField(max_length=500, required=False, help_text="Notes supplémentaires")
 
@@ -419,3 +456,13 @@ class TransactionStatusUpdateSerializer(serializers.Serializer):
     error_message = serializers.CharField(max_length=500, required=False)
     error_code = serializers.CharField(max_length=100, required=False)
     notes = serializers.CharField(max_length=500, required=False)
+
+
+class EstimateFeesSerializer(serializers.Serializer):
+    """
+    Sérialiseur pour l'estimation des frais
+    """
+    transaction_type = serializers.ChoiceField(choices=[('deposit', 'Dépôt'), ('withdrawal', 'Retrait')])
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0.01'))
+    payment_method = serializers.ChoiceField(choices=[('card', 'Carte bancaire'), ('orange_money', 'Orange Money')])
+    currency = serializers.CharField(required=False, max_length=10)

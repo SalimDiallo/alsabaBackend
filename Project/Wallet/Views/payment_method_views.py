@@ -6,6 +6,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 import structlog
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes, inline_serializer
+from rest_framework import serializers
 
 from ..models import PaymentMethod
 from ..Services.payment_method_service import payment_method_service
@@ -30,6 +32,26 @@ class PaymentMethodListView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Lister les méthodes de paiement",
+        description="Récupère les méthodes de paiement sauvegardées (cartes, comptes).",
+        tags=['Portefeuille'],
+        operation_id="wallet_payment_methods_list",
+        parameters=[
+            OpenApiParameter(name='method_type', type=OpenApiTypes.STR, enum=['card', 'bank_account', 'orange_money'], required=False),
+            OpenApiParameter(name='active_only', type=OpenApiTypes.BOOL, required=False, default=True),
+        ],
+        responses={
+            200: inline_serializer(
+                name='PaymentMethodListResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'payment_methods': PaymentMethodSerializer(many=True),
+                    'count': serializers.IntegerField()
+                }
+            )
+        }
+    )
     def get(self, request):
         """Liste les méthodes de paiement"""
         method_type = request.query_params.get('method_type')  # card, bank_account, orange_money
@@ -49,6 +71,32 @@ class PaymentMethodListView(APIView):
             "count": len(serializer.data)
         }, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Créer une méthode de paiement",
+        description="Ajoute une nouvelle méthode de paiement. 'method_type' détermine les champs requis.",
+        request=CreateCardPaymentMethodSerializer, # Simplification pour la doc, idéalement polymorphique
+        tags=['Portefeuille'],
+        operation_id="wallet_payment_methods_create",
+        responses={
+            201: inline_serializer(
+                name='PaymentMethodCreateResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'payment_method': PaymentMethodSerializer()
+                }
+            ),
+            400: inline_serializer(
+                name='PaymentMethodCreateError',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField(required=False),
+                    'details': serializers.JSONField(required=False)
+                }
+            )
+        }
+    )
     def post(self, request):
         """Crée une méthode de paiement"""
         method_type = request.data.get('method_type')
@@ -140,6 +188,21 @@ class PaymentMethodDetailView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Détail d'une méthode de paiement",
+        tags=['Portefeuille'],
+        operation_id="wallet_payment_methods_retrieve",
+        responses={
+            200: inline_serializer(
+                name='PaymentMethodDetailResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'payment_method': PaymentMethodSerializer()
+                }
+            ),
+            404: {"description": "Non trouvée"}
+        }
+    )
     def get(self, request, payment_method_id):
         """Récupère une méthode de paiement"""
         try:
@@ -166,6 +229,25 @@ class PaymentMethodDetailView(APIView):
                 "code": "invalid_payment_method"
             }, status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(
+        summary="Mettre à jour une méthode de paiement",
+        description="Met à jour le label ou le statut par défaut.",
+        request=UpdatePaymentMethodSerializer,
+        tags=['Portefeuille'],
+        operation_id="wallet_payment_methods_update",
+        responses={
+            200: inline_serializer(
+                name='PaymentMethodUpdateResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'payment_method': PaymentMethodSerializer()
+                }
+            ),
+            400: {"description": "Données invalides"},
+            404: {"description": "Non trouvée"}
+        }
+    )
     def patch(self, request, payment_method_id):
         """Met à jour une méthode de paiement"""
         try:
@@ -221,6 +303,21 @@ class PaymentMethodDetailView(APIView):
                 "code": "payment_method_not_found"
             }, status=status.HTTP_404_NOT_FOUND)
 
+    @extend_schema(
+        summary="Supprimer une méthode de paiement",
+        description="Désactive (soft delete) une méthode de paiement. Elle ne sera plus proposée pour les paiements.",
+        tags=['Portefeuille'],
+        operation_id="wallet_payment_methods_destroy",
+        responses={
+            200: inline_serializer(
+                name='PaymentMethodDeleteResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField()
+                }
+            )
+        }
+    )
     def delete(self, request, payment_method_id):
         """Désactive une méthode de paiement (soft delete)"""
         try:
@@ -258,6 +355,22 @@ class PaymentMethodSetDefaultView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Définir comme défaut",
+        description="Définit cette méthode de paiement comme celle par défaut pour son type.",
+        tags=['Portefeuille'],
+        responses={
+            200: inline_serializer(
+                name='PaymentMethodSetDefaultResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'payment_method': PaymentMethodSerializer()
+                }
+            )
+        },
+        request=None
+    )
     def post(self, request, payment_method_id):
         """Définit une méthode comme défaut"""
         try:

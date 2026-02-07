@@ -9,6 +9,9 @@ from ..Services.OTP_services import didit_service
 from ..utils import auth_utils
 import structlog
 from datetime import datetime
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
+from ..Serializers.delete import AccountDeleteSerializer, AccountDeleteConfirmSerializer
 
 logger = structlog.get_logger(__name__)
 
@@ -19,12 +22,39 @@ class AccountDeleteRequestView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Demander la suppression du compte",
+        description="Initie le processus de supression. Envoie un OTP de confirmation.",
+        request=AccountDeleteSerializer,
+        tags=['Authentification'],
+        responses={
+            200: inline_serializer(
+                name='AccountDeleteRequestResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'session_key': serializers.CharField(),
+                    'expires_in': serializers.IntegerField(),
+                    'next_step': serializers.CharField(),
+                    'warning': serializers.CharField(required=False)
+                }
+            ),
+            400: inline_serializer(
+                name='AccountDeleteRequestError',
+                fields={
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField()
+                }
+            ),
+            429: {"description": "Trop de tentatives"}
+        }
+    )
     def post(self, request):
         """
         Initie une demande de suppression de compte.
         Envoie un code OTP de confirmation.
         """
-        from ..Serializers.delete import AccountDeleteSerializer
+        #from ..Serializers.delete import AccountDeleteSerializer # Moved to top
         
         serializer = AccountDeleteSerializer(data=request.data)
         if not serializer.is_valid():
@@ -151,12 +181,39 @@ class AccountDeleteConfirmView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Confirmer la suppression du compte",
+        description="Valide l'OTP et effectue la suppression logicielle (soft delete) du compte.",
+        request=AccountDeleteConfirmSerializer,
+        tags=['Authentification'],
+        responses={
+            200: inline_serializer(
+                name='AccountDeleteConfirmResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'action': serializers.CharField(),
+                    'metadata': serializers.JSONField()
+                }
+            ),
+            400: inline_serializer(
+                name='AccountDeleteConfirmError',
+                fields={
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField(),
+                    'remaining_attempts': serializers.IntegerField(required=False)
+                }
+            ),
+            403: {"description": "Utilisateur non autorisé"},
+            429: {"description": "Trop de tentatives échouées"}
+        }
+    )
     def post(self, request):
         """
         Confirme la suppression de compte avec le code OTP.
         Effectue un soft delete de l'utilisateur.
         """
-        from ..Serializers.delete import AccountDeleteConfirmSerializer
+        #from ..Serializers.delete import AccountDeleteConfirmSerializer # Moved to top
         
         serializer = AccountDeleteConfirmSerializer(data=request.data)
         if not serializer.is_valid():
@@ -221,7 +278,8 @@ class AccountDeleteConfirmView(APIView):
             # Incrémenter les tentatives
             session_data['attempts'] = session_data.get('attempts', 0) + 1
             session_data['last_attempt'] = timezone.now().isoformat()
-            cache.set(session_key, session_data, timeout=cache.ttl(session_key) or 600)  # ← Note: ici ttl() est optionnel, tu peux le remplacer par 600
+            ttl = auth_utils.get_session_ttl(session_key, session_data)
+            cache.set(session_key, session_data, timeout=ttl or 600)
             
             remaining = 3 - session_data['attempts']
             logger.warning(

@@ -16,11 +16,19 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     build-essential \
     netcat-openbsd \
-    postgresql-client \   
+    postgresql-client \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Fix locale issue for Click/Celery
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+# Nettoyage des fichiers __pycache__ potentiellement montés
+RUN find . -type d -name "__pycache__" -exec rm -rf {} +
+
 # Copie du requirements.txt
-COPY requirements.txt .
+COPY Project/requirements.txt ./requirements.txt
 
 # Upgrade pip et installation des dépendances Python
 RUN pip install --upgrade pip

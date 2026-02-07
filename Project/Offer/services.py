@@ -99,6 +99,9 @@ class SecureEscrowService:
         # A1 = offer.user (Vendeur initial)
         # A2 = user_accepter (Acheteur)
         
+        # 1. Validation de sécurité : Devise du bénéficiaire B1 (celui qui reçoit currency_sell)
+        SecureEscrowService._validate_beneficiary(beneficiary_data or {}, offer.currency_sell)
+        
         user_a1 = offer.user
         user_a2 = user_accepter
         
@@ -175,6 +178,9 @@ class SecureEscrowService:
         if offer.user != user_validator:
              raise ValidationError("Seul le créateur de l'offre peut la valider")
 
+        # 1. Validation de sécurité : Devise du bénéficiaire B2 (celui qui reçoit currency_buy)
+        SecureEscrowService._validate_beneficiary(beneficiary_data or {}, offer.currency_buy)
+
         offer.beneficiary_data = beneficiary_data or {}
         offer.status = 'LOCKED'
         offer.save()
@@ -186,16 +192,32 @@ class SecureEscrowService:
             data={"b2_info": beneficiary_data}
         )
         
-        # Notification à A2 (Acheteur)
-        from Notifications.services import NotificationService
-        NotificationService.send(
-            user=offer.accepted_by,
-            title="Fonds bloqués !",
-            body=f"Le vendeur a validé l'échange. Les fonds sont sécurisés en Escrow. La transaction va être finalisée.",
-            notification_type='offer',
-            data={'offer_id': str(offer.id), 'screen': 'offer_detail'},
-            channels=['push']
-        )
+        # Notification aux BENEFICIAIRES (B1 et B2) pour validation
+        b1_phone = offer.accepted_beneficiary_data.get('phone')
+        b2_phone = offer.beneficiary_data.get('phone')
+        
+        b1_user = SecureEscrowService._get_user_by_phone(b1_phone)
+        b2_user = SecureEscrowService._get_user_by_phone(b2_phone)
+        
+        if b1_user:
+            NotificationService.send(
+                user=b1_user,
+                title="Action requise : Echange P2P",
+                body=f"Vous avez été désigné comme bénéficiaire d'un échange de {offer.amount_sell} {offer.currency_sell}. Veuillez confirmer pour recevoir les fonds.",
+                notification_type='offer',
+                data={'offer_id': str(offer.id), 'screen': 'offer_detail'},
+                channels=['push', 'sms']
+            )
+            
+        if b2_user:
+            NotificationService.send(
+                user=b2_user,
+                title="Action requise : Echange P2P",
+                body=f"Vous avez été désigné comme bénéficiaire d'un échange de {offer.amount_buy} {offer.currency_buy}. Veuillez confirmer pour recevoir les fonds.",
+                notification_type='offer',
+                data={'offer_id': str(offer.id), 'screen': 'offer_detail'},
+                channels=['push', 'sms']
+            )
         
         return offer
 
@@ -309,11 +331,39 @@ class SecureEscrowService:
             wallet_a1 = wallets_map[user_a1.id]
             wallet_b1 = wallets_map[b1_user.id]
             
-            # Débit A1
-            wallet_a1.subtract_balance(Decimal(lock_a1.amount_cents) / 100)
-            # Crédit B1
-            wallet_b1.add_balance(Decimal(lock_a1.amount_cents) / 100)
+            # --- CURRENCY SAFETY CHECK ---
+            if wallet_b1.currency != lock_a1.currency:
+                raise ValidationError(f"Mismatch devise B1: Attendu {lock_a1.currency}, Reçu {wallet_b1.currency}")
             
+            # Débit A1
+            amt_a1 = Decimal(lock_a1.amount_cents) / 100
+            wallet_a1.subtract_balance(amt_a1)
+            # Crédit B1
+            wallet_b1.add_balance(amt_a1)
+            
+            # Historisation A1
+            Transaction.objects.create(
+                wallet=wallet_a1,
+                transaction_type='p2p_debit',
+                amount_cents=lock_a1.amount_cents,
+                currency=lock_a1.currency,
+                status='completed',
+                payment_method='internal',
+                balance_adjusted=True,
+                extra_data={"offer_id": str(offer.id), "role": "sender", "counterparty": b1_phone}
+            )
+            # Historisation B1
+            Transaction.objects.create(
+                wallet=wallet_b1,
+                transaction_type='p2p_credit',
+                amount_cents=lock_a1.amount_cents,
+                currency=lock_a1.currency,
+                status='completed',
+                payment_method='internal',
+                balance_adjusted=True,
+                extra_data={"offer_id": str(offer.id), "role": "receiver", "sender_phone": user_a1.full_phone_number}
+            )
+
             lock_a1.status = 'RELEASED'
             lock_a1.released_at = timezone.now()
             lock_a1.save()
@@ -322,11 +372,39 @@ class SecureEscrowService:
             wallet_a2 = wallets_map[user_a2.id]
             wallet_b2 = wallets_map[b2_user.id]
             
-            # Débit A2
-            wallet_a2.subtract_balance(Decimal(lock_a2.amount_cents) / 100)
-            # Crédit B2
-            wallet_b2.add_balance(Decimal(lock_a2.amount_cents) / 100)
+            # --- CURRENCY SAFETY CHECK ---
+            if wallet_b2.currency != lock_a2.currency:
+                raise ValidationError(f"Mismatch devise B2: Attendu {lock_a2.currency}, Reçu {wallet_b2.currency}")
             
+            # Débit A2
+            amt_a2 = Decimal(lock_a2.amount_cents) / 100
+            wallet_a2.subtract_balance(amt_a2)
+            # Crédit B2
+            wallet_b2.add_balance(amt_a2)
+            
+            # Historisation A2
+            Transaction.objects.create(
+                wallet=wallet_a2,
+                transaction_type='p2p_debit',
+                amount_cents=lock_a2.amount_cents,
+                currency=lock_a2.currency,
+                status='completed',
+                payment_method='internal',
+                balance_adjusted=True,
+                extra_data={"offer_id": str(offer.id), "role": "sender", "counterparty": b2_phone}
+            )
+            # Historisation B2
+            Transaction.objects.create(
+                wallet=wallet_b2,
+                transaction_type='p2p_credit',
+                amount_cents=lock_a2.amount_cents,
+                currency=lock_a2.currency,
+                status='completed',
+                payment_method='internal',
+                balance_adjusted=True,
+                extra_data={"offer_id": str(offer.id), "role": "receiver", "sender_phone": user_a2.full_phone_number}
+            )
+
             lock_a2.status = 'RELEASED'
             lock_a2.released_at = timezone.now()
             lock_a2.save()
@@ -392,6 +470,29 @@ class SecureEscrowService:
              return None
 
     @staticmethod
+    def _validate_beneficiary(beneficiary_data, expected_currency):
+        """
+        ✅ NOUVEAU: Valide les données du bénéficiaire et s'assure que sa devise correspond.
+        """
+        phone = beneficiary_data.get('phone')
+        if not phone:
+            raise ValidationError("Le numéro de téléphone du bénéficiaire est requis")
+            
+        user = SecureEscrowService._get_user_by_phone(phone)
+        if not user:
+            raise ValidationError(f"L'utilisateur bénéficiaire avec le numéro {phone} est introuvable")
+            
+        # Vérification devise via son Wallet
+        wallet = Wallet.objects.filter(user=user).first()
+        if not wallet or wallet.currency != expected_currency:
+             raise ValidationError(
+                 f"La devise du bénéficiaire ({wallet.currency if wallet else 'N/A'}) "
+                 f"ne correspond pas à la devise requise pour ce flux ({expected_currency})"
+             )
+        
+        return user
+
+    @staticmethod
     def cancel_transaction(offer_id, reason="User Cancelled"):
         """
         Annule l'échange et libère les fonds (Rollback).
@@ -423,6 +524,49 @@ class SecureEscrowService:
                 offer=offer,
                 data={"reason": reason}
             )
+
+    @staticmethod
+    def confirm_beneficiary_participation(user, offer_id):
+        """
+        Permet à un bénéficiaire (B1 ou B2) de confirmer sa participation.
+        Si les deux confirment, le swap est exécuté.
+        """
+        with db_transaction.atomic():
+            offer = Offer.objects.select_for_update().get(id=offer_id)
+            
+            if offer.status != 'LOCKED':
+                raise ValidationError("L'offre doit être en statut LOCKED pour confirmation par le bénéficiaire.")
+                
+            b1_phone = offer.accepted_beneficiary_data.get('phone')
+            b2_phone = offer.beneficiary_data.get('phone')
+            
+            is_b1 = (user.full_phone_number == b1_phone)
+            is_b2 = (user.full_phone_number == b2_phone)
+            
+            if not is_b1 and not is_b2:
+                raise ValidationError("Vous n'êtes pas un bénéficiaire désigné pour cette offre.")
+            
+            # Mise à jour des flags
+            if is_b1:
+                offer.b1_confirmed = True
+            if is_b2:
+                offer.b2_confirmed = True
+            
+            offer.save()
+            
+            SecureEscrowService._log_audit(
+                action="BENEFICIARY_CONFIRMED",
+                user=user,
+                offer=offer,
+                data={"is_b1": is_b1, "is_b2": is_b2}
+            )
+            
+            # Si les deux ont confirmé, on finalise
+            if offer.b1_confirmed and offer.b2_confirmed:
+                SecureEscrowService.confirm_transaction(offer_id)
+                logger.info("p2p_swap_auto_executed", offer_id=str(offer_id))
+            
+            return offer
 
     @staticmethod
     def dispute_transaction(offer_id, user, reason):
@@ -545,7 +689,8 @@ class SecureEscrowService:
             offer = Offer.objects.select_for_update().get(id=offer_id)
             
             # Vérifier que l'utilisateur est une des parties
-            if user_initiator not in [offer.user, offer.user_accepter]:
+            # Vérifier que l'utilisateur est une des partie
+            if user_initiator not in [offer.user, offer.accepted_by]:
                 raise ValidationError("Vous n'êtes pas une partie de cette offre")
             
             # Vérifier que l'offre est dans un état approprié (pas trop tôt, pas trop tard)
@@ -620,17 +765,17 @@ class SecureEscrowService:
                     
                 elif resolution == 'refund_a2':
                     # Rembourser A2 (user qui a accepté)
-                    if offer.user_accepter:
-                        _refund_user_for_dispute(offer.user_accepter, offer.amount_buy_cents, offer.currency_buy)
+                    if offer.accepted_by:
+                        _refund_user_for_dispute(offer.accepted_by, offer.amount_buy_cents, offer.currency_buy)
                     
                 elif resolution == 'split':
                     # Split 50/50
                     split_amount_a1 = offer.amount_sell_cents // 2
-                    split_amount_a2 = offer.amount_buy_cents // 2 if offer.user_accepter else 0
+                    split_amount_a2 = offer.amount_buy_cents // 2 if offer.accepted_by else 0
                     
                     _refund_user_for_dispute(offer.user, split_amount_a1, offer.currency_sell)
-                    if offer.user_accepter:
-                        _refund_user_for_dispute(offer.user_accepter, split_amount_a2, offer.currency_buy)
+                    if offer.accepted_by:
+                        _refund_user_for_dispute(offer.accepted_by, split_amount_a2, offer.currency_buy)
             
             except Exception as e:
                 logger.error("dispute_resolution_error", error=str(e), dispute_id=str(dispute_id))

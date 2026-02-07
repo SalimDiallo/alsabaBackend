@@ -4,6 +4,10 @@ from django.utils import timezone
 import uuid
 import phonenumbers
 from phonenumbers import PhoneNumberFormat
+import structlog
+from Accounts.encrypted_storage import encrypted_kyc_storage
+
+logger = structlog.get_logger(__name__)
 
 
 class UserQuerySet(models.QuerySet):
@@ -17,11 +21,21 @@ class UserManager(BaseUserManager):
     def with_deleted(self):
         return UserQuerySet(self.model, using=self._db)
 
-    def create_user(self, phone_number, country_code="+33", password=None, **extra_fields):
-        if not phone_number:
-            raise ValueError("Le numéro de téléphone est obligatoire")
+    def create_user(self, phone_number=None, country_code=None, password=None, **extra_fields):
+        # Récupérer le numéro complet s'il est passé via extra_fields (cas du CLI createsuperuser)
+        full_phone = extra_fields.pop('full_phone_number', None)
+        
+        if not full_phone:
+            if not phone_number:
+                raise ValueError("Le numéro de téléphone est obligatoire")
+            
+            # Si phone_number commence par '+', on considère que c'est le numéro complet
+            if str(phone_number).startswith('+'):
+                full_phone = str(phone_number)
+            else:
+                c_code = country_code or "+33"
+                full_phone = f"{c_code}{phone_number}"
 
-        full_phone = f"{country_code}{phone_number}"
         try:
             parsed = phonenumbers.parse(full_phone, None)
             if not phonenumbers.is_valid_number(parsed):
@@ -48,7 +62,7 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, phone_number, country_code="+33", password=None, **extra_fields):
+    def create_superuser(self, phone_number=None, country_code=None, password=None, **extra_fields):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
@@ -208,11 +222,28 @@ class KYCDocument(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="kyc_documents")
     document_type = models.CharField(max_length=20, choices=DOCUMENT_TYPES)
     
-    # ✅ SÉCURITÉ AMÉLIORÉE: Images sensibles
-    # Note: django-fernet-fields peut être ajouté pour chiffrement complet
-    front_image = models.ImageField(upload_to="kyc_documents/", help_text="Face avant du document")
-    back_image = models.ImageField(upload_to="kyc_documents/", blank=True, null=True, help_text="Face arrière")
-    selfie_image = models.ImageField(upload_to="kyc_selfies/", blank=True, null=True, help_text="Selfie")
+    # ✅ SÉCURITÉ PCI-DSS: Images chiffrées au repos (At-Rest Encryption)
+    # Utilise EncryptedFileStorage pour chiffrer les fichiers avec Fernet/AES-128
+    
+    front_image = models.ImageField(
+        upload_to="kyc_documents/", 
+        storage=encrypted_kyc_storage,
+        help_text="Face avant du document (Chiffré)"
+    )
+    back_image = models.ImageField(
+        upload_to="kyc_documents/", 
+        storage=encrypted_kyc_storage,
+        blank=True, 
+        null=True, 
+        help_text="Face arrière (Chiffré)"
+    )
+    selfie_image = models.ImageField(
+        upload_to="kyc_selfies/", 
+        storage=encrypted_kyc_storage,
+        blank=True, 
+        null=True, 
+        help_text="Selfie (Chiffré)"
+    )
 
     verification_status = models.CharField(max_length=20, choices=VERIFICATION_STATUS, default="pending")
     verification_note = models.TextField(blank=True)

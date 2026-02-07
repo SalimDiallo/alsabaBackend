@@ -3,13 +3,16 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
-from django.db import transaction as db_transaction
+from django.db import transaction as db_transaction, IntegrityError
 from django.utils import timezone
 from django.core.cache import cache
 import structlog
 from rest_framework.permissions import IsAuthenticated
 from ..utils import auth_utils
-from ..Serializers.OTP_serializers import PhoneAuthSerializer, VerifyOTPSerializer
+from ..Serializers.OTP_serializers import PhoneAuthSerializer, VerifyOTPSerializer, ResendOTPSerializer
+
+from rest_framework import serializers
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes, inline_serializer
 #from ..Services.OTP_services import didit_service
 
 from ..Services.OTP_services import didit_service
@@ -25,6 +28,33 @@ class PhoneAuthView(APIView):
     """
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary="Initier l'authentification par téléphone",
+        description="Envoie un code OTP par SMS au numéro fourni. Crée ou récupère l'utilisateur associé.",
+        request=PhoneAuthSerializer,
+        tags=['Authentification'],
+        responses={
+            200: inline_serializer(
+                name='PhoneAuthResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'session_key': serializers.CharField(),
+                    'phone_number': serializers.CharField(),
+                    'action': serializers.ChoiceField(choices=['login', 'register']),
+                    'message': serializers.CharField(),
+                    'expires_in': serializers.IntegerField(),
+                }
+            ),
+            400: inline_serializer(
+                name='PhoneAuthError',
+                fields={
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField()
+                }
+            ),
+            429: {"description": "Trop de tentatives"}
+        }
+    )
     def post(self, request):
         """
         Envoie un code OTP au numéro de téléphone fourni.
@@ -215,6 +245,52 @@ class VerifyOTPView(APIView):
     """
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary="Vérifier le code OTP",
+        description="Vérifie le code OTP envoyé par SMS. Si valide, retourne les tokens JWT.",
+        request=VerifyOTPSerializer,
+        tags=['Authentification'],
+        responses={
+            200: inline_serializer(
+                name='VerifyOTPResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'action': serializers.CharField(),
+                    'message': serializers.CharField(),
+                    'user': serializers.JSONField(), # Full user data
+                    'auth': inline_serializer(
+                        name='TokenInfo',
+                        fields={
+                            'access_token': serializers.CharField(),
+                            'refresh_token': serializers.CharField(),
+                            'expires_in': serializers.IntegerField(),
+                            'token_type': serializers.CharField()
+                        }
+                    ),
+                    'kyc_info': inline_serializer(
+                        name='KYCBriefInfo',
+                        fields={
+                            'status': serializers.CharField(),
+                            'required': serializers.BooleanField(),
+                            'next_step': serializers.CharField()
+                        }
+                    ),
+                    'otp_verified': serializers.BooleanField(),
+                    'metadata': serializers.JSONField()
+                }
+            ),
+            400: inline_serializer(
+                name='VerifyOTPError',
+                fields={
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField(),
+                    'remaining_attempts': serializers.IntegerField()
+                }
+            ),
+            403: {"description": "Numéro frauduleux ou jetable"},
+            404: {"description": "Utilisateur non trouvé"}
+        }
+    )
     def post(self, request):
         """
         Vérifie un code OTP et authentifie l'utilisateur.
@@ -345,7 +421,6 @@ class VerifyOTPView(APIView):
                                 national_number = national_number[1:]
                         
                         user = User.objects.create_user(
-                            full_phone_number=full_phone_number,
                             phone_number=national_number,
                             country_code=country_code
                         )
@@ -358,6 +433,11 @@ class VerifyOTPView(APIView):
                 else:
                     logger.debug("user_found", user_id=str(user.id))
                     
+        except IntegrityError:
+            # Race condition: l'utilisateur a été créé par une autre requête entre-temps
+            user = User.objects.get(full_phone_number=full_phone_number)
+            logger.info("user_registration_race_condition_resolved", user_id=str(user.id))
+            
         except Exception as e:
             logger.error("user_resolution_error", error=str(e), phone=full_phone_number)
             return Response({
@@ -434,6 +514,33 @@ class ResendOTPView(APIView):
     """
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary="Renvoyer le code OTP",
+        description="Envoie un nouveau code OTP si le précédent n'a pas été reçu.",
+        request=ResendOTPSerializer,
+        tags=['Authentification'],
+        responses={
+            200: inline_serializer(
+                name='ResendOTPResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'request_id': serializers.CharField(),
+                    'session_key': serializers.CharField(),
+                    'expires_in': serializers.IntegerField(),
+                    'metadata': serializers.JSONField()
+                }
+            ),
+            400: inline_serializer(
+                name='ResendOTPError',
+                fields={
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField()
+                }
+            ),
+            429: {"description": "Trop de demandes de renvoi"}
+        }
+    )
     def post(self, request):
         """
         Renvoie un nouveau code OTP (nouvelle requête Didit).
@@ -526,6 +633,26 @@ class AuthStatusView(APIView):
     """
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary="Vérifier le statut de la session",
+        description="Vérifie si une session d'authentification est toujours valide.",
+        tags=['Authentification'],
+        parameters=[
+            OpenApiParameter(name='session_key', description='Clé de session', required=True, type=OpenApiTypes.STR),
+        ],
+        responses={
+            200: inline_serializer(
+                name='AuthStatusResponse',
+                fields={
+                    'authenticated': serializers.BooleanField(),
+                    'session': serializers.JSONField(),
+                    'user': serializers.JSONField(),
+                    'next_steps': serializers.ListField(child=serializers.CharField()),
+                    'metadata': serializers.JSONField(required=False)
+                }
+            )
+        }
+    )
     def get(self, request):
         """
         Vérifie si une session est toujours valide et retourne son état.

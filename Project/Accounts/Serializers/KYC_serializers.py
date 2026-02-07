@@ -106,13 +106,14 @@ class KYCVerifySerializer(serializers.Serializer):
             errors.append("Taille maximale : 5 Mo")
 
         # MIME réel - validation simplifiée
-        if hasattr(image, 'content_type'):
+        mime = getattr(image, 'content_type', '')
+        if mime:
             allowed = {
                 'image/jpeg', 'image/jpg', 'image/png',
                 'image/webp', 'image/tiff', 'application/pdf'
             }
-            if image.content_type not in allowed:
-                errors.append(f"Format non supporté : {image.content_type} (JPEG, PNG, WebP, TIFF, PDF seulement)")
+            if mime not in allowed:
+                errors.append(f"Format non supporté : {mime} (JPEG, PNG, WebP, TIFF, PDF seulement)")
 
         # PIL (seulement pour images, pas PDF)
         try:

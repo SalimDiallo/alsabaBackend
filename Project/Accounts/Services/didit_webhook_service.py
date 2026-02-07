@@ -1,4 +1,7 @@
 import structlog
+import hmac
+import hashlib
+from django.conf import settings
 from django.utils import timezone
 from Accounts.models import User
 
@@ -10,6 +13,35 @@ class DiditWebhookService:
     Service pour traiter les webhooks asynchrones de Didit (KYC)
     Documentation: https://docs.didit.me/reference/webhooks
     """
+
+    @staticmethod
+    def verify_webhook_signature(payload: str, signature: str) -> bool:
+        """
+        Vérifie la signature HMAC d'un webhook DIDIT
+        
+        Args:
+            payload: Corps de la requête (string JSON)
+            signature: Signature reçue dans le header
+            
+        Returns:
+            bool: True si valide
+        """
+        secret = getattr(settings, 'DIDIT_WEBHOOK_SECRET', None)
+        if not secret:
+            logger.error("didit_webhook_secret_missing")
+            return False
+            
+        try:
+            expected_signature = hmac.new(
+                secret.encode('utf-8'),
+                payload.encode('utf-8'),
+                hashlib.sha256
+            ).hexdigest()
+            
+            return hmac.compare_digest(expected_signature, signature)
+        except Exception as e:
+            logger.error("didit_signature_verification_error", error=str(e))
+            return False
 
     @staticmethod
     def process_kyc_webhook(webhook_data):

@@ -14,7 +14,7 @@ class DiditVerificationService:
     Documentation : https://docs.didit.me
     Note: Didit ne propose pas d'endpoint resend, on doit renvoyer un nouveau code
     """
-    BASE_URL = "https://verification.didit.me/v2"
+    BASE_URL = "https://verification.didit.me/v3"
     SEND_CODE_URL = f"{BASE_URL}/phone/send"
     VERIFY_CODE_URL = f"{BASE_URL}/phone/check"
     # PAS de RESEND_CODE_URL - Didit ne propose pas cette fonctionnalité
@@ -159,6 +159,10 @@ class DiditVerificationService:
             "phone_number": phone_number,
             "code": code,
         }
+        
+        # Ajout du request_id si disponible (souvent requis en prod pour le matching exact)
+        if request_id:
+            payload["verification_id"] = request_id
 
         logger.info(
             "didit_verify_attempt",
@@ -178,12 +182,14 @@ class DiditVerificationService:
             logger.debug(
                 "didit_verify_http",
                 status_code=response.status_code,
-                phone_number=auth_utils.mask_phone(phone_number)
+                phone_number=auth_utils.mask_phone(phone_number),
+                response_body=response.text[:1000]  # Log body for debug
             )
             
             response_data = response.json() if response.content else {}
 
             if response.status_code != 200:
+                logger.error("didit_verify_failed_status", status=response.status_code, body=response_data)
                 return self._handle_verification_error(response.status_code, response_data)
 
             phone_details = response_data.get("phone", {})

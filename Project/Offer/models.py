@@ -34,12 +34,25 @@ class Offer(models.Model):
     # Taux de change implicite stocké pour référence
     rate = models.DecimalField(max_digits=10, decimal_places=6, help_text="Taux: 1 Unit Sell = X Unit Buy")
     
-    # Bénéficiaires (TODO: Encrypt this field in future)
-    # beneficiary_data = B2 (Ami de A1, reçoit EUR)
-    beneficiary_data = models.JSONField(default=dict, blank=True, help_text="Bénéficiaire désigné par le vendeur (B2)")
+    # Bénéficiaires - CHIFFRÉS pour sécurité PCI-DSS
+    # Stockés en JSON chiffré (EncryptedTextField)
+    _beneficiary_data_encrypted = EncryptedTextField(
+        blank=True, 
+        default='{}',
+        help_text="Bénéficiaire désigné par le vendeur (B2) - Données chiffrées",
+        db_column='beneficiary_data'
+    )
     
-    # accepted_beneficiary_data = B1 (Ami de A2, reçoit XOF)
-    accepted_beneficiary_data = models.JSONField(default=dict, blank=True, help_text="Bénéficiaire désigné par l'acheteur (B1)")
+    _accepted_beneficiary_data_encrypted = EncryptedTextField(
+        blank=True, 
+        default='{}',
+        help_text="Bénéficiaire désigné par l'acheteur (B1) - Données chiffrées",
+        db_column='accepted_beneficiary_data'
+    )
+
+    # Confirmations des bénéficiaires
+    b1_confirmed = models.BooleanField(default=False, help_text="Le bénéficiaire B1 a confirmé la réception/participation")
+    b2_confirmed = models.BooleanField(default=False, help_text="Le bénéficiaire B2 a confirmé la réception/participation")
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='OPEN', db_index=True)
     
@@ -64,6 +77,45 @@ class Offer(models.Model):
             models.Index(fields=['expires_at']),
         ]
         ordering = ['-created_at']
+    
+    # Properties pour gérer la sérialisation/désérialisation JSON
+    @property
+    def beneficiary_data(self):
+        """Retourne les données bénéficiaire déchiffrées en dict"""
+        import json
+        if not self._beneficiary_data_encrypted:
+            return {}
+        try:
+            return json.loads(self._beneficiary_data_encrypted)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    
+    @beneficiary_data.setter
+    def beneficiary_data(self, value):
+        """Stocke les données bénéficiaire chiffrées"""
+        import json
+        if value is None:
+            value = {}
+        self._beneficiary_data_encrypted = json.dumps(value)
+    
+    @property
+    def accepted_beneficiary_data(self):
+        """Retourne les données bénéficiaire accepté déchiffrées en dict"""
+        import json
+        if not self._accepted_beneficiary_data_encrypted:
+            return {}
+        try:
+            return json.loads(self._accepted_beneficiary_data_encrypted)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    
+    @accepted_beneficiary_data.setter
+    def accepted_beneficiary_data(self, value):
+        """Stocke les données bénéficiaire accepté chiffrées"""
+        import json
+        if value is None:
+            value = {}
+        self._accepted_beneficiary_data_encrypted = json.dumps(value)
 
     @property
     def amount_sell(self):

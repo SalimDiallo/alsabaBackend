@@ -28,29 +28,22 @@ class FlutterwaveBaseService:
         self.max_retries = int(getattr(settings, 'FLUTTERWAVE_MAX_RETRIES', 3))
         self.retry_delay = int(getattr(settings, 'FLUTTERWAVE_RETRY_DELAY', 2))
         
-        # Configuration selon l'environnement
-        if self.environment == 'production':
-            self.client_id = clean_env(getattr(settings, 'FLUTTERWAVE_PRODUCTION_CLIENT_ID', ''))
-            self.client_secret = clean_env(getattr(settings, 'FLUTTERWAVE_PRODUCTION_CLIENT_SECRET', ''))
-            self.encryption_key = clean_env(getattr(settings, 'FLUTTERWAVE_PRODUCTION_ENCRYPTION_KEY', ''))
-            self.base_url = clean_env(getattr(settings, 'FLUTTERWAVE_PRODUCTION_BASE_URL', 'https://api.flutterwave.com'))
-            self.auth_url = clean_env(getattr(settings, 'FLUTTERWAVE_PRODUCTION_AUTH_URL', 
-                                   'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token'))
-        else:  # sandbox
-            self.client_id = clean_env(getattr(settings, 'FLUTTERWAVE_SANDBOX_CLIENT_ID', ''))
-            self.client_secret = clean_env(getattr(settings, 'FLUTTERWAVE_SANDBOX_CLIENT_SECRET', ''))
-            self.encryption_key = clean_env(getattr(settings, 'FLUTTERWAVE_SANDBOX_ENCRYPTION_KEY', ''))
-            self.base_url = clean_env(getattr(settings, 'FLUTTERWAVE_SANDBOX_BASE_URL', 
-                                   'https://developersandbox-api.flutterwave.com'))
-            self.auth_url = clean_env(getattr(settings, 'FLUTTERWAVE_SANDBOX_AUTH_URL',
-                                   'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token'))
+        # Configuration V3 Standard
+        self.secret_key = clean_env(getattr(settings, 'FLUTTERWAVE_SECRET_KEY', ''))
+        self.public_key = clean_env(getattr(settings, 'FLUTTERWAVE_PUBLIC_KEY', ''))
+        self.encryption_key = clean_env(getattr(settings, 'FLUTTERWAVE_ENCRYPTION_KEY', ''))
+        
+        # Base URL: Toujours /v3 pour la version actuelle
+        self.base_url = "https://api.flutterwave.com/v3"
+        
+        # Si on est en sandbox, Flutterwave utilise parfois une URL différente ou simplement des clés de test
+        # Version standard V3: api.flutterwave.com/v3
+        sandbox_url = clean_env(getattr(settings, 'FLUTTERWAVE_SANDBOX_BASE_URL', ''))
+        if self.environment != 'production' and sandbox_url:
+            self.base_url = sandbox_url
         
         self.redirect_url = clean_env(getattr(settings, 'FLUTTERWAVE_REDIRECT_URL', 'https://google.com'))
         self.webhook_secret = clean_env(getattr(settings, 'FLUTTERWAVE_WEBHOOK_SECRET', ''))
-        
-        # Cache pour le token (éviter de le régénérer à chaque requête)
-        self._cached_token = None
-        self._token_expires_at = 0
     
     def validate_redirect_url(self, url: str) -> tuple[bool, str]:
         """
@@ -88,49 +81,10 @@ class FlutterwaveBaseService:
     
     def get_access_token(self, force_refresh: bool = False) -> str:
         """
-        Obtient un token d'accès OAuth2 avec cache
-        
-        Args:
-            force_refresh: Force le rafraîchissement même si le token est encore valide
-            
-        Returns:
-            str: Token d'accès
+        Obtient la clé secrète pour l'authentification V3.
+        Note: Garde le nom de méthode pour compatibilité avec le reste du code.
         """
-        # Vérifier le cache (token valide pendant ~1h généralement)
-        if not force_refresh and self._cached_token and time.time() < self._token_expires_at:
-            return self._cached_token
-        
-        payload = {
-            "client_id": self.client_id,
-            "client_secret": self.client_secret,
-            "grant_type": "client_credentials"
-        }
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        
-        try:
-            resp = requests.post(self.auth_url, data=payload, headers=headers, timeout=self.timeout)
-            if resp.status_code == 200:
-                token_data = resp.json()
-                access_token = token_data["access_token"]
-                expires_in = token_data.get("expires_in", 3600)  # Par défaut 1h
-                
-                # Mettre en cache
-                self._cached_token = access_token
-                self._token_expires_at = time.time() + expires_in - 60  # -60s pour marge de sécurité
-                
-                logger.info("flutterwave_token_obtained", environment=self.environment)
-                return access_token
-            else:
-                logger.error("flutterwave_token_error", 
-                           status_code=resp.status_code, 
-                           response=resp.text,
-                           environment=self.environment)
-                raise Exception(f"Erreur token: {resp.text}")
-        except requests.RequestException as e:
-            logger.error("flutterwave_token_request_error", 
-                        error=str(e),
-                        environment=self.environment)
-            raise
+        return self.secret_key
     
     def _extract_error_message(self, response_text: str) -> str:
         """Extrait un message d'erreur lisible d'une réponse Flutterwave."""
@@ -246,6 +200,33 @@ class FlutterwaveBaseService:
         # Si on arrive ici, tous les retries ont échoué
         raise last_exception or Exception("Erreur inconnue lors de la requête")
 
+    def split_customer_name(self, name: str) -> tuple[str, str]:
+        """
+        Sépare un nom complet en prénom et nom, avec validation pour Flutterwave (min 2 caractères).
+        Nettoie également les caractères spéciaux interdits.
+        """
+        import re
+        if not name or not isinstance(name, str):
+            return "User", "Customer"
+            
+        # Nettoyage: Flutterwave accepte lettres, espaces, virgules, points, apostrophes et tirets.
+        # On supprime tout le reste (notamment le '+' des numéros de téléphone)
+        # On autorise les caractères accentués courants (A-ÿ)
+        name = re.sub(r'[^a-zA-ZÀ-ÿ\s,.\'\-]', '', name).strip()
+        
+        parts = name.split(maxsplit=1)
+        
+        first = parts[0] if parts else "User"
+        last = parts[1] if len(parts) > 1 else "Customer"
+        
+        # Validation Flutterwave (min 2 chars, max 50)
+        if len(first) < 2:
+            first = f"{first}." if first else "User"
+        if len(last) < 2:
+            last = f"{last}." if last else "Customer"
+            
+        return first[:50], last[:50]
+
     def get_customer_id_by_email(self, email: str) -> str:
         """
         Récupère l'ID d'un customer Flutterwave par son email
@@ -295,22 +276,17 @@ class FlutterwaveBaseService:
             return False
         
         try:
-            # 1. Vérification standard Flutterwave (Secret Hash direct)
-            if signature == self.webhook_secret:
+            # 1. Vérification standard Flutterwave V3 (Secret Hash)
+            # Flutterwave transmet le hash secret tel quel dans le header 'verif-hash'
+            # Documentation: https://developer.flutterwave.com/docs/development/webhooks
+            if hmac.compare_digest(str(signature), str(self.webhook_secret)):
                 return True
                 
-            # 2. Fallback HMAC (si configuré comme tel)
-            key = self.webhook_secret.encode('utf-8')
-            computed = hmac.new(key, raw_body, hashlib.sha256).digest()
-            computed_b64 = base64.b64encode(computed).decode('utf-8')
-            
-            # Comparaison sécurisée
-            if hmac.compare_digest(computed_b64, signature):
-                return True
-                
+            # 2. Log d'échec pour diagnostic (sans exposer les secrets)
             logger.warning(
                 "webhook_signature_invalid",
-                provided_signature=signature[:20] + "..." if signature else None
+                provided_signature_prefix=signature[:5] if signature else "None",
+                reason="Signature mismatch with webhook_secret"
             )
             return False
             
