@@ -17,7 +17,7 @@ class DiditKYCService:
         self,
         front_image,
         back_image=None,
-        perform_document_liveness=False,
+        perform_document_liveness=True,
         minimum_age=None,
         expiration_date_not_detected_action="DECLINE",
         invalid_mrz_action="DECLINE",
@@ -74,6 +74,7 @@ class DiditKYCService:
                 data=data,
                 headers={
                     "accept": "application/json",
+                    "Content-Type": "multipart/form-data",
                     "X-Api-Key": self.api_key,
                 },
                 timeout=self.timeout

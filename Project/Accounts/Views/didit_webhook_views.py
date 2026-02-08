@@ -29,45 +29,202 @@ class DiditWebhookView(APIView):
         """
         Traite les webhooks Didit pour les mises à jour KYC avec vérification de signature
         """
+        import time
+        from Accounts.models import WebhookAuditLog
+        
+        start_time = time.time()
+        audit_log = None
+        
+        # Extraire les métadonnées de la requête
+        ip_address = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', ''))
+        if ip_address:
+            ip_address = ip_address.split(',')[0].strip()
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+        payload_size = len(request.body)
+        
         try:
+            webhook_data = request.data
+            request_id = webhook_data.get("request_id", "unknown")
+            didit_status = webhook_data.get("status", "")
+            
+            # Log initial de réception
+            logger.info(
+                "didit_webhook_request_received",
+                request_id=request_id,
+                status=didit_status,
+                ip_address=ip_address,
+                payload_size=payload_size,
+                user_agent=user_agent[:100] if user_agent else None
+            )
+            
             # 1. Vérification de la signature (Sécurité Critique)
-            signature = request.META.get('HTTP_X_DIDIT_SIGNATURE')
+            signature = request.META.get('HTTP_X_SIGNATURE')
             webhook_secret = getattr(settings, 'DIDIT_WEBHOOK_SECRET', None)
+            
             if not webhook_secret:
-                logger.error("didit_webhook_secret_missing")
+                logger.error("didit_webhook_secret_missing", request_id=request_id)
+                # Créer audit log pour erreur de configuration
+                WebhookAuditLog.objects.create(
+                    request_id=request_id,
+                    didit_status=didit_status,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    payload_size=payload_size,
+                    signature_valid=False,
+                    webhook_status='failed',
+                    error_message="Webhook secret not configured",
+                    raw_payload=webhook_data
+                )
                 return Response({"error": "Webhook secret not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
             if not signature:
-                logger.warning("didit_webhook_signature_missing")
+                logger.warning("didit_webhook_signature_missing", request_id=request_id, ip_address=ip_address)
+                # Créer audit log pour signature manquante
+                WebhookAuditLog.objects.create(
+                    request_id=request_id,
+                    didit_status=didit_status,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    payload_size=payload_size,
+                    signature_valid=False,
+                    webhook_status='signature_invalid',
+                    error_message="Signature missing",
+                    raw_payload=webhook_data
+                )
                 return Response({"error": "Signature missing"}, status=status.HTTP_401_UNAUTHORIZED)
+            
             # Vérification HMAC-SHA256
             computed_hash = hmac.new(
                 webhook_secret.encode('utf-8'),
                 request.body,
                 hashlib.sha256
             ).hexdigest()
-            if not hmac.compare_digest(computed_hash, signature):
-                logger.warning("didit_webhook_signature_invalid", received=signature[:10])
+            
+            signature_valid = hmac.compare_digest(computed_hash, signature)
+            
+            if not signature_valid:
+                logger.warning(
+                    "didit_webhook_signature_invalid",
+                    request_id=request_id,
+                    ip_address=ip_address,
+                    received_signature=signature[:10]
+                )
+                # Créer audit log pour signature invalide
+                WebhookAuditLog.objects.create(
+                    request_id=request_id,
+                    didit_status=didit_status,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    payload_size=payload_size,
+                    signature_valid=False,
+                    signature_received=signature[:20],
+                    webhook_status='signature_invalid',
+                    error_message="Invalid signature",
+                    raw_payload=webhook_data
+                )
                 return Response({"error": "Invalid signature"}, status=status.HTTP_401_UNAUTHORIZED)
-            webhook_data = request.data
+            
+            # Signature valide - log de succès
             logger.info(
-                "didit_webhook_received",
-                request_id=webhook_data.get("request_id"),
-                status=webhook_data.get("status")
+                "didit_webhook_signature_verified",
+                request_id=request_id,
+                ip_address=ip_address
             )
+            
+            # Créer audit log initial (sera mis à jour après traitement)
+            audit_log = WebhookAuditLog.objects.create(
+                request_id=request_id,
+                didit_status=didit_status,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                payload_size=payload_size,
+                signature_valid=True,
+                signature_received=signature[:20],
+                webhook_status='received',
+                raw_payload=webhook_data
+            )
+            
+            # Traitement du webhook
+            logger.info("didit_webhook_processing_started", request_id=request_id)
             result = didit_webhook_service.process_kyc_webhook(webhook_data)
+            
+            # Calculer la durée de traitement
+            processing_duration_ms = int((time.time() - start_time) * 1000)
+            
             if result["success"]:
+                # Mettre à jour l'audit log avec le succès
+                audit_log.webhook_status = 'processed'
+                audit_log.processing_duration_ms = processing_duration_ms
+                if result.get("user_id"):
+                    from Accounts.models import User
+                    try:
+                        audit_log.user = User.objects.get(id=result["user_id"])
+                    except User.DoesNotExist:
+                        pass
+                audit_log.save()
+                
+                logger.info(
+                    "didit_webhook_processing_completed",
+                    request_id=request_id,
+                    processing_duration_ms=processing_duration_ms,
+                    user_id=result.get("user_id")
+                )
+                
                 return Response(
                     {"status": "success", "message": result.get("message")},
                     status=status.HTTP_200_OK
                 )
             else:
+                # Mettre à jour l'audit log avec l'échec
+                audit_log.webhook_status = 'failed'
+                audit_log.processing_duration_ms = processing_duration_ms
+                audit_log.error_message = result.get("error", "Unknown error")
+                audit_log.save()
+                
+                logger.warning(
+                    "didit_webhook_processing_failed",
+                    request_id=request_id,
+                    processing_duration_ms=processing_duration_ms,
+                    error=result.get("error")
+                )
+                
                 return Response(
                     {"status": "error", "message": result.get("error")},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+                
         except Exception as e:
-            logger.error("didit_webhook_processing_error", error=str(e))
+            processing_duration_ms = int((time.time() - start_time) * 1000)
+            
+            logger.error(
+                "didit_webhook_processing_error",
+                error=str(e),
+                request_id=request_id if 'request_id' in locals() else "unknown",
+                processing_duration_ms=processing_duration_ms
+            )
+            
+            # Créer ou mettre à jour l'audit log avec l'erreur
+            if audit_log:
+                audit_log.webhook_status = 'failed'
+                audit_log.processing_duration_ms = processing_duration_ms
+                audit_log.error_message = str(e)
+                audit_log.save()
+            else:
+                WebhookAuditLog.objects.create(
+                    request_id=request_id if 'request_id' in locals() else "unknown",
+                    didit_status=didit_status if 'didit_status' in locals() else "",
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    payload_size=payload_size,
+                    signature_valid=False,
+                    webhook_status='failed',
+                    processing_duration_ms=processing_duration_ms,
+                    error_message=str(e),
+                    raw_payload=webhook_data if 'webhook_data' in locals() else {}
+                )
+            
             return Response(
                 {"status": "error", "message": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+

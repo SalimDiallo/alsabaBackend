@@ -163,15 +163,8 @@ class Wallet(models.Model):
             
             detected_currency = currency_map.get(region_code, 'EUR')
             
-            # Gestion SANDBOX pour Flutterwave
-            is_sandbox = getattr(settings, 'FLUTTERWAVE_ENVIRONMENT', 'sandbox') == 'sandbox'
-            if is_sandbox:
-                # Devises supportées nativement en sandbox
-                sandbox_safe = ['NGN', 'USD', 'KES', 'GHS', 'ZAR', 'TZS', 'UGX']
-                if detected_currency not in sandbox_safe:
-                    return 'USD'
-
             return detected_currency
+
             
         except Exception as e:
             logger.warning("currency_detection_failed", phone_number=phone_number, error=str(e))

@@ -584,24 +584,27 @@ structlog.configure(
 
 
 
-# Monitoring avec Sentry
+# ===================================
+# MONITORING AVEC SENTRY APM
+# ===================================
 SENTRY_DSN = os.getenv('SENTRY_DSN')
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'development' if DEBUG else 'production')
+
+logger = structlog.get_logger(__name__)
+
 if SENTRY_DSN and not DEBUG:
-    import sentry_sdk
-    from sentry_sdk.integrations.django import DjangoIntegration
-    from sentry_sdk.integrations.celery import CeleryIntegration
-    sentry_sdk.init(
+    # Configuration avancée avec APM
+    from .sentry_config import configure_sentry
+    configure_sentry(
         dsn=SENTRY_DSN,
         environment=ENVIRONMENT,
-        integrations=[DjangoIntegration(), CeleryIntegration()],
-        traces_sample_rate=0.1,
-        send_default_pii=False,
-        ignore_errors=[
-            'rest_framework.exceptions.NotFound',
-            'rest_framework.exceptions.PermissionDenied',
-        ],
+        debug=DEBUG
     )
+    logger.info("sentry_apm_enabled", environment=ENVIRONMENT)
+elif DEBUG:
+    logger.info("sentry_disabled_in_debug_mode")
+else:
+    logger.warning("sentry_dsn_not_configured")
 
 # Didit settings - validation stricte
 DIDIT_WEBHOOK_SECRET = os.getenv('DIDIT_WEBHOOK_SECRET')

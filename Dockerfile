@@ -31,8 +31,8 @@ RUN find . -type d -name "__pycache__" -exec rm -rf {} +
 COPY Project/requirements.txt ./requirements.txt
 
 # Upgrade pip et installation des dépendances Python
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+RUN pip install --upgrade pip --break-system-packages
+RUN pip install -r requirements.txt --break-system-packages
 
 COPY Project/ .
 # Copie du script d'entrée
