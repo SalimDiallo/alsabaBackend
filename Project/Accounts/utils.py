@@ -154,6 +154,8 @@ class AuthUtils:
     def is_rate_limited(identifier, limit=5, window_seconds=600):
         """
         Vérifie si un identifiant (phone ou IP) est rate limited.
+        ATTENTION: Cette méthode incrémente le compteur à chaque appel.
+        Utilisez check_rate_limit si vous voulez seulement vérifier.
         """
         cache_key = f"rate_limit_{identifier}"
         attempts = cache.get(cache_key, [])
@@ -173,6 +175,70 @@ class AuthUtils:
         cache.set(cache_key, recent_attempts, timeout=window_seconds)
         
         return False
+    
+    @staticmethod
+    def check_rate_limit(identifier, limit=5, window_seconds=600):
+        """
+        Vérifie si un identifiant est rate limited SANS incrémenter le compteur.
+        Utile pour vérifier avant d'autoriser une action.
+        """
+        cache_key = f"rate_limit_{identifier}"
+        attempts = cache.get(cache_key, [])
+        
+        now = timezone.now()
+        # Garder seulement les tentatives récentes
+        recent_attempts = [
+            t for t in attempts 
+            if (now - t).total_seconds() < window_seconds
+        ]
+        
+        return len(recent_attempts) >= limit
+    
+    @staticmethod
+    def increment_rate_limit(identifier, window_seconds=600):
+        """
+        Incrémente le compteur de rate limiting pour un identifiant.
+        Appeler cette méthode seulement après que l'action a été effectuée.
+        """
+        cache_key = f"rate_limit_{identifier}"
+        attempts = cache.get(cache_key, [])
+        
+        now = timezone.now()
+        # Garder seulement les tentatives récentes
+        recent_attempts = [
+            t for t in attempts 
+            if (now - t).total_seconds() < window_seconds
+        ]
+        
+        recent_attempts.append(now)
+        cache.set(cache_key, recent_attempts, timeout=window_seconds)
+    
+    @staticmethod
+    def get_rate_limit_remaining(identifier, limit=5, window_seconds=600):
+        """
+        Retourne le nombre de tentatives restantes pour un identifiant.
+        Utile pour informer l'utilisateur.
+        """
+        cache_key = f"rate_limit_{identifier}"
+        attempts = cache.get(cache_key, [])
+        
+        now = timezone.now()
+        recent_attempts = [
+            t for t in attempts 
+            if (now - t).total_seconds() < window_seconds
+        ]
+        
+        return max(0, limit - len(recent_attempts))
+    
+    @staticmethod
+    def clear_rate_limit(identifier):
+        """
+        Efface le compteur de rate limiting pour un identifiant.
+        Utile pour les tests ou après une vérification réussie.
+        """
+        cache_key = f"rate_limit_{identifier}"
+        cache.delete(cache_key)
+        logger.info("rate_limit_cleared", identifier=identifier[:20] if identifier else "")
     
     # Méthodes privées auxiliaires
     @staticmethod

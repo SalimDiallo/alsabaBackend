@@ -192,9 +192,10 @@ class DiditVerificationService:
                 logger.error("didit_verify_failed_status", status=response.status_code, body=response_data)
                 return self._handle_verification_error(response.status_code, response_data)
 
-            phone_details = response_data.get("phone", {})
-            status = phone_details.get("status", "Unknown")
+            # Didit v3 response: status is at top level, phone details nested under "phone"
+            status = response_data.get("status", "Unknown")
             verified = (status == "Approved")
+            phone_details = response_data.get("phone") or {}
 
             return {
                 "success": True,

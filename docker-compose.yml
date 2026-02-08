@@ -32,7 +32,7 @@ services:
     container_name: alsaba_redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "6380:6379"  # Port modifié pour éviter conflit avec Redis local
     volumes:
       - redis_data:/data
     healthcheck:

@@ -120,7 +120,13 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # Application definition
 
 INSTALLED_APPS = [
-    'daphne',
+    # Apps manquantes dans l'image Docker désactivées temporairement
+    # 'daphne',
+    # 'channels',
+    # 'django_celery_beat',
+    # 'drf_spectacular',
+    # 'drf_spectacular_sidecar',
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -130,26 +136,24 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
-    'corsheaders',  
-    'channels',
+    'corsheaders',
     'Accounts',
     'Wallet',
     'Offer',
     'Suggestions',
     'Notifications',
-    'django_celery_beat',
-    'drf_spectacular',
-    'drf_spectacular_sidecar',  # Swagger UI & ReDoc static assets
 ]
 
 
 # CORS Configuration
-CORS_ALLOWED_ORIGINS = os.getenv(
-    'CORS_ALLOWED_ORIGINS',
-    'http://localhost:3000,http://localhost:8080' if DEBUG else ''
-).split(',') if os.getenv('CORS_ALLOWED_ORIGINS') or DEBUG else []
-if not DEBUG and not CORS_ALLOWED_ORIGINS:
-    raise ValueError("CORS_ALLOWED_ORIGINS must be configured in production (.env file)")
+# En mode DEBUG, on accepte toutes les origines pour faciliter le dev avec Expo/React Native
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
+    if not CORS_ALLOWED_ORIGINS:
+        raise ValueError("CORS_ALLOWED_ORIGINS must be configured in production (.env file)")
+
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = ['*']
 
@@ -276,7 +280,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'Project.wsgi.application'
-ASGI_APPLICATION = 'Project.asgi.application'
+# ASGI_APPLICATION = 'Project.asgi.application'  # Désactivé (channels/daphne non installés)
 
 # Channels / WebSocket Configuration
 CHANNEL_LAYERS = {
@@ -459,109 +463,8 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-LOGGING = {
-
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        # Format lisible pour fichiers .log
-        'detailed': {
-            'format': '[{asctime}] {levelname:8s} | {name:30s} | {message}',
-            'style': '{',
-            'datefmt': '%Y-%m-%d %H:%M:%S',
-        },
-        # Format console avec couleurs (via structlog)
-        'console_formatter': {
-            '()': structlog.stdlib.ProcessorFormatter,
-            'processor': structlog.dev.ConsoleRenderer(colors=True),
-        },
-    },
-    'handlers': {
-        # Console avec couleurs
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'console_formatter',
-            'level': 'DEBUG' if DEBUG else 'INFO',
-        },
-        # Fichier général (tous les niveaux)
-        'file_all': {
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(LOGS_DIR, 'alsaba.log'),
-            'formatter': 'detailed',
-            'maxBytes': 10485760,  # 10MB
-            'backupCount': 10,
-            'encoding': 'utf-8',
-        },
-        # Fichier INFO uniquement
-        'file_info': {
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(LOGS_DIR, 'info.log'),
-            'formatter': 'detailed',
-            'level': 'INFO',
-            'maxBytes': 5242880,  # 5MB
-            'backupCount': 5,
-            'encoding': 'utf-8',
-        },
-        # Fichier ERROR et CRITICAL
-        'file_error': {
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(LOGS_DIR, 'error.log'),
-            'formatter': 'detailed',
-            'level': 'ERROR',
-            'maxBytes': 5242880,  # 5MB
-            'backupCount': 10,
-            'encoding': 'utf-8',
-        },
-        # Fichier DEBUG (seulement en mode DEBUG)
-        'file_debug': {
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(LOGS_DIR, 'debug.log'),
-            'formatter': 'detailed',
-            'level': 'DEBUG',
-            'maxBytes': 10485760,  # 10MB
-            'backupCount': 3,
-            'encoding': 'utf-8',
-        },
-    },
-    'loggers': {
-        # Logger racine (tous les modules)
-        '': {
-            'handlers': ['console', 'file_all', 'file_info', 'file_error'],
-            'level': 'DEBUG' if DEBUG else 'INFO',
-            'propagate': False,
-        },
-        # Logger spécifique Wallet
-        'Wallet': {
-            'handlers': ['console', 'file_all', 'file_info', 'file_error'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        # Logger spécifique Accounts
-        'Accounts': {
-            'handlers': ['console', 'file_all', 'file_info', 'file_error'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        # Logger spécifique Offer
-        'Offer': {
-            'handlers': ['console', 'file_all', 'file_info', 'file_error'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        # Logger Django (requêtes, etc.)
-        'django': {
-            'handlers': ['console', 'file_all'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        # Logger requêtes DB (désactivé par défaut pour éviter spam)
-        'django.db.backends': {
-            'handlers': ['file_debug'] if DEBUG else [],
-            'level': 'DEBUG',
-            'propagate': False,
-        },
-    },
-}
+# LOGGING désactivé temporairement (problèmes de permissions)
+LOGGING = None
 
 # Configuration structlog (pour logs structurés lisibles)
 structlog.configure(

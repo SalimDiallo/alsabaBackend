@@ -5,7 +5,17 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 import structlog
 from datetime import datetime
-from drf_spectacular.utils import extend_schema, inline_serializer
+# from drf_spectacular.utils import extend_schema, inline_serializer  # Désactivé temporairement
+
+# Décorateur factice pour remplacer drf_spectacular
+def extend_schema(*args, **kwargs):
+    def decorator(func):
+        return func
+    return decorator
+
+def inline_serializer(*args, **kwargs):
+    return None
+
 from rest_framework import serializers
 
 from ..utils import auth_utils
@@ -106,24 +116,28 @@ class KYCVerifyView(APIView):
                 "kyc_status": "verified"
             }, status=status.HTTP_200_OK)
 
-        # Rate limiting global par IP : 10 tentatives par heure
+        # Rate limiting global par IP : 20 tentatives par heure (augmenté pour dev)
         client_ip = auth_utils.get_client_ip(request)
         global_limit_key = f"kyc_global_{client_ip}"
-        if auth_utils.is_rate_limited(global_limit_key, limit=10, window_seconds=3600):
+        if auth_utils.check_rate_limit(global_limit_key, limit=20, window_seconds=3600):
             return Response({
-                "error": "Trop de tentatives KYC depuis cette adresse IP (limite : 10 par heure)",
+                "error": "Trop de tentatives KYC depuis cette adresse IP (limite : 20 par heure)",
                 "code": "kyc_global_rate_limited",
                 "retry_after": 3600
             }, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
-        # Rate limiting : 3 tentatives par heure
+        # Rate limiting : 5 tentatives par heure (augmenté pour dev)
         kyc_limit_key = f"kyc_attempts_{user.id}"
-        if auth_utils.is_rate_limited(kyc_limit_key, limit=3, window_seconds=3600):
+        if auth_utils.check_rate_limit(kyc_limit_key, limit=5, window_seconds=3600):
             return Response({
-                "error": "Trop de tentatives KYC récentes (limite : 3 par heure)",
+                "error": "Trop de tentatives KYC récentes (limite : 5 par heure)",
                 "code": "kyc_rate_limited",
                 "retry_after": 3600
             }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        
+        # Incrémenter les compteurs seulement après les vérifications
+        auth_utils.increment_rate_limit(global_limit_key, window_seconds=3600)
+        auth_utils.increment_rate_limit(kyc_limit_key, window_seconds=3600)
 
         validated_data = serializer.validated_data
         document_type = validated_data['document_type']

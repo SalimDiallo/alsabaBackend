@@ -3,6 +3,6 @@ import django.utils.encoding
 if not hasattr(django.utils.encoding, 'force_text'):
     django.utils.encoding.force_text = django.utils.encoding.force_str
 
-from .celery import app as celery_app
-
-__all__ = ('celery_app',)
+# Celery import désactivé temporairement (module non installé dans l'image)
+# from .celery import app as celery_app
+# __all__ = ('celery_app',)

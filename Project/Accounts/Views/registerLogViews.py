@@ -12,8 +12,24 @@ from ..utils import auth_utils
 from ..Serializers.OTP_serializers import PhoneAuthSerializer, VerifyOTPSerializer, ResendOTPSerializer
 
 from rest_framework import serializers
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes, inline_serializer
-#from ..Services.OTP_services import didit_service
+# from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes, inline_serializer  # Désactivé temporairement
+
+# Décorateur et fonctions factices pour remplacer drf_spectacular
+def extend_schema(*args, **kwargs):
+    def decorator(func):
+        return func
+    return decorator
+
+def inline_serializer(*args, **kwargs):
+    return None
+
+def OpenApiParameter(*args, **kwargs):
+    return None
+
+class OpenApiTypes:
+    STR = str
+    INT = int
+    BOOL = bool
 
 from ..Services.OTP_services import didit_service
 from ..models import User
@@ -626,6 +642,50 @@ class ResendOTPView(APIView):
                 "max_resends": 3
             }
         })    
+class LogoutView(APIView):
+    """
+    Déconnexion sécurisée : blackliste le refresh token et l'access token.
+    POST /api/accounts/auth/logout/
+    Body: { "refresh": "<refresh_token>" }
+    Header: Authorization: Bearer <access_token>
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
+        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+        from rest_framework_simplejwt.exceptions import TokenError
+
+        refresh_token = request.data.get("refresh")
+
+        # 1. Blacklister le refresh token
+        if refresh_token:
+            try:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            except TokenError:
+                pass  # Déjà invalide ou expiré, on continue
+
+        # 2. Blacklister l'access token (via OutstandingToken si enregistré)
+        try:
+            auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+            if auth_header.startswith("Bearer "):
+                raw_access = auth_header.split(" ", 1)[1]
+                access = AccessToken(raw_access)
+                jti = access["jti"]
+                user = request.user
+                # Chercher le OutstandingToken correspondant et le blacklister
+                outstanding = OutstandingToken.objects.filter(jti=jti, user=user).first()
+                if outstanding:
+                    BlacklistedToken.objects.get_or_create(token=outstanding)
+        except Exception:
+            pass  # On ne bloque jamais le logout pour un access token invalide
+
+        logger.info("user_logged_out", user_id=str(request.user.id))
+
+        return Response({"success": True, "message": "Déconnecté avec succès"}, status=status.HTTP_200_OK)
+
+
 class AuthStatusView(APIView):
     """
     Vue pour vérifier le statut d'une session d'authentification

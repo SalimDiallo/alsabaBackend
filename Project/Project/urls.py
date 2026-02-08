@@ -19,22 +19,22 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
+# from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView  # Désactivé
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    
+
     # API endpoints
-    path('api/accounts/', include('Accounts.urls')), 
+    path('api/accounts/', include('Accounts.urls')),
     path('api/wallet/', include('Wallet.urls')),
     path('api/offers/', include('Offer.urls')),
     path('api/suggestions/', include('Suggestions.urls')),
     path('api/notifications/', include('Notifications.urls')),
 
-    # Documentation API
-    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
-    path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
-    path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+    # Documentation API - Désactivée temporairement (drf_spectacular non installé)
+    # path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    # path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    # path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
 
 # Pour servir les fichiers médias en développement
