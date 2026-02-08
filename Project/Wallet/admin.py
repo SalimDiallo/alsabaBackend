@@ -4,10 +4,10 @@ from .models import Wallet, Transaction
 
 @admin.register(Wallet)
 class WalletAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user', 'balance', 'currency', 'is_active', 'created_at']
+    list_display = ['id', 'user', 'balance', 'currency', 'is_active', 'created_at','balance_cents']
     list_filter = ['is_active', 'currency', 'created_at']
     search_fields = ['user__full_phone_number', 'user__email']
-    readonly_fields = ['id', 'balance_cents', 'created_at', 'updated_at']
+    readonly_fields = ['id', 'created_at', 'updated_at']
 
     def balance(self, obj):
         symbol = self._get_currency_symbol(obj.currency)

@@ -509,7 +509,7 @@ class ExchangeRateView(APIView):
     GET /api/offers/exchange-rates/
     Récupère les taux de change officiels pour une devise donnée.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     @extend_schema(
         summary="Obtenir les taux de change officiels",
@@ -521,7 +521,7 @@ class ExchangeRateView(APIView):
         responses={200: OpenApiTypes.OBJECT}
     )
     def get(self, request):
-        base_currency = request.query_params.get('base', 'EUR').upper()
+        base_currency = request.query_params.get('base', 'MAD').upper()
         rates = ExchangeRateService.get_rates(base_currency)
         
         if rates:

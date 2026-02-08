@@ -15,7 +15,7 @@ class ExchangeRateService:
     CACHE_TIMEOUT = 3600  # Mise en cache pendant 1 heure (3600s)
 
     @classmethod
-    def get_rates(cls, base_currency="EUR"):
+    def get_rates(cls, base_currency="MAD"):
         """
         Récupère les taux de change pour une devise de base donnée.
         """
@@ -30,7 +30,7 @@ class ExchangeRateService:
         return cls.fetch_and_cache_rates(base_currency)
 
     @classmethod
-    def fetch_and_cache_rates(cls, base_currency="EUR"):
+    def fetch_and_cache_rates(cls, base_currency="MAD"):
         """
         Appelle l'API externe et stocke le résultat dans le cache.
         """

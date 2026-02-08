@@ -74,6 +74,8 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/1}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      # Exchange Rate API
+      - EXCHANGERATE_API_KEY=${EXCHANGERATE_API_KEY:-}
     ports:
       - "8000:8000"
     volumes:
