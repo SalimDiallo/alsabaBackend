@@ -1,6 +1,6 @@
 """
-✅ NOUVEAU: Service de sécurité pour l'accès aux documents KYC.
-Implémente l'audit, le chiffrement, et la gestion de l'accès.
+✅ NEW: Security service for KYC document access.
+Implements auditing, encryption, and access management.
 """
 
 import hashlib
@@ -17,28 +17,28 @@ logger = structlog.get_logger(__name__)
 
 class KYCSecurityService:
     """
-    Service pour gérer l'accès sécurisé aux documents KYC.
-    - Audit logging de tout accès
-    - Validation des permissions
-    - Gestion des URLs présignées avec expiration
+    Service to manage secure access to KYC documents.
+    - Audit logging of all access
+    - Permission validation
+    - Management of pre-signed URLs with expiration
     """
     
     @staticmethod
     def get_kyc_document_with_audit(document_id, user, purpose="view"):
         """
-        Récupère un document KYC avec audit logging.
+        Retrieves a KYC document with audit logging.
         
         Args:
-            document_id: UUID du document
-            user: User qui accède au document
-            purpose: Raison de l'accès (view, verify, download, etc.)
+            document_id: Document UUID
+            user: User accessing the document
+            purpose: Reason for access (view, verify, download, etc.)
         
         Returns:
             KYCDocument object
             
         Raises:
-            KYCDocument.DoesNotExist si non trouvé
-            PermissionDenied si accès non autorisé
+            KYCDocument.DoesNotExist if not found
+            PermissionDenied if access not authorized
         """
         try:
             document = KYCDocument.objects.get(id=document_id)
@@ -50,7 +50,7 @@ class KYCSecurityService:
             )
             raise
         
-        # Vérifier les permissions
+        # Check permissions
         is_owner = document.user == user
         is_admin = user.is_staff
         is_kyc_officer = user.groups.filter(name='KYC_Officers').exists()
@@ -62,9 +62,9 @@ class KYCSecurityService:
                 user_id=str(user.id),
                 document_owner=str(document.user.id)
             )
-            raise PermissionDenied("Vous n'avez pas accès à ce document")
+            raise PermissionDenied("You do not have access to this document")
         
-        # Log d'accès
+        # Access log
         document.accessed_at = timezone.now()
         document.accessed_by = str(user.id)
         document.save(update_fields=['accessed_at', 'accessed_by'])
@@ -82,17 +82,17 @@ class KYCSecurityService:
     @staticmethod
     def get_download_signature(document_id, user, field_name='front_image', expiry_minutes=15):
         """
-        Génère une signature JWT pour télécharger un document KYC.
-        La signature expire après expiry_minutes.
+        Generates a JWT signature to download a KYC document.
+        The signature expires after expiry_minutes.
         
         Args:
-            document_id: UUID du document
-            user: User qui demande le téléchargement
-            field_name: Quel champ accéder (front_image, back_image, selfie_image)
-            expiry_minutes: Durée de validité en minutes
+            document_id: Document UUID
+            user: User requesting the download
+            field_name: Which field to access (front_image, back_image, selfie_image)
+            expiry_minutes: Validity period in minutes
         
         Returns:
-            Signature JWT avec payload signé
+            JWT signature with signed payload
         """
         from rest_framework_simplejwt.tokens import Token
         
@@ -100,7 +100,7 @@ class KYCSecurityService:
             document_id, user, purpose=f'download_{field_name}'
         )
         
-        # Créer un token JWT custom pour ce téléchargement
+        # Create a custom JWT token for this download
         payload = {
             'document_id': str(document_id),
             'user_id': str(user.id),
@@ -108,7 +108,7 @@ class KYCSecurityService:
             'timestamp': timezone.now().isoformat(),
         }
         
-        # Hash du contenu pour garantir l'intégrité
+        # Hash of the content to ensure integrity
         signature_input = json.dumps(payload, sort_keys=True)
         content_hash = hashlib.sha256(signature_input.encode()).hexdigest()
         
@@ -129,10 +129,10 @@ class KYCSecurityService:
     @staticmethod
     def validate_download_signature(document_id, user_id, field_name, signature, timestamp_str):
         """
-        Valide une signature de téléchargement.
+        Validates a download signature.
         
         Returns:
-            True si valide, False sinon
+            True if valid, False otherwise
         """
         try:
             payload = {
@@ -145,10 +145,10 @@ class KYCSecurityService:
             signature_input = json.dumps(payload, sort_keys=True)
             expected_hash = hashlib.sha256(signature_input.encode()).hexdigest()
             
-            # Validation de la signature
+            # Signature validation
             is_valid = expected_hash == signature
             
-            # Validation du timestamp (pas plus de 15 min)
+            # Timestamp validation (no more than 15 min)
             timestamp = timezone.datetime.fromisoformat(timestamp_str)
             is_fresh = timezone.now() - timestamp < timedelta(minutes=15)
             
@@ -168,13 +168,13 @@ class KYCSecurityService:
     @staticmethod
     def revoke_document_access(document_id, reason=""):
         """
-        Révoque l'accès à un document (le rend inaccessible).
-        Utilisé en cas de comprom is ou de révocation de KYC.
+        Revokes access to a document (makes it inaccessible).
+        Used in case of compromise or KYC revocation.
         """
         document = KYCDocument.objects.get(id=document_id)
         
-        # Dans le cas réel, on pourrait marquer le document comme révoqué
-        # ou le supprimer complètement selon la politique
+        # In a real case, we could mark the document as revoked
+        # or delete it completely according to policy
         
         logger.warning(
             'kyc_document_access_revoked',
@@ -186,8 +186,8 @@ class KYCSecurityService:
     @staticmethod
     def export_kyc_documents_for_user(user):
         """
-        Exporte tous les documents KYC d'un utilisateur (GDPR Article 20).
-        Retourne une liste des métadonnées.
+        Exports all KYC documents of a user (GDPR Article 20).
+        Returns a list of metadata.
         """
         documents = KYCDocument.objects.filter(user=user).values(
             'id', 'document_type', 'verification_status', 'verified_at', 'created_at'
@@ -200,3 +200,7 @@ class KYCSecurityService:
         )
         
         return list(documents)
+
+
+# Singleton instance
+kyc_security_service = KYCSecurityService()

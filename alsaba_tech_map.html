@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="fr" class="scroll-smooth">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ALSABA - Cartographie Technique Premium v3.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose',
+            fontFamily: 'Outfit'
+        });
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.9);
+            --glass-border: rgba(255, 255, 255, 0.6);
+            --accent-primary: #3b82f6;
+            --accent-secondary: #8b5cf6;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+        }
+
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 32px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 15px -1px rgba(0, 0, 0, 0.04);
+            border: 1px solid #f1f5f9;
+        }
+
+        .card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.07);
+            border-color: var(--accent-primary);
+        }
+
+        .sidebar-item {
+            transition: all 0.2s;
+            border-left: 4px solid transparent;
+        }
+
+        .sidebar-item:hover,
+        .sidebar-item.active {
+            background: rgba(59, 130, 246, 0.08);
+            border-left-color: var(--accent-primary);
+            color: var(--accent-primary);
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .mermaid {
+            background: #ffffff !important;
+            padding: 30px;
+            border-radius: 16px;
+            border: 1px solid #f1f5f9;
+        }
+
+        pre code {
+            font-family: 'Fira Code', 'Courier New', monospace;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+
+<body class="flex flex-col lg:flex-row min-h-screen">
+
+    <!-- Sidebar -->
+    <aside class="w-full lg:w-72 glass lg:fixed h-full z-50 p-6 flex flex-col gap-8 transition-all">
+        <div class="flex items-center gap-4">
+            <div
+                class="w-12 h-12 bg-gradient-to-br from-blue-600 to-violet-600 rounded-2xl flex items-center justify-center text-white text-2xl font-black shadow-lg shadow-blue-500/20">
+                A</div>
+            <div>
+                <h1 class="font-extrabold text-xl tracking-tight text-slate-900">ALSABA</h1>
+                <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-600 opacity-60">Tech Map
+                    Premium</span>
+            </div>
+        </div>
+
+        <nav class="flex flex-col gap-1 overflow-y-auto pr-2">
+            <a href="#overview"
+                class="sidebar-item active p-3 rounded-xl flex items-center gap-3 font-semibold text-slate-600">
+                <i class="fas fa-th-large w-5"></i> Vue d'Ensemble
+            </a>
+            <a href="#logiciel"
+                class="sidebar-item p-3 rounded-xl flex items-center gap-3 font-semibold text-slate-600">
+                <i class="fas fa-microchip w-5"></i> Stack Logicielle
+            </a>
+            <a href="#p2p-flow"
+                class="sidebar-item p-3 rounded-xl flex items-center gap-3 font-semibold text-slate-600">
+                <i class="fas fa-exchange-alt w-5"></i> Flux Métier P2P
+            </a>
+            <a href="#database"
+                class="sidebar-item p-3 rounded-xl flex items-center gap-3 font-semibold text-slate-600">
+                <i class="fas fa-database w-5"></i> Modélisation ERD
+            </a>
+            <a href="#security"
+                class="sidebar-item p-3 rounded-xl flex items-center gap-3 font-semibold text-slate-600">
+                <i class="fas fa-shield-halved w-5"></i> Sécurité PCI-DSS
+            </a>
+            <a href="#devops" class="sidebar-item p-3 rounded-xl flex items-center gap-3 font-semibold text-slate-600">
+                <i class="fas fa-infinity w-5"></i> DevOps & Infra
+            </a>
+        </nav>
+
+        <div class="mt-auto pt-6 border-t border-slate-200">
+            <div class="flex items-center justify-between text-[10px] mb-4">
+                <span class="font-black text-slate-400 uppercase tracking-widest">Santé Système</span>
+                <span class="text-green-500 font-bold flex items-center gap-1"><i
+                        class="fas fa-circle text-[6px] animate-pulse"></i> Stable</span>
+            </div>
+            <div class="space-y-2">
+                <div class="flex items-center gap-3 text-xs font-medium text-slate-500">
+                    <i class="fab fa-docker text-blue-500"></i> Docker Cluster Up
+                </div>
+                <div class="flex items-center gap-3 text-xs font-medium text-slate-500">
+                    <i class="fas fa-robot text-purple-500"></i> AI Engines Loaded
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 lg:ml-72 p-6 lg:p-16 space-y-32">
+
+        <!-- HEADER -->
+        <header class="relative py-12">
+            <div
+                class="absolute -top-32 -left-32 w-[500px] h-[500px] bg-blue-300/10 rounded-full blur-[120px] pointer-events-none">
+            </div>
+            <div
+                class="absolute -top-32 -right-32 w-[500px] h-[500px] bg-purple-300/10 rounded-full blur-[120px] pointer-events-none">
+            </div>
+
+            <h1 class="text-6xl lg:text-8xl font-black tracking-tighter mb-8 text-slate-900 leading-[1]">
+                Architecture <br><span class="gradient-text">Technique</span>
+            </h1>
+            <p class="text-xl text-slate-500 max-w-2xl font-medium leading-relaxed">
+                Plongez dans l'écosystème ALSABA. Une structure épurée, performante et pensée pour la scalabilité.
+            </p>
+        </header>
+
+        <!-- 1. VUE D'ENSEMBLE (C4) -->
+        <section id="overview" class="scroll-mt-32">
+            <div class="flex items-center gap-4 mb-12">
+                <h2 class="text-4xl font-black tracking-tight text-slate-900">01. Perspective Globale (C4)</h2>
+                <span class="flex-1 h-[2px] bg-slate-100 rounded-full"></span>
+            </div>
+            <div class="card bg-white">
+                <div class="mermaid">
+                    C4Context
+                    title ALSABA High-Level Distributed Architecture
+
+                    Person(user, "Utilisateur Mobile", "Client P2P via Flutter App")
+                    Person(ops, "Ops/Admin", "Monitoring & Dashboard")
+
+                    System_Boundary(c1, "Cloud Private (Docker Swarm/Compose)") {
+                    Container(api, "Django/Daphne API", "Python 3.12, REST, WebSockets", "Cœur de la logique métier")
+                    Container(worker, "Celery Workers", "Task Processing", "Paiements, KYC, Notifications")
+                    ContainerDb(redis, "Redis Stack", "Cache & Broker", "Gestion des états temps réel")
+                    ContainerDb(db, "PostgreSQL 16", "Data Persistence", "Source of Truth")
+                    }
+
+                    System_Ext(flutterwave, "Flutterwave V3", "PayGate", "Gestion des flux monétaires")
+                    System_Ext(didit, "Didit Identity", "KYC Provider", "Vérification d'identité IA")
+                    System_Ext(firebase, "Firebase Cloud Messaging", "Push", "Alertes transactionnelles")
+
+                    Rel(user, api, "HTTPS/WSS", "JWT Auth")
+                    Rel(api, db, "SQL", "psycopg2")
+                    Rel(api, redis, "Redis Protocol", "Cache/KV")
+                    Rel(api, worker, "AMQP/Task Queue", "Redis Broker")
+                    Rel(worker, flutterwave, "API Pay", "Webhooks Support")
+                    Rel(worker, didit, "KYC Check", "HTTPS")
+                    Rel(worker, firebase, "Push API", "gRPC/HTTPS")
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. STACK LOGICIELLE (RADAR) -->
+        <section id="logiciel" class="scroll-mt-32">
+            <div class="flex items-center gap-4 mb-12">
+                <h2 class="text-4xl font-black tracking-tight text-slate-900">02. Stack Logicielle</h2>
+                <span class="flex-1 h-[2px] bg-slate-100 rounded-full"></span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- FRAMEWORKS -->
+                <div class="card border-t-4 border-blue-500">
+                    <div class="flex justify-between items-start mb-8">
+                        <div class="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+                            <i class="fas fa-layer-group text-xl"></i>
+                        </div>
+                        <span
+                            class="text-[10px] font-black px-2 py-1 bg-blue-50 text-blue-600 rounded-lg tracking-wider uppercase">Core</span>
+                    </div>
+                    <h3 class="text-2xl font-black mb-6 text-slate-800 tracking-tight">Logiciels & Runtimes</h3>
+                    <ul class="space-y-4 text-sm font-semibold text-slate-500">
+                        <li class="flex justify-between items-center py-2 border-b border-slate-50"><span>Python</span>
+                            <span class="text-slate-900 font-mono">3.12+</span></li>
+                        <li class="flex justify-between items-center py-2 border-b border-slate-50"><span>Django /
+                                DRF</span> <span class="text-slate-900 font-mono">5.2 / 3.16</span></li>
+                        <li class="flex justify-between items-center py-2 border-b border-slate-50"><span>Daphne
+                                (ASGI)</span> <span class="text-slate-900 font-mono">v4.1</span></li>
+                        <li class="flex justify-between items-center py-2"><span>Channels</span> <span
+                                class="text-slate-900 font-mono">v4.0</span></li>
+                    </ul>
+                </div>
+
+                <!-- ASYNC & WORKERS -->
+                <div class="card border-t-4 border-orange-500">
+                    <div class="flex justify-between items-start mb-8">
+                        <div
+                            class="w-12 h-12 rounded-2xl bg-orange-50 flex items-center justify-center text-orange-600">
+                            <i class="fas fa-cogs text-xl"></i>
+                        </div>
+                        <span
+                            class="text-[10px] font-black px-2 py-1 bg-orange-50 text-orange-600 rounded-lg tracking-wider uppercase">Processing</span>
+                    </div>
+                    <h3 class="text-2xl font-black mb-6 text-slate-800 tracking-tight">Traitement Asynchrone</h3>
+                    <ul class="space-y-4 text-sm font-semibold text-slate-500">
+                        <li class="flex justify-between items-center py-2 border-b border-slate-50"><span>Celery
+                                Worker</span> <span class="text-slate-900 font-mono">5.6.2</span></li>
+                        <li class="flex justify-between items-center py-2 border-b border-slate-50"><span>Celery
+                                Beat</span> <span class="text-slate-900 font-mono">2.8.1</span></li>
+                        <li class="flex justify-between items-center py-2 border-b border-slate-50"><span>Redis
+                                (Broker)</span> <span class="text-slate-900 font-mono">7.1</span></li>
+                        <li class="flex justify-between items-center py-2"><span>Sentry SDK</span> <span
+                                class="text-slate-900 font-mono">v1.40</span></li>
+                    </ul>
+                </div>
+
+                <!-- SAFETY & UTILS -->
+                <div class="card border-t-4 border-emerald-500">
+                    <div class="flex justify-between items-start mb-8">
+                        <div
+                            class="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+                            <i class="fas fa-shield-halved text-xl"></i>
+                        </div>
+                        <span
+                            class="text-[10px] font-black px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg tracking-wider uppercase">Data</span>
+                    </div>
+                    <h3 class="text-2xl font-black mb-6 text-slate-800 tracking-tight">Sécurité & Analytics</h3>
+                    <ul class="space-y-4 text-sm font-semibold text-slate-500">
+                        <li class="flex justify-between items-center py-2 border-b border-slate-50"><span>Fernet
+                                Crypto</span> <span class="text-slate-900 font-mono">AES-128</span></li>
+                        <li class="flex justify-between items-center py-2 border-b border-slate-50">
+                            <span>Scikit-Learn</span> <span class="text-slate-900 font-mono">v1.8.0</span></li>
+                        <li class="flex justify-between items-center py-2 border-b border-slate-50">
+                            <span>Psycopg2-Binary</span> <span class="text-slate-900 font-mono">v2.9.10</span></li>
+                        <li class="flex justify-between items-center py-2"><span>Structlog</span> <span
+                                class="text-slate-900 font-mono">v25.5</span></li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. FLUX METIER P2P (SEQUENCE) -->
+        <section id="p2p-flow" class="scroll-mt-32">
+            <div class="flex items-center gap-4 mb-12">
+                <h2 class="text-4xl font-black tracking-tight text-slate-900">03. Cycle P2P & Escrow</h2>
+                <span class="flex-1 h-[2px] bg-slate-100 rounded-full"></span>
+            </div>
+            <div class="card bg-white">
+                <p class="mb-12 text-lg font-medium text-slate-500 italic">Mécanisme de sécurisation des transactions
+                    par gel atomique des fonds.</p>
+                <div class="mermaid">
+                    sequenceDiagram
+                    autonumber
+                    participant A as Vendeur (Seller)
+                    participant API as API ALSABA
+                    participant ESC as Système Escrow
+                    participant B as Acheteur (Buyer)
+                    participant PG as Flutterwave
+
+                    A->>API: Crée Offre (Vente 100€)
+                    API->>ESC: Verrouille Solde Vendeur
+                    Note over ESC: Lock ID: 0x8F2.. (Statut: LOCKED)
+
+                    B->>API: Accepte Offre
+                    API->>PG: Initie Paiement Fiat
+                    B-->>PG: Paie via Mobile Money
+                    PG->>API: Webhook (Payment Confirmed)
+
+                    API->>ESC: Relâche Escrow vers Acheteur
+                    ESC->>API: Transfert Wallet Internes
+
+                    API-->>A: Notify (Vente terminée)
+                    API-->>B: Notify (Fonds reçus)
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. DATABASE ERD (DETAILED) -->
+        <section id="database" class="scroll-mt-32">
+            <div class="flex items-center gap-4 mb-12">
+                <h2 class="text-4xl font-black tracking-tight text-slate-900">04. Modélisation ERD</h2>
+                <span class="flex-1 h-[2px] bg-slate-100 rounded-full"></span>
+            </div>
+            <div class="card p-10 bg-white">
+                <div class="mermaid">
+                    erDiagram
+                    USER ||--o{ WALLET : "1:1 mapping"
+                    USER ||--o{ OFFER : "owner"
+                    USER ||--o{ KYCDOCUMENT : "verification"
+                    USER ||--o{ PAYMENTMETHOD : "saved accounts"
+
+                    WALLET ||--o{ TRANSACTION : "ledger logs"
+
+                    OFFER ||--o{ ESCROWLOCK : "active security"
+                    OFFER ||--o{ DISPUTE : "support queue"
+
+                    USER {
+                    uuid id PK
+                    string full_phone_number UK
+                    enum kyc_status
+                    }
+
+                    OFFER {
+                    uuid id PK
+                    bigint amount_sell_cents
+                    decimal rate
+                    enum status
+                    }
+
+                    WALLET {
+                    uuid id PK
+                    bigint balance_cents
+                    integer version "Optimistic Lock"
+                    }
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. SÉCURITÉ (PCI-DSS) -->
+        <section id="security" class="scroll-mt-32">
+            <div class="flex items-center gap-4 mb-12">
+                <h2 class="text-4xl font-black tracking-tight text-slate-900">05. Matrices de Sécurité</h2>
+                <span class="flex-1 h-[2px] bg-slate-100 rounded-full"></span>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                <div class="card border-l-8 border-red-500 bg-red-50/20">
+                    <h3 class="text-2xl font-black mb-8 text-slate-800">Protection Multicouche</h3>
+                    <div class="space-y-8">
+                        <div class="flex gap-6">
+                            <div
+                                class="w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center text-red-500 shrink-0 border border-red-100">
+                                <i class="fas fa-key text-xl"></i></div>
+                            <div>
+                                <h4 class="text-lg font-black text-slate-800">Chiffrement AES-128</h4>
+                                <p class="text-slate-500 font-medium">Protection au repos des documents KYC et secrets
+                                    bancaires.</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-6">
+                            <div
+                                class="w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center text-blue-500 shrink-0 border border-blue-100">
+                                <i class="fas fa-bolt text-xl"></i></div>
+                            <div>
+                                <h4 class="text-lg font-black text-slate-800">Throttling Dynamique</h4>
+                                <p class="text-slate-500 font-medium">Limitation intelligente via Redis pour contrer les
+                                    abus sur API.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card bg-slate-50 flex flex-col items-center justify-center border-none shadow-none">
+                    <h3 class="text-xl font-black text-slate-800 mb-10 self-start flex items-center gap-3">
+                        <i class="fas fa-shield-virus text-green-600"></i> Defense Matrix
+                    </h3>
+                    <div class="mermaid">
+                        graph TD
+                        Attack[🏴‍☠️ Attack] --> FW[🛡️ Reverse Proxy]
+                        FW -->|Ban| Block[🚫 Deny]
+                        FW --> API[🚀 Django API]
+                        API -->|OAuth2| JWT[🔑 JWT Auth]
+                        JWT --> DB[🐘 Encrypted DB]
+
+                        style Attack fill:#fee2e2,stroke:#ef4444,color:#b91c1c
+                        style FW fill:#ebf5ff,stroke:#3b82f6
+                        style API fill:#f0fdf4,stroke:#22c55e
+                        style DB fill:#faf5ff,stroke:#8b5cf6
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. DEVOPS & INFRA -->
+        <section id="devops" class="scroll-mt-32">
+            <div class="flex items-center gap-4 mb-12">
+                <h2 class="text-4xl font-black tracking-tight text-slate-900">06. DevOps & Infrastructure</h2>
+                <span class="flex-1 h-[2px] bg-slate-100 rounded-full"></span>
+            </div>
+            <div class="card p-0 overflow-hidden border-none shadow-xl bg-white">
+                <div class="grid grid-cols-1 lg:grid-cols-2">
+                    <div class="p-12 space-y-10">
+                        <div>
+                            <h3 class="text-3xl font-black mb-6 text-slate-800 flex items-center gap-3"><i
+                                    class="fas fa-boxes text-blue-500"></i> Docker Cluster</h3>
+                            <p class="text-lg text-slate-500 font-medium leading-relaxed">Architecture micro-services
+                                containerisée garantissant une isolation totale des processus.</p>
+                            <div class="grid grid-cols-2 gap-6 mt-10">
+                                <div class="p-6 bg-slate-50 border border-slate-100 rounded-3xl">
+                                    <span
+                                        class="text-[10px] font-black uppercase text-slate-400 block mb-2">Backups</span>
+                                    <span class="text-slate-800 font-bold">Postgres SQL Dump</span>
+                                </div>
+                                <div class="p-6 bg-slate-50 border border-slate-100 rounded-3xl">
+                                    <span class="text-[10px] font-black uppercase text-slate-400 block mb-2">Logs</span>
+                                    <span class="text-slate-800 font-bold">JSON Automation</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-12 bg-slate-50 border-l border-slate-100 flex items-center justify-center">
+                        <div class="mermaid">
+                            graph BT
+                            subgraph Public
+                            Mobile[📱 App]
+                            end
+
+                            subgraph Private_VPC
+                            API[API]
+                            DB[(PG)]
+                            CEL[Worker]
+                            end
+
+                            Mobile --> API
+                            API --- DB
+                            API --- CEL
+
+                            style Private_VPC fill:white,stroke:#e2e8f0,stroke-dasharray: 5 5
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="mt-40 pt-24 border-t border-slate-200 text-center space-y-6">
+            <p class="text-4xl font-black gradient-text tracking-tighter">ALSABA PROJECT</p>
+            <p class="text-sm font-bold text-slate-400 uppercase tracking-[0.3em]">Documentation Technique v3.0 • Light
+                Edition</p>
+            <p class="text-xs font-semibold text-slate-300">Généré avec ❤️ par Antigravity • Février 2026</p>
+        </footer>
+
+    </main>
+
+    <script>
+        // Scroll Spy Logic
+        const sections = document.querySelectorAll('section');
+        const navItems = document.querySelectorAll('.sidebar-item');
+
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                if (pageYOffset >= sectionTop - 300) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navItems.forEach(item => {
+                item.classList.remove('active');
+                if (item.getAttribute('href').slice(1) === current) {
+                    item.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>

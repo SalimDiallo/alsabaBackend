@@ -8,51 +8,51 @@ from fernet_fields import EncryptedCharField, EncryptedTextField, EncryptedInteg
 
 class Offer(models.Model):
     """
-    Offre d'échange P2P publiée par un utilisateur (A1).
+    P2P exchange offer published by a user (A1).
     """
     STATUS_CHOICES = (
-        ('OPEN', 'Ouverte'),
-        ('ACCEPTED', 'Acceptée (En attente de fonds)'),
-        ('LOCKED', 'Fonds Bloqués (Escrow)'),
-        ('COMPLETED', 'Terminée'),
-        ('CANCELLED', 'Annulée'),
-        ('EXPIRED', 'Expirée'),
-        ('DISPUTE', 'En Litige'),
+        ('OPEN', 'Open'),
+        ('ACCEPTED', 'Accepted (Waiting for funds)'),
+        ('LOCKED', 'Funds Locked (Escrow)'),
+        ('COMPLETED', 'Completed'),
+        ('CANCELLED', 'Cancelled'),
+        ('EXPIRED', 'Expired'),
+        ('DISPUTE', 'In Dispute'),
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='offers')
     
-    # Ce que l'utilisateur vend (Source)
-    amount_sell_cents = models.BigIntegerField(help_text="Montant vendu en centimes")
+    # What the user is selling (Source)
+    amount_sell_cents = models.BigIntegerField(help_text="Amount sold in cents")
     currency_sell = models.CharField(max_length=3)
     
-    # Ce que l'utilisateur veut recevoir (Destination)
-    amount_buy_cents = models.BigIntegerField(help_text="Montant souhaité en centimes")
+    # What the user wants to receive (Destination)
+    amount_buy_cents = models.BigIntegerField(help_text="Desired amount in cents")
     currency_buy = models.CharField(max_length=3)
     
-    # Taux de change implicite stocké pour référence
-    rate = models.DecimalField(max_digits=10, decimal_places=6, help_text="Taux: 1 Unit Sell = X Unit Buy")
+    # Implicit exchange rate stored for reference
+    rate = models.DecimalField(max_digits=10, decimal_places=6, help_text="Rate: 1 Unit Sell = X Unit Buy")
     
-    # Bénéficiaires - CHIFFRÉS pour sécurité PCI-DSS
-    # Stockés en JSON chiffré (EncryptedTextField)
+    # Beneficiaries - ENCRYPTED for PCI-DSS security
+    # Stored as encrypted JSON (EncryptedTextField)
     _beneficiary_data_encrypted = EncryptedTextField(
         blank=True, 
         default='{}',
-        help_text="Bénéficiaire désigné par le vendeur (B2) - Données chiffrées",
+        help_text="Beneficiary designated by the seller (B2) - Encrypted data",
         db_column='beneficiary_data'
     )
     
     _accepted_beneficiary_data_encrypted = EncryptedTextField(
         blank=True, 
         default='{}',
-        help_text="Bénéficiaire désigné par l'acheteur (B1) - Données chiffrées",
+        help_text="Beneficiary designated by the buyer (B1) - Encrypted data",
         db_column='accepted_beneficiary_data'
     )
 
-    # Confirmations des bénéficiaires
-    b1_confirmed = models.BooleanField(default=False, help_text="Le bénéficiaire B1 a confirmé la réception/participation")
-    b2_confirmed = models.BooleanField(default=False, help_text="Le bénéficiaire B2 a confirmé la réception/participation")
+    # Beneficiary confirmations
+    b1_confirmed = models.BooleanField(default=False, help_text="Beneficiary B1 has confirmed receipt/participation")
+    b2_confirmed = models.BooleanField(default=False, help_text="Beneficiary B2 has confirmed receipt/participation")
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='OPEN', db_index=True)
     
@@ -60,7 +60,7 @@ class Offer(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     expires_at = models.DateTimeField()
     
-    # Partie adverse (A2) - Rempli quand l'offre est acceptée
+    # Counterparty (A2) - Filled when offer is accepted
     accepted_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.SET_NULL, 
@@ -78,10 +78,10 @@ class Offer(models.Model):
         ]
         ordering = ['-created_at']
     
-    # Properties pour gérer la sérialisation/désérialisation JSON
+    # Properties to manage JSON serialization/deserialization
     @property
     def beneficiary_data(self):
-        """Retourne les données bénéficiaire déchiffrées en dict"""
+        """Returns the decrypted beneficiary data as a dict"""
         import json
         if not self._beneficiary_data_encrypted:
             return {}
@@ -92,7 +92,7 @@ class Offer(models.Model):
     
     @beneficiary_data.setter
     def beneficiary_data(self, value):
-        """Stocke les données bénéficiaire chiffrées"""
+        """Stores the encrypted beneficiary data"""
         import json
         if value is None:
             value = {}
@@ -100,7 +100,7 @@ class Offer(models.Model):
     
     @property
     def accepted_beneficiary_data(self):
-        """Retourne les données bénéficiaire accepté déchiffrées en dict"""
+        """Returns the decrypted accepted beneficiary data as a dict"""
         import json
         if not self._accepted_beneficiary_data_encrypted:
             return {}
@@ -111,7 +111,7 @@ class Offer(models.Model):
     
     @accepted_beneficiary_data.setter
     def accepted_beneficiary_data(self, value):
-        """Stocke les données bénéficiaire accepté chiffrées"""
+        """Stores the encrypted accepted beneficiary data"""
         import json
         if value is None:
             value = {}
@@ -128,34 +128,34 @@ class Offer(models.Model):
 
 class EscrowLock(models.Model):
     """
-    Verrou de sécurité sur les fonds.
-    Représente une somme bloquée dans le système Escrow.
+    Security lock on funds.
+    Represents an amount locked in the Escrow system.
     """
     STATUS_CHOICES = (
-        ('LOCKED', 'Verrouillé'),
-        ('RELEASED', 'Libéré (Transféré)'),
-        ('ROLLEDBACK', 'Remboursé (Annulation)'),
+        ('LOCKED', 'Locked'),
+        ('RELEASED', 'Released (Transferred)'),
+        ('ROLLEDBACK', 'Refunded (Cancellation)'),
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
-    # Lien vers l'offre concernée
+    # Link to the concerned offer
     offer = models.ForeignKey(Offer, on_delete=models.PROTECT, related_name='locks')
     
-    # Utilisateur à qui appartiennent les fonds bloqués (A1 ou A2)
+    # User who owns the locked funds (A1 or A2)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='escrow_locks')
     
-    # Montant bloqué
+    # Locked amount
     amount_cents = models.BigIntegerField()
     currency = models.CharField(max_length=3)
     
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='LOCKED')
     
-    # Sécurité & Intégrité
-    lock_hash = models.CharField(max_length=256, help_text="Hash SHA256 des données du lock pour intégrité")
+    # Security & Integrity
+    lock_hash = models.CharField(max_length=256, help_text="SHA256 hash of lock data for integrity")
     
     created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField(help_text="Date limite avant auto-rollback")
+    expires_at = models.DateTimeField(help_text="Deadline before auto-rollback")
     released_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -167,71 +167,71 @@ class EscrowLock(models.Model):
 
 class AuditLog(models.Model):
     """
-    Journal d'audit immuable pour toutes les opérations Escrow.
-    Chainable via hash précédent.
+    Immutable audit log for all Escrow operations.
+    Chainable via previous hash.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     timestamp = models.DateTimeField(default=timezone.now, db_index=True)
     action = models.CharField(max_length=50) # LOCK, RELEASE, ROLLBACK, MATCH
     
-    # Données contextuelles
+    # Contextual data
     user_id = models.CharField(max_length=100, db_index=True)
     offer_id = models.CharField(max_length=100, blank=True, null=True)
     amount_cents = models.BigIntegerField(null=True)
     currency = models.CharField(max_length=3, null=True)
     
-    # Détails complets en JSON
+    # Complete details in JSON
     details = models.JSONField(default=dict)
     
-    # Chaînage cryptographique
-    previous_hash = models.CharField(max_length=64, help_text="Hash du log précédent")
-    hash = models.CharField(max_length=64, help_text="Hash actuel (Merckle like)")
+    # Cryptographic chaining
+    previous_hash = models.CharField(max_length=64, help_text="Previous log hash")
+    hash = models.CharField(max_length=64, help_text="Current hash (Merkle-like)")
 
     class Meta:
         db_table = "escrow_audit_logs"
         ordering = ['timestamp']
 
-# ✅ NOUVEAU: Modèle pour la gestion des litiges
+# New: Model for dispute management
 class Dispute(models.Model):
     """
-    ✅ NOUVEAU: Modèle pour la résolution des litiges d'offres.
-    Permet à A1 ou A2 de contester une offre et d'invoquer un processus de résolution.
+    New: Model for offer dispute resolution.
+    Allows A1 or A2 to contest an offer and invoke a resolution process.
     """
     RESOLUTION_CHOICES = (
-        ('refund_a1', 'Remboursement A1'),
-        ('refund_a2', 'Remboursement A2'),
-        ('split', 'Partage 50/50'),
-        ('pending', 'En attente'),
+        ('refund_a1', 'Refund A1'),
+        ('refund_a2', 'Refund A2'),
+        ('split', '50/50 Split'),
+        ('pending', 'Pending'),
     )
     
     STATUS_CHOICES = (
-        ('open', 'Ouvert'),
-        ('under_review', 'Sous revue'),
-        ('resolved', 'Résolu'),
-        ('escalated', 'Escaladé (Support manuel)'),
+        ('open', 'Open'),
+        ('under_review', 'Under Review'),
+        ('resolved', 'Resolved'),
+        ('escalated', 'Escalated (Manual support)'),
     )
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     offer = models.ForeignKey(Offer, on_delete=models.PROTECT, related_name='disputes')
     
-    # Qui a initié le litige
+    # Who initiated the dispute
     initiated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         related_name='disputes_initiated'
     )
     
-    # Raison du litige
+    # Reason for the dispute
     reason = models.CharField(max_length=500)
     
     # Evidence JSON (messages, screenshots, etc.)
     evidence = models.JSONField(default=dict, blank=True)
     
-    # Statut du litige
+    # Dispute status
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open', db_index=True)
     
-    # Résolution proposée
+    # Proposed resolution
     resolution = models.CharField(
         max_length=20,
         choices=RESOLUTION_CHOICES,

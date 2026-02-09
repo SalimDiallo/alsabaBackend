@@ -10,21 +10,21 @@ logger = structlog.get_logger(__name__)
 
 class DiditWebhookService:
     """
-    Service pour traiter les webhooks asynchrones de Didit (KYC)
+    Service to process Didit asynchronous webhooks (KYC)
     Documentation: https://docs.didit.me/reference/webhooks
     """
 
     @staticmethod
     def verify_webhook_signature(payload: str, signature: str) -> bool:
         """
-        Vérifie la signature HMAC d'un webhook DIDIT
+        Verifies the HMAC signature of a DIDIT webhook.
         
         Args:
-            payload: Corps de la requête (string JSON)
-            signature: Signature reçue dans le header
+            payload: Request body (JSON string)
+            signature: Signature received in the header
             
         Returns:
-            bool: True si valide
+            bool: True if valid
         """
         secret = getattr(settings, 'DIDIT_WEBHOOK_SECRET', None)
         if not secret:
@@ -46,13 +46,13 @@ class DiditWebhookService:
     @staticmethod
     def process_kyc_webhook(webhook_data):
         """
-        Traite un webhook de vérification KYC Didit
+        Processes a Didit KYC verification webhook.
 
         Args:
-            webhook_data: Données du webhook Didit
+            webhook_data: Didit webhook data
 
         Returns:
-            dict: Résultat du traitement
+            dict: Processing result
         """
         request_id = webhook_data.get("request_id")
         status = webhook_data.get("status")
@@ -60,20 +60,20 @@ class DiditWebhookService:
         
         if not request_id:
             logger.warning("didit_webhook_missing_request_id", data=webhook_data)
-            return {"success": False, "error": "request_id manquant"}
+            return {"success": False, "error": "missing request_id"}
 
         try:
-            # Trouver l'utilisateur par request_id
+            # Find user by request_id
             user = User.objects.get(kyc_request_id=request_id)
             
-            # Mettre à jour le statut KYC selon la réponse Didit
+            # Update KYC status according to Didit response
             previous_status = user.kyc_status
             
             if status == "Approved":
                 user.kyc_status = "verified"
                 user.kyc_verified_at = timezone.now()
                 
-                # Extraire les données d'identité si disponibles
+                # Extract identity data if available
                 document_data = id_verification.get("document", {})
                 if document_data:
                     user.kyc_document_type = document_data.get("type")
@@ -95,7 +95,7 @@ class DiditWebhookService:
                 
                 return {
                     "success": True,
-                    "message": "KYC approuvé",
+                    "message": "KYC approved",
                     "user_id": str(user.id)
                 }
                 
@@ -112,12 +112,12 @@ class DiditWebhookService:
                 
                 return {
                     "success": True,
-                    "message": "KYC rejeté",
+                    "message": "KYC rejected",
                     "user_id": str(user.id)
                 }
                 
             elif status == "Pending":
-                # Reste en pending (revue manuelle en cours)
+                # Remains pending (manual review in progress)
                 user.kyc_status = "pending"
                 user.save()
                 
@@ -129,7 +129,7 @@ class DiditWebhookService:
                 
                 return {
                     "success": True,
-                    "message": "KYC en attente de revue",
+                    "message": "KYC pending review",
                     "user_id": str(user.id)
                 }
             else:
@@ -140,7 +140,7 @@ class DiditWebhookService:
                 )
                 return {
                     "success": False,
-                    "error": f"Statut inconnu: {status}"
+                    "error": f"Unknown status: {status}"
                 }
 
         except User.DoesNotExist:
@@ -150,7 +150,7 @@ class DiditWebhookService:
             )
             return {
                 "success": False,
-                "error": "Utilisateur non trouvé"
+                "error": "User not found"
             }
         except Exception as e:
             logger.error(
@@ -160,9 +160,9 @@ class DiditWebhookService:
             )
             return {
                 "success": False,
-                "error": f"Erreur de traitement: {str(e)}"
+                "error": f"Processing error: {str(e)}"
             }
 
 
-# Instance singleton
+# Singleton instance
 didit_webhook_service = DiditWebhookService()

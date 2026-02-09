@@ -21,7 +21,11 @@ class DiditWebhookView(APIView):
 
     @extend_schema(
         summary="Webhook Didit KYC",
-        description="Reçoit les callbacks de statut de vérification KYC.",
+        description="Reçoit les callbacks de statut de vérification KYC. Nécessite les headers X-Signature et X-Timestamp (v3).",
+        parameters=[
+            OpenApiParameter("X-Signature", OpenApiTypes.STR, location=OpenApiParameter.HEADER, description="Signature HMAC-SHA256 du payload", required=True),
+            OpenApiParameter("X-Timestamp", OpenApiTypes.STR, location=OpenApiParameter.HEADER, description="Timestamp UNIX de la requête", required=True),
+        ],
         responses={200: {"description": "Webhook traité avec succès"}},
         request=OpenApiTypes.OBJECT # Payload JSON générique
     )
@@ -57,9 +61,21 @@ class DiditWebhookView(APIView):
                 user_agent=user_agent[:100] if user_agent else None
             )
             
-            # 1. Vérification de la signature (Sécurité Critique)
+            # 1. Vérification de la signature et du timestamp (Sécurité Critique)
             signature = request.META.get('HTTP_X_SIGNATURE')
+            timestamp = request.META.get('HTTP_X_TIMESTAMP')
             webhook_secret = getattr(settings, 'DIDIT_WEBHOOK_SECRET', None)
+            
+            # Vérification du timestamp (Replay Protection - max 5 min)
+            if timestamp:
+                try:
+                    ts_int = int(timestamp)
+                    current_ts = int(time.time())
+                    if abs(current_ts - ts_int) > 300:  # 5 minutes
+                        logger.warning("didit_webhook_timestamp_too_old", timestamp=timestamp, diff=current_ts - ts_int)
+                        return Response({"error": "Request too old"}, status=status.HTTP_401_UNAUTHORIZED)
+                except ValueError:
+                    pass
             
             if not webhook_secret:
                 logger.error("didit_webhook_secret_missing", request_id=request_id)

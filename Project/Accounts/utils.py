@@ -13,21 +13,21 @@ logger = structlog.get_logger(__name__)
 
 class AuthUtils:
     """
-    Classe utilitaire centralisée pour éviter la duplication de code.
-    Toutes les méthodes sont statiques pour une utilisation facile.
+    Centralized utility class to avoid code duplication.
+    All methods are static for easy usage.
     """
     
     @staticmethod
     def mask_phone(phone_number):
         """
-        Masque partiellement un numéro de téléphone pour la protection des données.
-        Exemple: +33612345678 → +33612****78
+        Partially masks a phone number for data protection.
+        Example: +33612345678 → +33612****78
         """
         if not phone_number or not isinstance(phone_number, str):
             return "****"
         
         if len(phone_number) > 6:
-            # Garde les 6 premiers et 2 derniers caractères
+            # Keep the first 6 and last 2 characters
             return phone_number[:6] + "****" + phone_number[-2:]
         
         return "****"
@@ -35,35 +35,35 @@ class AuthUtils:
     @staticmethod
     def get_client_ip(request):
         """
-        ✅ SÉCURISÉ: Récupère l'adresse IP réelle du client en gérant les proxies.
-        Valide X-Forwarded-For et revient à REMOTE_ADDR si invalide.
-        Priorité: X-Forwarded-For (dernière IP valide) > REMOTE_ADDR
+        ✅ SECURE: Retrieves the real client IP address by handling proxies.
+        Validates X-Forwarded-For and falls back to REMOTE_ADDR if invalid.
+        Priority: X-Forwarded-For (last valid IP) > REMOTE_ADDR
         """
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         if x_forwarded_for:
-            # Prend la DERNIÈRE IP car c'est le vrai client (la première est le trusted proxy)
+            # Take the LAST IP because it's the real client (the first is the trusted proxy)
             ips = [ip.strip() for ip in x_forwarded_for.split(',')]
             
-            # Valide que c'est une IP correcte
-            for ip in reversed(ips):  # Check du dernier au premier
+            # Validate that it's a correct IP
+            for ip in reversed(ips):  # Check from last to first
                 if AuthUtils.is_valid_ip(ip):
                     return ip
             
             logger.warning("invalid_x_forwarded_for", value=x_forwarded_for[:50])
         
-        # Fallback sur REMOTE_ADDR
+        # Fallback to REMOTE_ADDR
         remote_addr = request.META.get('REMOTE_ADDR', '')
         if AuthUtils.is_valid_ip(remote_addr):
             return remote_addr
         
         logger.warning("invalid_remote_addr", value=remote_addr[:50])
-        return ''  # IP invalide
+        return ''  # Invalid IP
     
     @staticmethod
     def extract_request_metadata(request):
         """
-        Extrait et nettoie les métadonnées de la requête pour logs et sécurité.
-        Limite la taille des champs pour éviter les problèmes de stockage.
+        Extracts and cleans request metadata for logs and security.
+        Limits field size to avoid storage issues.
         """
         client_ip = AuthUtils.get_client_ip(request)
         
@@ -80,7 +80,7 @@ class AuthUtils:
     
     @staticmethod
     def is_valid_ip(ip):
-        """✅ Valide une adresse IPv4 ou IPv6."""
+        """✅ Validates an IPv4 or IPv6 address."""
         if not ip:
             return False
         try:
@@ -91,25 +91,25 @@ class AuthUtils:
     
     @staticmethod
     def validate_e164_format(phone_number):
-        """Valide le format E.164 d'un numéro de téléphone."""
+        """Validates the E.164 format of a phone number."""
         if not phone_number or not isinstance(phone_number, str):
             return False
         return re.match(r'^\+\d{10,15}$', phone_number) is not None
     
     @staticmethod
     def generate_session_key(prefix="auth"):
-        """Génère une clé de session sécurisée et unique."""
+        """Generates a secure and unique session key."""
         return f"{prefix}_{uuid.uuid4().hex[:16]}"
     
     @staticmethod
     def create_auth_session(session_key, full_phone_number, **session_data):
         """
-        Crée une session d'authentification standardisée.
+        Creates a standardized authentication session.
         
         Args:
-            session_key: La clé de session générée
-            full_phone_number: Numéro en format E.164
-            **session_data: Données supplémentaires à stocker
+            session_key: The generated session key
+            full_phone_number: Number in E.164 format
+            **session_data: Additional data to store
         """
         expires_at = timezone.now() + timezone.timedelta(minutes=5)
         
@@ -122,10 +122,10 @@ class AuthUtils:
             "last_attempt": None,
         }
         
-        # Fusion avec les données spécifiques
+        # Merge with specific data
         session_data_combined = {**default_session_data, **session_data}
         
-        # Stockage dans le cache
+        # Storage in cache
         cache.set(session_key, session_data_combined, timeout=300)
         
         logger.debug(
@@ -135,17 +135,17 @@ class AuthUtils:
             expires_in="5min"
         )
         
-        return session_key  # Optionnel
+        return session_key  # Optional
     
     @staticmethod
     def update_session_attempt(session_key, increment=True):
-        """Met à jour le compteur de tentatives d'une session."""
+        """Updates the attempt counter of a session."""
         session_data = cache.get(session_key)
         if session_data:
             if increment:
                 session_data['attempts'] = session_data.get('attempts', 0) + 1
             session_data['last_attempt'] = timezone.now().isoformat()
-            # Utilisation de get_session_ttl pour compatibilité LocMemCache
+            # Use get_session_ttl for LocMemCache compatibility
             ttl = AuthUtils.get_session_ttl(session_key, session_data)
             cache.set(session_key, session_data, timeout=ttl or 300)
         return session_data
@@ -153,13 +153,13 @@ class AuthUtils:
     @staticmethod
     def is_rate_limited(identifier, limit=5, window_seconds=600):
         """
-        Vérifie si un identifiant (phone ou IP) est rate limited.
+        Checks if an identifier (phone or IP) is rate limited.
         """
         cache_key = f"rate_limit_{identifier}"
         attempts = cache.get(cache_key, [])
         
         now = timezone.now()
-        # Garder seulement les tentatives récentes
+        # Keep only recent attempts
         recent_attempts = [
             t for t in attempts 
             if (now - t).total_seconds() < window_seconds
@@ -168,16 +168,16 @@ class AuthUtils:
         if len(recent_attempts) >= limit:
             return True
         
-        # Ajouter la tentative actuelle
+        # Add current attempt
         recent_attempts.append(now)
         cache.set(cache_key, recent_attempts, timeout=window_seconds)
         
         return False
     
-    # Méthodes privées auxiliaires
+    # Private auxiliary methods
     @staticmethod
     def _is_ip_in_subnets(ip, subnets):
-        """Vérifie si une IP appartient à une liste de sous-réseaux."""
+        """Checks if an IP belongs to a list of subnets."""
         if not ip or not subnets:
             return False
         
@@ -197,7 +197,7 @@ class AuthUtils:
     
     @staticmethod
     def _detect_platform(request):
-        """Détecte la plateforme depuis les headers ou user agent."""
+        """Detects the platform from headers or user agent."""
         user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
         device_id = request.META.get('HTTP_X_DEVICE_ID', '')
         app_version = request.META.get('HTTP_X_APP_VERSION', '')
@@ -211,30 +211,30 @@ class AuthUtils:
         
         return 'web'
 
-    # Dans utils.py - ajoute cette méthode à la classe AuthUtils
+    # In utils.py - add this method to the AuthUtils class
     @staticmethod
     def get_session_ttl(session_key, session_data=None):
         """
-        Retourne le temps restant pour une session en secondes.
-        Compatible avec LocMemCache et autres backends.
+        Returns the remaining time for a session in seconds.
+        Compatible with LocMemCache and other backends.
         
         Args:
-            session_key: Clé de la session
-            session_data: Données de session (optionnel, évite un cache.get())
+            session_key: Session key
+            session_data: Session data (optional, avoids a cache.get())
             
         Returns:
-            int: Secondes restantes avant expiration
+            int: Remaining seconds before expiration
         """
-        # Essayer d'abord la méthode standard (pour Redis)
+        # Try standard method first (for Redis)
         try:
             ttl = cache.ttl(session_key)
             if ttl is not None:
                 return max(0, ttl)
         except AttributeError:
-            # cache.ttl() n'existe pas (LocMemCache)
+            # cache.ttl() does not exist (LocMemCache)
             pass
         
-        # Fallback: calcul depuis expires_at
+        # Fallback: calculation from expires_at
         if session_data is None:
             session_data = cache.get(session_key)
         
@@ -247,13 +247,13 @@ class AuthUtils:
             from django.utils import timezone
             from datetime import datetime
             
-            # Nettoyer la chaîne ISO
+            # Clean ISO string
             if 'Z' in expires_at_str:
                 expires_at_str = expires_at_str.replace('Z', '+00:00')
             
             expires_at = datetime.fromisoformat(expires_at_str)
             
-            # S'assurer que c'est timezone aware
+            # Ensure it is timezone aware
             if timezone.is_naive(expires_at):
                 expires_at = timezone.make_aware(expires_at)
             
@@ -263,5 +263,5 @@ class AuthUtils:
             return max(0, int(time_remaining))
         except (ValueError, TypeError, AttributeError):
             return 0
-# Instance globale pour import facile
+# Global instance for easy import
 auth_utils = AuthUtils()

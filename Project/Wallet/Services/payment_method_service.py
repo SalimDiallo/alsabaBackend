@@ -1,5 +1,5 @@
 """
-Service pour gérer les méthodes de paiement sauvegardées
+Service to manage saved payment methods
 """
 import structlog
 from django.db import transaction as db_transaction
@@ -12,36 +12,36 @@ logger = structlog.get_logger(__name__)
 
 class PaymentMethodService:
     """
-    Service de gestion des méthodes de paiement sauvegardées
+    Service for managing saved payment methods
     """
     
     @staticmethod
     def create_card_payment_method(user, label, card_number, card_expiry_month,
                                    card_expiry_year, card_cvv, is_default=False):
         """
-        Crée une méthode de paiement carte sauvegardée
+        Creates a saved card payment method
         
         Args:
             user: Instance User
-            label: Nom donné par l'utilisateur
-            card_number: Numéro de carte complet
+            label: Name given by the user
+            card_number: Full card number
             card_expiry_month: Mois d'expiration
             card_expiry_year: Année d'expiration
-            card_cvv: CVV (ne sera pas stocké)
-            is_default: Définir comme méthode par défaut
+            card_cvv: CVV (will not be stored)
+            is_default: Set as default method
             
         Returns:
-            PaymentMethod: La méthode créée
+            PaymentMethod: The created method
         """
-        # Nettoyer le numéro de carte
+        # Clean card number
         card_number_clean = card_number.replace(' ', '').replace('-', '')
         card_last_four = card_number_clean[-4:]
         
-        # Détecter la marque de la carte (simplifié)
+        # Detect card brand (simplified)
         card_brand = PaymentMethodService._detect_card_brand(card_number_clean)
         
         with db_transaction.atomic():
-            # Si c'est la méthode par défaut, désactiver les autres
+            # If it's the default method, deactivate others
             if is_default:
                 PaymentMethod.objects.filter(
                     user=user,
@@ -75,27 +75,27 @@ class PaymentMethodService:
                                           account_name, bank_name=None, bank_country=None,
                                           is_default=False):
         """
-        Crée une méthode de paiement compte bancaire sauvegardée
+        Creates a saved bank account payment method
         
         Args:
             user: Instance User
-            label: Nom donné par l'utilisateur
-            account_number: Numéro de compte
+            label: Name given by the user
+            account_number: Account number
             bank_code: Code de la banque
-            account_name: Nom du titulaire
-            bank_name: Nom de la banque (optionnel)
+            account_name: Account owner name
+            bank_name: Name of the bank (optionnel)
             bank_country: Code pays (optionnel)
-            is_default: Définir comme méthode par défaut
+            is_default: Set as default method
             
         Returns:
-            PaymentMethod: La méthode créée
+            PaymentMethod: The created method
         """
-        # Nettoyer le numéro de compte
+        # Clean account number
         account_number_clean = account_number.replace(' ', '').replace('-', '')
         account_number_last_four = account_number_clean[-4:] if len(account_number_clean) >= 4 else account_number_clean
         
         with db_transaction.atomic():
-            # Si c'est la méthode par défaut, désactiver les autres
+            # If it's the default method, deactivate others
             if is_default:
                 PaymentMethod.objects.filter(
                     user=user,
@@ -107,7 +107,7 @@ class PaymentMethodService:
                 user=user,
                 method_type='bank_account',
                 label=label,
-                account_number=account_number_clean,  # On stocke le numéro complet mais masqué dans l'affichage
+                account_number=account_number_clean,  # We store the full number but masked in display
                 account_number_last_four=account_number_last_four,
                 bank_code=bank_code,
                 bank_name=bank_name,
@@ -129,22 +129,22 @@ class PaymentMethodService:
     @staticmethod
     def create_orange_money_payment_method(user, label, orange_money_number, is_default=False):
         """
-        Crée une méthode de paiement Orange Money sauvegardée
+        Creates a saved Orange Money payment method
         
         Args:
             user: Instance User
-            label: Nom donné par l'utilisateur
-            orange_money_number: Numéro Orange Money
-            is_default: Définir comme méthode par défaut
+            label: Name given by the user
+            orange_money_number: Orange Money number
+            is_default: Set as default method
             
         Returns:
-            PaymentMethod: La méthode créée
+            PaymentMethod: The created method
         """
-        # Nettoyer le numéro
+        # Clean the number
         phone_clean = orange_money_number.replace(' ', '').replace('+', '')
         
         with db_transaction.atomic():
-            # Si c'est la méthode par défaut, désactiver les autres
+            # If it's the default method, deactivate others
             if is_default:
                 PaymentMethod.objects.filter(
                     user=user,
@@ -173,18 +173,18 @@ class PaymentMethodService:
     @staticmethod
     def get_payment_method(user, payment_method_id, method_type=None):
         """
-        Récupère une méthode de paiement pour un utilisateur
+        Retrieves a payment method for a user
         
         Args:
             user: Instance User
-            payment_method_id: UUID de la méthode
-            method_type: Type de méthode attendu (optionnel, pour validation)
+            payment_method_id: Method UUID
+            method_type: Expected method type (optional, for validation)
             
         Returns:
-            PaymentMethod: La méthode trouvée
+            PaymentMethod: The found method
             
         Raises:
-            PaymentMethod.DoesNotExist: Si la méthode n'existe pas
+            PaymentMethod.DoesNotExist: If the method does not exist
             ValueError: Si le type ne correspond pas
         """
         try:
@@ -195,7 +195,7 @@ class PaymentMethodService:
             )
             
             if method_type and payment_method.method_type != method_type:
-                raise ValueError(f"Type de méthode incorrect: attendu {method_type}, obtenu {payment_method.method_type}")
+                raise ValueError(f"Incorrect method type: expected {method_type}, got {payment_method.method_type}")
             
             return payment_method
         except PaymentMethod.DoesNotExist:
@@ -209,11 +209,11 @@ class PaymentMethodService:
     @staticmethod
     def get_default_payment_method(user, method_type):
         """
-        Récupère la méthode de paiement par défaut pour un type donné
+        Retrieves the default payment method for a given type
         
         Args:
             user: Instance User
-            method_type: Type de méthode ('card', 'bank_account', 'orange_money')
+            method_type: Method type ('card', 'bank_account', 'orange_money')
             
         Returns:
             PaymentMethod ou None
@@ -231,15 +231,15 @@ class PaymentMethodService:
     @staticmethod
     def list_payment_methods(user, method_type=None, active_only=True):
         """
-        Liste les méthodes de paiement d'un utilisateur
+        Lists a user's payment methods
         
         Args:
             user: Instance User
             method_type: Filtrer par type (optionnel)
-            active_only: Retourner uniquement les méthodes actives
+            active_only: Return only active methods
             
         Returns:
-            QuerySet: Les méthodes de paiement
+            QuerySet: The payment methods
         """
         queryset = PaymentMethod.objects.filter(user=user)
         
@@ -254,27 +254,27 @@ class PaymentMethodService:
     @staticmethod
     def _detect_card_brand(card_number):
         """
-        Détecte la marque de la carte à partir du numéro
+        Detects the card brand from the number
         
         Args:
-            card_number: Numéro de carte (sans espaces)
+            card_number: Card number (no spaces)
             
         Returns:
-            str: Marque de la carte (Visa, Mastercard, etc.)
+            str: Card brand (Visa, Mastercard, etc.)
         """
         if not card_number or not card_number.isdigit():
             return None
         
-        # Visa commence par 4
+        # Visa starts with 4
         if card_number.startswith('4'):
             return 'Visa'
-        # Mastercard commence par 5 ou 2
+        # Mastercard starts with 5 or 2
         elif card_number.startswith('5') or (card_number.startswith('2') and len(card_number) == 16):
             return 'Mastercard'
-        # American Express commence par 34 ou 37
+        # American Express starts with 34 or 37
         elif card_number.startswith('34') or card_number.startswith('37'):
             return 'American Express'
-        # Discover commence par 6
+        # Discover starts with 6
         elif card_number.startswith('6'):
             return 'Discover'
         else:
@@ -283,13 +283,13 @@ class PaymentMethodService:
     @staticmethod
     def mask_account_number(account_number):
         """
-        Masque un numéro de compte pour l'affichage
+        Masks an account number for display
         
         Args:
-            account_number: Numéro de compte complet
+            account_number: Full account number
             
         Returns:
-            str: Numéro masqué (ex: ****1234)
+            str: Masked number (e.g., ****1234)
         """
         if not account_number or len(account_number) < 4:
             return "****"
