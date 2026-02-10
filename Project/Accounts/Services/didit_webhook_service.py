@@ -54,17 +54,60 @@ class DiditWebhookService:
         Returns:
             dict: Processing result
         """
+        # Didit webhooks (v3) use session_id or request_id as identifies
+        session_id = webhook_data.get("session_id")
         request_id = webhook_data.get("request_id")
-        status = webhook_data.get("status")
-        id_verification = webhook_data.get("id_verification", {})
+        vendor_data = webhook_data.get("vendor_data")
         
-        if not request_id:
-            logger.warning("didit_webhook_missing_request_id", data=webhook_data)
-            return {"success": False, "error": "missing request_id"}
+        # Decide which status to use
+        status = webhook_data.get("status")
+        decision = webhook_data.get("decision", {})
+        
+        if decision and not status:
+            status = decision.get("status")
+            if not vendor_data:
+                vendor_data = decision.get("vendor_data")
+            
+        id_verification = webhook_data.get("id_verification")
+        if not id_verification and decision:
+            id_verification = decision.get("id_verification", {})
+        
+        # Identifier for logs
+        lookup_id = session_id or request_id or "unknown"
 
         try:
-            # Find user by request_id
-            user = User.objects.get(kyc_request_id=request_id)
+            # 1. Primary lookup by kyc_request_id (supports session_id or request_id)
+            user = None
+            if session_id:
+                user = User.objects.filter(kyc_request_id=session_id).first()
+            
+            if not user and request_id:
+                user = User.objects.filter(kyc_request_id=request_id).first()
+                
+            # 2. Fallback lookup by kyc_vendor_data sur le User
+            if not user and vendor_data:
+                logger.info("didit_webhook_trying_user_vendor_lookup", vendor_data=vendor_data)
+                user = User.objects.filter(kyc_vendor_data=vendor_data).first()
+                
+            # 3. Recherche ultime via KYCDocument (le plus sûr)
+            if not user and vendor_data:
+                logger.info("didit_webhook_trying_document_lookup", vendor_data=vendor_data)
+                from Accounts.models import KYCDocument
+                doc = KYCDocument.objects.filter(vendor_data=vendor_data).select_related('user').first()
+                if doc:
+                    user = doc.user
+
+            if not user:
+                logger.warning(
+                    "didit_webhook_user_not_found",
+                    request_id=lookup_id,
+                    session_id=session_id,
+                    vendor_data=vendor_data
+                )
+                return {
+                    "success": False,
+                    "error": f"User not found for ID: {lookup_id} or Vendor: {vendor_data}"
+                }
             
             # Update KYC status according to Didit response
             previous_status = user.kyc_status
@@ -124,7 +167,7 @@ class DiditWebhookService:
                 logger.info(
                     "didit_kyc_pending_via_webhook",
                     user_id=str(user.id),
-                    request_id=request_id
+                    request_id=lookup_id
                 )
                 
                 return {
@@ -136,7 +179,7 @@ class DiditWebhookService:
                 logger.warning(
                     "didit_webhook_unknown_status",
                     status=status,
-                    request_id=request_id
+                    request_id=lookup_id
                 )
                 return {
                     "success": False,
@@ -146,17 +189,17 @@ class DiditWebhookService:
         except User.DoesNotExist:
             logger.warning(
                 "didit_webhook_user_not_found",
-                request_id=request_id
+                request_id=lookup_id
             )
             return {
                 "success": False,
-                "error": "User not found"
+                "error": f"User not found for ID: {lookup_id}"
             }
         except Exception as e:
             logger.error(
                 "didit_webhook_processing_error",
                 error=str(e),
-                request_id=request_id
+                request_id=lookup_id
             )
             return {
                 "success": False,

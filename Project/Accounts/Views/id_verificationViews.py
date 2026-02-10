@@ -240,6 +240,11 @@ class KYCVerifyView(APIView):
 
                 kyc_doc.verification_note += f" | Face Match OK (Score: {match_result.get('score')})"
                 kyc_doc.save()
+                
+                # Update kyc_request_id with the Face Match ID (the latest one)
+                if match_result.get("request_id"):
+                    user.kyc_request_id = match_result["request_id"]
+                    user.save()
 
             return self._handle_kyc_approval(user, kyc_doc, result, id_verification, vendor_data)
         elif status_didit == "Pending":

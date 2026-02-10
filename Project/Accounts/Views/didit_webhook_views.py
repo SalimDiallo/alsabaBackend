@@ -7,11 +7,14 @@ from django.conf import settings
 import structlog
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from Accounts.Services.didit_webhook_service import didit_webhook_service
 
 logger = structlog.get_logger(__name__)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class DiditWebhookView(APIView):
     """
     POST /api/webhooks/didit/kyc/
@@ -48,7 +51,8 @@ class DiditWebhookView(APIView):
         
         try:
             webhook_data = request.data
-            request_id = webhook_data.get("request_id", "unknown")
+            # Chercher l'ID le plus pertinent pour le log
+            request_id = webhook_data.get("session_id") or webhook_data.get("request_id") or "unknown"
             didit_status = webhook_data.get("status", "")
             
             # Log initial de réception
@@ -243,4 +247,14 @@ class DiditWebhookView(APIView):
                 {"status": "error", "message": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    def get(self, request):
+        """
+        Méthode GET pour faciliter le test de l'URL par le développeur
+        """
+        return Response({
+            "status": "ready", 
+            "message": "L'endpoint du webhook Didit est actif.",
+            "instructions": "Veuillez utiliser la méthode POST pour envoyer des données. Dans la console Didit, cliquez sur 'Send Test Webhook'."
+        }, status=status.HTTP_200_OK)
 
