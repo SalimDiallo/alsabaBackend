@@ -6,7 +6,7 @@ logger = structlog.get_logger(__name__)
 
 class DiditKYCService:
     BASE_URL = "https://verification.didit.me/v3/id-verification/"
-    FACE_MATCH_URL = "https://verification.didit.me/v3/face-match/"
+    FACE_MATCH_URL = "https://verification.didit.me/v3/face-match"
 
     def __init__(self):
         if not settings.DIDIT_API_KEY:
@@ -66,7 +66,6 @@ class DiditKYCService:
         if vendor_data:
             data['vendor_data'] = str(vendor_data)[:100]
 
-        logger.info("didit_request", vendor_data=vendor_data[:50] if vendor_data else None)
 
         try:
             response = requests.post(
@@ -75,7 +74,6 @@ class DiditKYCService:
                 data=data,
                 headers={
                     "accept": "application/json",
-                    "Content-Type": "multipart/form-data",
                     "X-Api-Key": self.api_key,
                 },
                 timeout=self.timeout
@@ -83,6 +81,9 @@ class DiditKYCService:
 
             if response.status_code == 200:
                 res = response.json()
+                logger.info("didit_id_verification_success", 
+                            status=res.get("id_verification", {}).get("status"),
+                            request_id=res.get("request_id"))
                 return {
                     "success": True,
                     "request_id": res.get("request_id"),
@@ -159,7 +160,6 @@ class DiditKYCService:
         if vendor_data:
             data['vendor_data'] = str(vendor_data)[:100]
 
-        logger.info("didit_face_match_v3_request", vendor_data=vendor_data[:50] if vendor_data else None)
 
         try:
             response = requests.post(
@@ -175,12 +175,21 @@ class DiditKYCService:
 
             if response.status_code == 200:
                 res = response.json()
-                # In v3, Didit generally returns 'status' (Approved/Declined) and 'score' or 'similarity_percentage'
-                score = res.get("score") or res.get("similarity_percentage")
+                face_match_data = res.get("face_match", {})
+                
+                # Correction pour coller à la structure v3 Standalone
+                score = face_match_data.get("score") or res.get("score") or face_match_data.get("similarity_percentage")
+                status_val = face_match_data.get("status") or res.get("status") or "Unknown"
+                
+                logger.info("didit_face_match_success", 
+                            status=status_val, 
+                            score=score,
+                            request_id=res.get("request_id"))
+                
                 return {
                     "success": True,
                     "request_id": res.get("request_id"),
-                    "status": res.get("status", "Unknown"),
+                    "status": status_val,
                     "score": score,
                     "raw": res
                 }

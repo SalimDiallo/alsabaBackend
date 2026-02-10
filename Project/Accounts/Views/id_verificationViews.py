@@ -216,21 +216,9 @@ class KYCVerifyView(APIView):
         if status_didit == "Approved":
             # Si un selfie a été fourni, on lance le Face Match v3
             if selfie_image:
-                logger.info("kyc_face_match_v3_starting", user_id=str(user.id), vendor_data=vendor_data)
                 
-                # Récupération de l'image de visage extraite (portrait_image) par Didit ID Verification v3
-                # Si non disponible, on fallback sur le front_image original
-                portrait_b64 = id_verification.get("portrait_image")
-                
+                # Utilisation directe du front_image pour le Face Match (plus robuste)
                 ref_image_to_use = front_image
-                if portrait_b64:
-                    try:
-                        format, imgstr = portrait_b64.split(';base64,') if ';base64,' in portrait_b64 else (None, portrait_b64)
-                        ext = format.split('/')[-1] if format else 'jpg'
-                        ref_image_to_use = ContentFile(base64.b64decode(imgstr), name=f"portrait_extracted.{ext}")
-                    except Exception as e:
-                        logger.warning("kyc_portrait_extraction_failed", error=str(e))
-                        # On continue avec front_image
 
                 match_result = kyc_service.match_face(
                     selfie_image=selfie_image,
@@ -241,13 +229,15 @@ class KYCVerifyView(APIView):
                 if not match_result["success"] or match_result["status"] != "Approved":
                     # Échec du Face Match -> Rejet du KYC même si le document était OK
                     reason = match_result.get("status") or match_result.get("message", "Échec Face Match")
-                    logger.warning("kyc_face_match_failed", user_id=str(user.id), reason=reason)
+                    logger.warning("kyc_final_rejection", 
+                                   user_id=str(user.id), 
+                                   step="face_match", 
+                                   reason=reason)
                     
                     result["status"] = "FaceMatchFailed"
                     id_verification["decline_reason"] = f"La photo ne correspond pas au document ({reason})"
                     return self._handle_kyc_rejection(user, kyc_doc, result, id_verification, vendor_data)
 
-                logger.info("kyc_face_match_approved", user_id=str(user.id), score=match_result.get("score"))
                 kyc_doc.verification_note += f" | Face Match OK (Score: {match_result.get('score')})"
                 kyc_doc.save()
 

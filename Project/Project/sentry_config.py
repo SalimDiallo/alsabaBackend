@@ -7,6 +7,8 @@ from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 import structlog
+import logging
+from sentry_sdk.integrations.logging import LoggingIntegration
 
 logger = structlog.get_logger(__name__)
 
@@ -104,17 +106,22 @@ def traces_sampler(sampling_context):
         # 10% pour le reste
         return 0.1
     
+    # Ignorer les health checks et pings
+    if sampling_context.get("transaction_context", {}).get("name") in ["/health/", "/ping/"]:
+        return 0.0
+    
     # Par défaut : 10%
     return 0.1
 
 
-def configure_sentry(dsn, environment, debug=False):
+def configure_sentry(dsn, environment, release=None, debug=False):
     """
     Configure Sentry avec APM et intégrations.
     
     Args:
         dsn (str): Sentry DSN
         environment (str): Environnement (development, staging, production)
+        release (str): Version de l'application
         debug (bool): Mode debug
     """
     if not dsn:
@@ -124,6 +131,7 @@ def configure_sentry(dsn, environment, debug=False):
     sentry_sdk.init(
         dsn=dsn,
         environment=environment,
+        release=release,
         
         # Intégrations
         integrations=[
@@ -137,6 +145,10 @@ def configure_sentry(dsn, environment, debug=False):
                 propagate_traces=True,    # Propager les traces entre Django et Celery
             ),
             RedisIntegration(),
+            LoggingIntegration(
+                level=logging.INFO,        # Logs INFO envoyés comme breadcrumbs
+                event_level=logging.ERROR  # Logs ERROR capturés comme événements
+            ),
         ],
         
         # APM (Application Performance Monitoring)

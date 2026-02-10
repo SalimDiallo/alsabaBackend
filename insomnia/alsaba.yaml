@@ -233,10 +233,10 @@ collection:
     meta: { id: req_offer_foreign }
     method: GET
     parameters: 
-      - { name: currency_sell, value: EUR, disabled: true }
-      - { name: currency_buy, value: XOF, disabled: true }
-      - { name: min_amount, value: 50, disabled: true }
-      - { name: max_amount, value: 1000, disabled: true }
+      - { name: currency_sell, value: "EUR", disabled: true }
+      - { name: currency_buy, value: "XOF", disabled: true }
+      - { name: min_amount, value: "50", disabled: true }
+      - { name: max_amount, value: "1000", disabled: true }
     headers: [{ name: Authorization, value: "Bearer {{ access_token }}" }]
   - url: "{{ base_url }}/api/offers/"
     name: "Offer: List"

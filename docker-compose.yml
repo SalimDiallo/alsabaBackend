@@ -108,6 +108,11 @@ services:
       - DATABASE_PORT=5432
       - REDIS_BROKER_URL=redis://redis:6379/0
       - REDIS_BACKEND_URL=redis://redis:6379/0
+      # Sentry Config
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - SENTRY_FORCED=${SENTRY_FORCED:-False}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-alsaba@1.0.0}
     # Commande pour lancer le worker
     command: celery -A Project worker -l info
     volumes:
@@ -141,6 +146,11 @@ services:
       - DATABASE_PORT=5432
       - REDIS_BROKER_URL=redis://redis:6379/0
       - REDIS_BACKEND_URL=redis://redis:6379/0
+      # Sentry Config
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - SENTRY_FORCED=${SENTRY_FORCED:-False}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-alsaba@1.0.0}
     # Commande pour lancer le scheduler
     command: celery -A Project beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:

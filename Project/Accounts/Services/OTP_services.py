@@ -192,7 +192,7 @@ class DiditVerificationService:
                 logger.error("didit_verify_failed_status", status=response.status_code, body=response_data)
                 return self._handle_verification_error(response.status_code, response_data)
 
-            phone_details = response_data.get("phone", {})
+            phone_details = response_data.get("phone") or {}
             status = phone_details.get("status", "Unknown")
             verified = (status == "Approved")
 
@@ -366,6 +366,9 @@ class DiditVerificationService:
         """
         Extracts and formats phone number details.
         """
+        if not phone_details:
+            return {"status": "Unknown", "message": "No phone details available"}
+            
         return {
             "status": phone_details.get("status"),
             "phone_number_prefix": phone_details.get("phone_number_prefix"),
