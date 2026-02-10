@@ -1,6 +1,6 @@
 """
-Service principal d'intégration avec Flutterwave
-Orchestre les services spécialisés pour carte et Orange Money
+Main Flutterwave integration service
+Orchestrates specialized services for card and Orange Money
 """
 import structlog
 import hmac
@@ -16,8 +16,8 @@ logger = structlog.get_logger(__name__)
 
 class FlutterwaveService(FlutterwaveBaseService):
     """
-    Service principal d'intégration avec Flutterwave
-    Utilise les services spécialisés pour carte et Orange Money
+    Main Flutterwave integration service
+    Uses specialized services for card and Orange Money
     """
     
     def __init__(self):
@@ -34,27 +34,27 @@ class FlutterwaveService(FlutterwaveBaseService):
                         card_token: Optional[str] = None,
                         **kwargs) -> Dict[str, Any]:
         """
-        Initie un dépôt selon la méthode de paiement
+        Initiates a deposit according to the payment method
         
         Args:
             amount: Montant
             currency: Devise
             payment_method: 'card' ou 'orange_money'
             customer_email: Email du client
-            customer_phone: Téléphone
+            customer_phone: Phone
             customer_name: Nom du client
-            card_details: Détails de la carte (pour card)
-            card_token: Token de la carte (pour card tokenisée)
+            card_details: Card details (for card)
+            card_token: Card token (for tokenized card)
             **kwargs: Arguments supplémentaires
             
         Returns:
-            dict: Résultat de l'opération
+            dict: Operation result
         """
         if payment_method == "card":
             if not card_details and not card_token:
                 return {
                     "success": False,
-                    "error": "Détails de carte ou token requis pour le paiement par carte",
+                    "error": "Card details or token required for card payment",
                     "code": "card_details_required"
                 }
             if not all([customer_email, customer_phone, customer_name]):
@@ -88,7 +88,7 @@ class FlutterwaveService(FlutterwaveBaseService):
         else:
             return {
                 "success": False,
-                "error": f"Méthode de paiement non supportée: {payment_method}",
+                "error": f"Unsupported payment method: {payment_method}",
                 "code": "unsupported_payment_method"
             }
     
@@ -97,24 +97,24 @@ class FlutterwaveService(FlutterwaveBaseService):
                            recipient_details: Optional[Dict] = None,
                            **kwargs) -> Dict[str, Any]:
         """
-        Initie un retrait selon la méthode de paiement
+        Initiates a withdrawal according to the payment method
         
         Args:
             amount: Montant
             currency: Devise
             payment_method: 'card' (compte bancaire) ou 'orange_money'
-            recipient_details: Détails du destinataire
+            recipient_details: Recipient details
             **kwargs: Arguments supplémentaires
             
         Returns:
-            dict: Résultat de l'opération
+            dict: Operation result
         """
         if payment_method == "card":
-            # Retrait vers compte bancaire
+            # Withdrawal to bank account
             if not recipient_details:
                 return {
                     "success": False,
-                    "error": "Détails du destinataire requis",
+                    "error": "Recipient details required",
                     "code": "recipient_details_required"
                 }
             
@@ -126,20 +126,20 @@ class FlutterwaveService(FlutterwaveBaseService):
             if not all([account_number, bank_code, account_name]):
                 return {
                     "success": False,
-                    "error": "Informations bancaires incomplètes (account_number, bank_code, account_name requis)",
+                    "error": "Incomplete bank information (account_number, bank_code, account_name required)",
                     "code": "incomplete_bank_details"
                 }
             
             try:
-                # Créer recipient
+                # Create recipient
                 recipient_id = self.card_service.create_bank_transfer_recipient(
                     account_number, bank_code, account_name, recipient_type)
                 
-                # TRANSFORMATION PRÉCISE EN CENTIMES
+                # PRECISE TRANSFORMATION TO CENTS
                 from decimal import Decimal
                 amount_cents = int(Decimal(str(amount)) * 100)
                 
-                # Initier transfert
+                # Initiate transfer
                 transfer_result = self.card_service.initiate_bank_transfer(
                     recipient_id, amount_cents, 
                     narration=kwargs.get("narration", "Wallet withdrawal"),
@@ -163,7 +163,7 @@ class FlutterwaveService(FlutterwaveBaseService):
             if not recipient_details:
                 return {
                     "success": False,
-                    "error": "Détails du destinataire requis (phone, name)",
+                    "error": "Recipient details required (phone, name)",
                     "code": "recipient_details_required"
                 }
             
@@ -173,7 +173,7 @@ class FlutterwaveService(FlutterwaveBaseService):
             if not all([phone, name]):
                 return {
                     "success": False,
-                    "error": "Détails du destinataire incomplets (phone, name requis)",
+                    "error": "Incomplete recipient details (phone, name required)",
                     "code": "incomplete_recipient_details"
                 }
             
@@ -184,14 +184,14 @@ class FlutterwaveService(FlutterwaveBaseService):
         else:
             return {
                 "success": False,
-                "error": f"Méthode de paiement non supportée: {payment_method}",
+                "error": f"Unsupported payment method: {payment_method}",
                 "code": "unsupported_payment_method"
             }
     
     def verify_transaction(self, transaction_id: str,
                           payment_method: str = "card") -> Dict[str, Any]:
         """
-        Vérifie le statut d'une transaction (dépôt)
+        Verifies the status of a transaction (deposit)
         
         Args:
             transaction_id: ID de la transaction Flutterwave (charge_id)
@@ -208,14 +208,14 @@ class FlutterwaveService(FlutterwaveBaseService):
             else:
                 return {
                     "success": False,
-                    "error": f"Méthode de paiement non supportée: {payment_method}",
+                    "error": f"Unsupported payment method: {payment_method}",
                     "code": "unsupported_payment_method"
                 }
             
             charge_data = result.get("data", {})
             status = charge_data.get("status", "unknown")
             
-            # Mapper les statuts Flutterwave vers nos statuts
+            # Map Flutterwave statuses to our statuses
             status_mapping = {
                 "successful": "completed",
                 "pending": "pending",
@@ -243,7 +243,7 @@ class FlutterwaveService(FlutterwaveBaseService):
     def verify_transfer(self, transfer_id: str,
                        payment_method: str = "orange_money") -> Dict[str, Any]:
         """
-        Vérifie le statut d'un transfert (retrait)
+        Verifies the status of a transfer (withdrawal)
         
         Args:
             transfer_id: ID du transfert Flutterwave
@@ -260,14 +260,14 @@ class FlutterwaveService(FlutterwaveBaseService):
             else:
                 return {
                     "success": False,
-                    "error": f"Méthode de paiement non supportée: {payment_method}",
+                    "error": f"Unsupported payment method: {payment_method}",
                     "code": "unsupported_payment_method"
                 }
             
             transfer_data = result.get("data", {})
             status = transfer_data.get("status", "unknown")
             
-            # Mapper les statuts Flutterwave vers nos statuts
+            # Map Flutterwave statuses to our statuses
             status_mapping = {
                 "successful": "completed",
                 "pending": "pending",
@@ -293,18 +293,18 @@ class FlutterwaveService(FlutterwaveBaseService):
             }
     
     def get_supported_currencies(self) -> list:
-        """Retourne les devises supportées selon la configuration"""
+        """Returns supported currencies according to configuration"""
         return getattr(settings, 'FLUTTERWAVE_SUPPORTED_CURRENCIES', 
                       ['EUR', 'XOF', 'XAF', 'NGN', 'USD'])
     
     def get_supported_payment_methods(self) -> list:
-        """Retourne les méthodes de paiement supportées"""
+        """Returns supported payment methods"""
         return ['card', 'orange_money']
     
     @staticmethod
     def verify_webhook_signature(payload: str, signature: str) -> bool:
         """
-        Vérifie la signature HMAC d'un webhook Flutterwave
+        Verifies the HMAC signature of a Flutterwave webhook
         
         Args:
             payload: Corps de la requête (string JSON)
@@ -325,7 +325,7 @@ class FlutterwaveService(FlutterwaveBaseService):
                 hashlib.sha256
             ).hexdigest()
             
-            # Utiliser compare_digest pour éviter les timing attacks
+            # Use compare_digest to avoid timing attacks
             return hmac.compare_digest(expected_signature, signature)
         except Exception as e:
             logger.error("flutterwave_signature_verification_error", error=str(e))

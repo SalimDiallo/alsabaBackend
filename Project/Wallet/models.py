@@ -14,7 +14,7 @@ logger = structlog.get_logger(__name__)
 
 class Wallet(models.Model):
     """
-    Portefeuille électronique associé à chaque utilisateur
+    Electronic wallet associated with each user
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(
@@ -23,35 +23,35 @@ class Wallet(models.Model):
         related_name='wallet'
     )
 
-    # Devise déterminée automatiquement par le pays du numéro de téléphone
+    # Currency determined automatically by phone number country
     currency = models.CharField(
         max_length=3,
-        help_text="Devise du portefeuille (déterminée par le pays du numéro de téléphone)"
+        help_text="Wallet currency (determined by phone number country)"
     )
 
     CURRENCY_NAMES = {
         'EUR': 'Euro',
-        'XAF': 'Franc CFA (CEMAC)',
-        'XOF': 'Franc CFA (BCEAO)',
-        'NGN': 'Naira Nigérian',
-        'GHS': 'Cedi Ghanéen',
-        'KES': 'Shilling Kényan',
-        'ZAR': 'Rand Sud-Africain',
-        'TZS': 'Shilling Tanzanien',
-        'UGX': 'Shilling Ougandais',
-        'RWF': 'Franc Rwandais',
-        'BIF': 'Franc Burundais',
-        'ZMW': 'Kwacha Zambien',
-        'ZWD': 'Dollar Zimbabwéen',
-        'MAD': 'Dirham Marocain',
-        'DZD': 'Dinar Algérien',
-        'TND': 'Dinar Tunisien',
-        'EGP': 'Livre Égyptienne',
-        'USD': 'Dollar Américain',
-        'GBP': 'Livre Britannique',
+        'XAF': 'CFA Franc (CEMAC)',
+        'XOF': 'CFA Franc (BCEAO)',
+        'NGN': 'Nigerian Naira',
+        'GHS': 'Ghanaian Cedi',
+        'KES': 'Kenyan Shilling',
+        'ZAR': 'South African Rand',
+        'TZS': 'Tanzanian Shilling',
+        'UGX': 'Ugandan Shilling',
+        'RWF': 'Rwandan Franc',
+        'BIF': 'Burundian Franc',
+        'ZMW': 'Zambian Kwacha',
+        'ZWD': 'Zimbabwean Dollar',
+        'MAD': 'Moroccan Dirham',
+        'DZD': 'Algerian Dinar',
+        'TND': 'Tunisian Dinar',
+        'EGP': 'Egyptian Pound',
+        'USD': 'US Dollar',
+        'GBP': 'British Pound',
     }
 
-    # Solde en centimes pour éviter les problèmes de précision
+    # Balance in cents to avoid precision issues
     balance_cents = models.BigIntegerField(default=0, db_index=True)
 
     # Métadonnées
@@ -60,12 +60,12 @@ class Wallet(models.Model):
     is_active = models.BooleanField(default=True)
     
     # Optimistic Locking
-    version = models.IntegerField(default=0, help_text="Version pour le verrouillage optimiste")
+    version = models.IntegerField(default=0, help_text="Version for optimistic locking")
 
     class Meta:
         db_table = "wallets"
-        verbose_name = "Portefeuille"
-        verbose_name_plural = "Portefeuilles"
+        verbose_name = "Wallet"
+        verbose_name_plural = "Wallets"
         indexes = [
             models.Index(fields=['user', 'is_active']),
             models.Index(fields=['currency']),
@@ -76,25 +76,25 @@ class Wallet(models.Model):
         ]
 
     def __str__(self):
-        return f"Wallet de {self.user.full_phone_number} ({self.currency})"
+        return f"{self.user.full_phone_number}'s Wallet ({self.currency})"
 
     @property
     def balance(self):
-        """Retourne le solde en euros (ou devise équivalente) sous forme de Decimal"""
+        """Returns the balance in euros (or equivalent currency) as a Decimal"""
         return Decimal(str(self.balance_cents)) / Decimal('100')
 
     @property
     def currency_name(self):
-        """Retourne le nom complet de la devise"""
+        """Returns the full currency name"""
         return self.CURRENCY_NAMES.get(self.currency, self.currency)
 
     @balance.setter
     def balance(self, value):
-        """Définit le solde en euros (ou devise équivalente)"""
+        """Sets the balance in euros (or equivalent currency)"""
         self.balance_cents = int(Decimal(str(value)) * 100)
 
     def add_balance(self, amount):
-        """Ajoute un montant au solde de manière atomique"""
+        """Adds an amount to the balance atomically"""
         from django.db.models import F
         amount_cents = int(Decimal(str(amount)) * 100)
         self.balance_cents = F('balance_cents') + amount_cents
@@ -103,7 +103,7 @@ class Wallet(models.Model):
         logger.info("wallet_balance_added_atomic", user_id=str(self.user.id), amount=amount, new_balance=self.balance, currency=self.currency)
 
     def subtract_balance(self, amount):
-        """Soustrait un montant du solde de manière atomique"""
+        """Subtracts an amount from the balance atomically"""
         from django.db.models import F
         amount_cents = int(Decimal(str(amount)) * 100)
         
@@ -114,8 +114,8 @@ class Wallet(models.Model):
                 balance=self.balance,
                 required=amount
             )
-            # On laisse le DB constraint agir mais on loggue une info utile
-            # raise ValidationError(f"Solde insuffisant (Requis: {amount}, Dispo: {self.balance})")
+            # We let the DB constraint act but log something useful
+            # raise ValidationError(f"Insufficient balance (Required: {amount}, Available: {self.balance})")
         
         self.balance_cents = F('balance_cents') - amount_cents
         self.save(update_fields=['balance_cents'])
@@ -125,7 +125,7 @@ class Wallet(models.Model):
     @staticmethod
     def get_currency_from_phone_number(phone_number):
         """
-        Détermine la devise basée sur le pays du numéro de téléphone
+        Determines the currency based on the phone number country
         
         Args:
             phone_number: Numéro de téléphone au format E.164
@@ -136,49 +136,42 @@ class Wallet(models.Model):
         from django.conf import settings
         
         try:
-            # Parse le numéro pour obtenir le code pays
+            # Parse the number to get the country code
             parsed = phonenumbers.parse(phone_number, None)
             
-            # Utiliser le code de région (ex: 'FR', 'CM', 'SN') directement
+            # Use region code (ex: 'FR', 'CM', 'SN') directly
             region_code = phonenumbers.region_code_for_number(parsed)
             
-            # Mapping pays -> devise (Afrique / Europe)
+            # Country -> Currency mapping (Africa / Europe)
             currency_map = {
-                # Afrique du Nord
+                # North Africa
                 'MA': 'MAD', 'DZ': 'DZD', 'TN': 'TND', 'EG': 'EGP',
                 
-                # Zone Euro
+                # Euro Zone
                 'FR': 'EUR', 'DE': 'EUR', 'IT': 'EUR', 'ES': 'EUR', 
                 'BE': 'EUR', 'NL': 'EUR', 'PT': 'EUR', 'IE': 'EUR',
                 
-                # Afrique Francophone (XAF - CEMAC)
+                # Francophone Africa (XAF - CEMAC)
                 'CM': 'XAF', 'GA': 'XAF', 'CF': 'XAF', 'TD': 'XAF', 'CG': 'XAF',
                 
-                # Afrique Francophone (XOF - BCEAO)
+                # Francophone Africa (XOF - BCEAO)
                 'CI': 'XOF', 'SN': 'XOF', 'ML': 'XOF', 'BJ': 'XOF', 'BF': 'XOF', 'TG': 'XOF', 'NE': 'XOF',
                 
-                # Afrique Anglophone / Autres
+                # Anglophone Africa / Others
                 'NG': 'NGN', 'GH': 'GHS', 'KE': 'KES', 'ZA': 'ZAR', 'TZ': 'TZS', 'UG': 'UGX', 'RW': 'RWF', 'ZM': 'ZMW'
             }
             
             detected_currency = currency_map.get(region_code, 'EUR')
             
-            # Gestion SANDBOX pour Flutterwave
-            is_sandbox = getattr(settings, 'FLUTTERWAVE_ENVIRONMENT', 'sandbox') == 'sandbox'
-            if is_sandbox:
-                # Devises supportées nativement en sandbox
-                sandbox_safe = ['NGN', 'USD', 'KES', 'GHS', 'ZAR', 'TZS', 'UGX']
-                if detected_currency not in sandbox_safe:
-                    return 'USD'
-
             return detected_currency
+
             
         except Exception as e:
             logger.warning("currency_detection_failed", phone_number=phone_number, error=str(e))
             return 'EUR'
 
     def save(self, *args, **kwargs):
-        # Détermine automatiquement la devise si elle n'est pas définie
+        # Automatically determines the currency if not defined
         if not self.currency and self.user:
             self.currency = self.get_currency_from_phone_number(self.user.full_phone_number)
         super().save(*args, **kwargs)
@@ -186,12 +179,12 @@ class Wallet(models.Model):
 
 class PaymentMethod(models.Model):
     """
-    Méthodes de paiement sauvegardées par l'utilisateur
-    Permet de ne pas ressaisir les informations à chaque transaction
+    Payment methods saved by the user
+    Avoids re-entering information for each transaction
     """
     PAYMENT_METHOD_TYPES = (
-        ('card', 'Carte bancaire'),
-        ('bank_account', 'Compte bancaire'),
+        ('card', 'Credit Card'),
+        ('bank_account', 'Bank Account'),
         ('orange_money', 'Orange Money'),
     )
 
@@ -202,33 +195,33 @@ class PaymentMethod(models.Model):
         related_name='payment_methods'
     )
     
-    # Type de méthode de paiement
+    # Payment method type
     method_type = models.CharField(max_length=20, choices=PAYMENT_METHOD_TYPES)
     
-    # Nom/label donné par l'utilisateur (ex: "Ma carte principale", "Compte BNP")
-    label = models.CharField(max_length=100, help_text="Nom donné par l'utilisateur")
+    # Name/label given by the user (ex: "My main card", "BNP Account")
+    label = models.CharField(max_length=100, help_text="User-given name")
     
-    # Informations pour carte bancaire (stockées de manière sécurisée)
-    card_last_four = models.CharField(max_length=4, blank=True, null=True, help_text="4 derniers chiffres")
+    # Credit card information (stored securely)
+    card_last_four = models.CharField(max_length=4, blank=True, null=True, help_text="Last 4 digits")
     card_brand = models.CharField(max_length=50, blank=True, null=True, help_text="Visa, Mastercard, etc.")
-    card_expiry_month = models.IntegerField(blank=True, null=True, help_text="Mois d'expiration (1-12)")
-    card_expiry_year = models.IntegerField(blank=True, null=True, help_text="Année d'expiration")
-    # Note: On ne stocke JAMAIS le numéro complet ni le CVV pour des raisons de sécurité
+    card_expiry_month = models.IntegerField(blank=True, null=True, help_text="Expiry month (1-12)")
+    card_expiry_year = models.IntegerField(blank=True, null=True, help_text="Expiry year")
+    # Note: We NEVER store the full number or CVV for security reasons
     
-    # Informations pour compte bancaire
+    # Bank account information
     # Encrypted for security (PCI/Privacy)
-    account_number = EncryptedCharField(max_length=150, blank=True, null=True, help_text="Numéro de compte (Chiffré)")
-    account_number_last_four = models.CharField(max_length=4, blank=True, null=True, help_text="4 derniers chiffres")
-    bank_code = models.CharField(max_length=20, blank=True, null=True, help_text="Code de la banque")
-    bank_name = models.CharField(max_length=200, blank=True, null=True, help_text="Nom de la banque")
-    account_name = models.CharField(max_length=200, blank=True, null=True, help_text="Nom du titulaire")
-    bank_country = models.CharField(max_length=2, blank=True, null=True, help_text="Code pays de la banque")
+    account_number = EncryptedCharField(max_length=150, blank=True, null=True, help_text="Account number (Encrypted)")
+    account_number_last_four = models.CharField(max_length=4, blank=True, null=True, help_text="Last 4 digits")
+    bank_code = models.CharField(max_length=20, blank=True, null=True, help_text="Bank code")
+    bank_name = models.CharField(max_length=200, blank=True, null=True, help_text="Bank name")
+    account_name = models.CharField(max_length=200, blank=True, null=True, help_text="Account holder name")
+    bank_country = models.CharField(max_length=2, blank=True, null=True, help_text="Bank country code")
     
-    # Informations pour Orange Money
-    orange_money_number = EncryptedCharField(max_length=100, blank=True, null=True, help_text="Numéro Orange Money (Chiffré)")
+    # Orange Money information
+    orange_money_number = EncryptedCharField(max_length=100, blank=True, null=True, help_text="Orange Money number (Encrypted)")
     
     # Métadonnées
-    is_default = models.BooleanField(default=False, help_text="Méthode par défaut pour ce type")
+    is_default = models.BooleanField(default=False, help_text="Default method for this type")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -240,8 +233,8 @@ class PaymentMethod(models.Model):
 
     class Meta:
         db_table = "payment_methods"
-        verbose_name = "Méthode de paiement"
-        verbose_name_plural = "Méthodes de paiement"
+        verbose_name = "Payment Method"
+        verbose_name_plural = "Payment Methods"
         indexes = [
             models.Index(fields=['user', 'method_type', 'is_active']),
             models.Index(fields=['user', 'is_default']),
@@ -249,80 +242,80 @@ class PaymentMethod(models.Model):
 
     def __str__(self):
         if self.method_type == 'card':
-            return f"{self.label} - {self.card_brand or 'Carte'} ****{self.card_last_four}"
+            return f"{self.label} - {self.card_brand or 'Card'} ****{self.card_last_four}"
         elif self.method_type == 'bank_account':
-            return f"{self.label} - {self.bank_name or 'Banque'} ****{self.account_number_last_four}"
+            return f"{self.label} - {self.bank_name or 'Bank'} ****{self.account_number_last_four}"
         elif self.method_type == 'orange_money':
             return f"{self.label} - {self.orange_money_number}"
         return self.label
 
     def mark_as_used(self):
-        """Marque la méthode comme utilisée"""
+        """Marks the method as used"""
         self.last_used_at = timezone.now()
         self.save(update_fields=['last_used_at'])
 
 
 class Transaction(models.Model):
     """
-    Transaction financière (dépôt ou retrait)
+    Financial transaction (deposit or withdrawal)
     """
 
     TRANSACTION_TYPES = (
-        ('deposit', 'Dépôt'),
-        ('withdrawal', 'Retrait'),
-        ('refund', 'Remboursement'),
-        ('p2p_debit', 'Débit P2P'),
-        ('p2p_credit', 'Crédit P2P'),
+        ('deposit', 'Deposit'),
+        ('withdrawal', 'Withdrawal'),
+        ('refund', 'Refund'),
+        ('p2p_debit', 'P2P Debit'),
+        ('p2p_credit', 'P2P Credit'),
     )
 
     PAYMENT_METHODS = (
-        ('card', 'Carte bancaire'),
+        ('card', 'Credit Card'),
         ('orange_money', 'Orange Money'),
-        ('internal', 'Interne (Wallet)'),
+        ('internal', 'Internal (Wallet)'),
     )
 
     STATUS_CHOICES = (
-        ('pending', 'En attente'),
-        ('processing', 'En cours'),
-        ('completed', 'Terminée'),
-        ('failed', 'Échouée'),
-        ('cancelled', 'Annulée'),
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name='transactions')
     
-    # Lien vers la méthode de paiement sauvegardée (optionnel)
+    # Link to saved payment method (optional)
     payment_method_saved = models.ForeignKey(
         PaymentMethod,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='transactions',
-        help_text="Méthode de paiement sauvegardée utilisée"
+        help_text="Saved payment method used"
     )
 
-    # Type et méthode
+    # Type and method
     transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPES)
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS)
 
-    # Devise de la transaction (hérite de celle du wallet)
-    currency = models.CharField(max_length=3, help_text="Devise de la transaction")
+    # Transaction currency (inherits from wallet currency)
+    currency = models.CharField(max_length=3, help_text="Transaction currency")
 
-    # Montants dans la devise locale (en centimes pour précision)
-    amount_cents = models.BigIntegerField(help_text="Montant en centimes dans la devise locale")
-    fee_cents = models.BigIntegerField(default=0, help_text="Frais en centimes dans la devise locale")
+    # Amounts in local currency (in cents for precision)
+    amount_cents = models.BigIntegerField(help_text="Amount in cents in local currency")
+    fee_cents = models.BigIntegerField(default=0, help_text="Fees in cents in local currency")
 
-    # Taux de conversion si nécessaire (vers EUR pour les calculs)
+    # Conversion rate if necessary (to EUR for calculations)
     exchange_rate = models.DecimalField(
         max_digits=10,
         decimal_places=6,
         null=True,
         blank=True,
-        help_text="Taux de conversion vers EUR (si applicable)"
+        help_text="Conversion rate to EUR (if applicable)"
     )
 
-    # Statut et tracking
+    # Status and tracking
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     flutterwave_reference = models.CharField(max_length=100, blank=True, null=True)
     flutterwave_transaction_id = models.CharField(max_length=100, blank=True, null=True)
@@ -332,32 +325,32 @@ class Transaction(models.Model):
         null=True, 
         unique=True,
         db_index=True,
-        help_text="ID unique de l'événement webhook Flutterwave pour idempotence"
+        help_text="Unique ID for the Flutterwave webhook event for idempotency"
     )
 
-    # Métadonnées utilisateur
+    # User metadata
     user_ip = models.GenericIPAddressField(blank=True, null=True)
     user_agent = models.TextField(blank=True, null=True)
 
-    # Informations de paiement spécifiques à la méthode
-    card_last_four = models.CharField(max_length=4, blank=True, null=True)  # Pour carte
-    orange_money_number = models.CharField(max_length=20, blank=True, null=True)  # Pour Orange Money
+    # Method-specific payment information
+    card_last_four = models.CharField(max_length=4, blank=True, null=True)  # For card
+    orange_money_number = models.CharField(max_length=20, blank=True, null=True)  # For Orange Money
 
-    # Messages d'erreur
+    # Error messages
     error_message = models.TextField(blank=True, null=True)
     error_code = models.CharField(max_length=50, blank=True, null=True)
 
-    # Sécurité: Indique si le solde du wallet a déjà été impacté
-    balance_adjusted = models.BooleanField(default=False, help_text="Vrai si le solde du wallet a été mis à jour")
+    # Security: Indicates if the wallet balance has already been impacted
+    balance_adjusted = models.BooleanField(default=False, help_text="True if the wallet balance has been updated")
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
-    # Données additionnelles (Preuve de transfert, Détails banque, Taux, etc.)
-    transfer_proof = models.CharField(max_length=255, blank=True, null=True, help_text="Preuve de paiement (Flutterwave)")
-    extra_data = models.JSONField(default=dict, blank=True, help_text="Données supplémentaires (JSON)")
+    # Additional data (Transfer proof, Bank details, Rates, etc.)
+    transfer_proof = models.CharField(max_length=255, blank=True, null=True, help_text="Payment proof (Flutterwave)")
+    extra_data = models.JSONField(default=dict, blank=True, help_text="Additional data (JSON)")
 
     class Meta:
         db_table = "transactions"
@@ -377,20 +370,20 @@ class Transaction(models.Model):
 
     @property
     def amount_euros(self):
-        """Montant en devise locale (pour compatibilité)"""
+        """Amount in local currency (for compatibility)"""
         return self.amount_cents / 100
 
     @property
     def fee_euros(self):
-        """Frais en devise locale"""
+        """Fees in local currency"""
         return self.fee_cents / 100
 
     def save(self, *args, **kwargs):
-        # Hérite de la devise du wallet
+        # Inherits from wallet currency
         if not self.currency and self.wallet:
             self.currency = self.wallet.currency
 
-        # Timestamp de completion
+        # Completion timestamp
         if self.status == 'completed' and not self.completed_at:
             self.completed_at = timezone.now()
         elif self.status != 'completed' and self.completed_at:
@@ -399,12 +392,12 @@ class Transaction(models.Model):
         super().save(*args, **kwargs)
 
     def mark_completed(self):
-        """Marque la transaction comme terminée avec protection contre les accès concurrents"""
+        """Marks the transaction as completed with protection against concurrent access"""
         from django.db import transaction as db_transaction
         
         with db_transaction.atomic():
-            # Verrouillage de la ligne en DB pour éviter que deux processus ne traitent 
-            # la même transaction simultanément (ex: deux webhooks successifs)
+            # Database row locking to prevent two processes from processing
+            # the same transaction simultaneously (ex: two successive webhooks)
             tx = Transaction.objects.select_for_update().get(pk=self.id)
             
             if tx.status == 'completed':
@@ -418,27 +411,27 @@ class Transaction(models.Model):
             tx.status = 'completed'
             tx.completed_at = timezone.now()
             
-            # Met à jour le solde du wallet seulement s'il ne l'a pas déjà été
+            # Updates the wallet balance only if it hasn't been updated already
             if not tx.balance_adjusted:
                 from decimal import Decimal
                 if tx.transaction_type in ['deposit', 'refund', 'p2p_credit']:
                     tx.wallet.add_balance(tx.amount_euros)
                     tx.balance_adjusted = True
                 elif tx.transaction_type in ['withdrawal', 'p2p_debit']:
-                    # Débiter le montant + les frais (les frais sont 0 pour p2p généralement)
+                    # Debit amount + fees (fees are usually 0 for p2p)
                     total_deduct = (Decimal(tx.amount_cents) + Decimal(tx.fee_cents)) / 100
                     tx.wallet.subtract_balance(total_deduct)
                     tx.balance_adjusted = True
 
             tx.save()
             
-            # Mise à jour de l'instance actuelle (self) pour refléter les changements
+            # Update the current instance (self) to reflect changes
             self.status = tx.status
             self.completed_at = tx.completed_at
             self.balance_adjusted = tx.balance_adjusted
 
     def mark_failed(self, error_message=None, error_code=None):
-        """Marque la transaction comme échouée"""
+        """Marks the transaction as failed"""
         self.status = 'failed'
         self.error_message = error_message
         self.error_code = error_code
@@ -454,12 +447,12 @@ class Transaction(models.Model):
         )
 
     def mark_cancelled(self, reason=None, notes=None):
-        """Marque la transaction comme annulée"""
+        """Marks the transaction as cancelled"""
         self.status = 'cancelled'
         if reason:
             self.error_message = reason
         if notes:
-            # Stocker les notes dans error_message si pas de reason, ou dans un champ dédié si disponible
+            # Store notes in error_message if no reason, or in a dedicated field if available
             if not reason:
                 self.error_message = notes
         self.save()

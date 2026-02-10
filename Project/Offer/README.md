@@ -1,21 +1,21 @@
-# Offer App - Guide de Test des Endpoints (P2P Exchange)
+# Offer App - Endpoint Testing Guide (P2P Exchange)
 
-Ce module gère le cœur de l'échange P2P sécurisé.
+This module manages the core of the secure P2P exchange.
 
-## 🔄 Cycle de Vie d'une Offre
-1.  **OPEN** : Créée par A (Vendeur), visible par tous.
-2.  **ACCEPTED** : B (Acheteur) accepte l'offre. Les fonds de B sont vérifiés/pré-bloqués.
-3.  **LOCKED** : A valide l'acceptation de B. Les fonds des DEUX parties sont bloqués en Escrow.
-4.  **COMPLETED** : L'échange (Swap) est exécuté.
+## 🔄 Offer Lifecycle
+1.  **OPEN**: Created by A (Seller), visible to all.
+2.  **ACCEPTED**: B (Buyer) accepts the offer. B's funds are verified/pre-blocked.
+3.  **LOCKED**: A validates B's acceptance. Funds from BOTH parties are blocked in Escrow.
+4.  **COMPLETED**: The exchange (Swap) is executed.
 
 ---
 
-## 1. Gestion des Offres
+## 1. Offer Management
 
-### Créer une offre (Utilisateur A)
-Je vends des XOF pour recevoir des EUR.
-*   **Endpoint** : `POST /api/offers/create/`
-*   **Body** :
+### Create an offer (User A)
+I sell XOF to receive EUR.
+*   **Endpoint**: `POST /api/offers/create/`
+*   **Body**:
     ```json
     {
         "amount_sell": 100,
@@ -23,61 +23,65 @@ Je vends des XOF pour recevoir des EUR.
         "amount_buy": 10,
         "currency_buy": "EUR",
         "expiry_hours": 24,
-        "beneficiary_name": "Mon Compte EUR", // Optionnel ici, peut être mis à la validation
+        "beneficiary_name": "My EUR Account", // Optional here, can be set during validation
         "beneficiary_phone": "+33..."
     }
     ```
 
-### Lister les offres disponibles
-Pour qu'un utilisateur B trouve une offre.
-*   **Endpoint** : `GET /api/offers/`
+### List available offers (All)
+*   **Endpoint**: `GET /api/offers/`
+
+### List foreign offers (Filtered)
+*   **Endpoint**: `GET /api/offers/foreign/`
+*   **Query Filters**: `currency_sell`, `currency_buy`, `min_amount`, `max_amount`.
+*   **Logic**: Automatically excludes offers from your own country.
 
 ---
 
-## 2. Flux d'Échange (The Swap)
+## 2. Exchange Flow (The Swap)
 
-### Étape A : Accepter une offre (Utilisateur B)
-B arrive, voit l'offre de A et l'accepte. B indique où il veut recevoir ses XOF (le `beneficiary_data` pour le `currency_sell` de l'offre).
-*   **Endpoint** : `POST /api/offers/<uuid_offre>/accept/`
-*   **Header** : `Authorization: Bearer <token_USER_B>`
-*   **Body** :
+### Step A: Accept an offer (User B)
+B arrives, sees A's offer and accepts it. B indicates where he wants to receive his XOF (the `beneficiary_data` for the `currency_sell` of the offer).
+*   **Endpoint**: `POST /api/offers/<uuid_offre>/accept/`
+*   **Header**: `Authorization: Bearer <token_USER_B>`
+*   **Body**:
     ```json
     {
-        "beneficiary_name": "Moi B",
-        "beneficiary_phone": "+225..." // Là où B veut recevoir les XOF
+        "beneficiary_name": "Me B",
+        "beneficiary_phone": "+225..." // Where B wants to receive the XOF
     }
     ```
-*   *État : ACCEPTED*
+*   *State: ACCEPTED*
 
-### Étape B : Valider l'échange (Utilisateur A)
-A reçoit une notif, voit que B a accepté. A valide et confirme ses propres infos de réception (pour recevoir les EUR de B).
-*   **Endpoint** : `POST /api/offers/<uuid_offre>/validate/`
-*   **Header** : `Authorization: Bearer <token_USER_A>`
-*   **Body** :
+### Step B: Validate the exchange (User A)
+A receives a notification, sees that B has accepted. A validates and confirms his own reception info (to receive EUR from B).
+*   **Endpoint**: `POST /api/offers/<uuid_offre>/validate/`
+*   **Header**: `Authorization: Bearer <token_USER_A>`
+*   **Body**:
     ```json
     {
-        "beneficiary_name": "Moi A",
-        "beneficiary_phone": "+33..." // Là où A veut recevoir les EUR
+        "beneficiary_name": "Me A",
+        "beneficiary_phone": "+33..." // Where A wants to receive the EUR
     }
     ```
-*   *État : LOCKED (Fonds bloqués)*
+*   *State: LOCKED (Blocked funds)*
 
-### Étape C : Confirmer & Exécuter (Automatique ou A/Admin)
-Déclenche le transfert des fonds bloqués vers les bénéficiaires respectifs.
-*   **Endpoint** : `POST /api/offers/<uuid_offre>/confirm/`
+### Step C: Confirm & Execute (Automatic or A/Admin)
+Triggers the transfer of blocked funds to respective beneficiaries.
+*   **Endpoint**: `POST /api/offers/<uuid_offre>/confirm/`
 
 ---
 
-## 3. Litiges (Disputes)
+## 3. Disputes
 
-Si quelque chose se passe mal (ex: fonds bloqués mais pas reçus).
+If something goes wrong (e.g., funds blocked but not received).
 
-### Ouvrir un litige
-*   **Endpoint** : `POST /api/offers/<uuid_offre>/disputes/`
-*   **Body** : `{"reason": "...", "evidence": {...}}`
+### Open a dispute
+*   **Endpoint**: `POST /api/offers/<uuid_offre>/disputes/`
+*   **Body**: `{"reason": "...", "evidence": {...}}`
 
-### Lister mes litiges
-*   **Endpoint** : `GET /api/offers/disputes/`
+### List my disputes
+*   **Endpoint**: `GET /api/offers/disputes/`
 
-### Détail d'un litige
-*   **Endpoint** : `GET /api/offers/disputes/<uuid_litige>/`
+### Dispute detail
+*   **Endpoint**: `GET /api/offers/disputes/<uuid_dispute>/`

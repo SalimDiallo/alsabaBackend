@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, KYCDocument
-from .models import User, KYCDocument
+from .models import User, KYCDocument, WebhookAuditLog
+
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
@@ -38,3 +38,49 @@ class KYCDocumentAdmin(admin.ModelAdmin):
     ]
     search_fields = ['user__full_phone_number']
     readonly_fields = ['created_at', 'verified_at']
+
+
+@admin.register(WebhookAuditLog)
+class WebhookAuditLogAdmin(admin.ModelAdmin):
+    list_display = [
+        'request_id',
+        'didit_status',
+        'webhook_status',
+        'signature_valid',
+        'user',
+        'processing_duration_ms',
+        'ip_address',
+        'created_at'
+    ]
+    list_filter = [
+        'webhook_status',
+        'signature_valid',
+        'didit_status',
+        'created_at'
+    ]
+    search_fields = ['request_id', 'ip_address', 'user__full_phone_number']
+    readonly_fields = [
+        'id',
+        'request_id',
+        'didit_status',
+        'ip_address',
+        'user_agent',
+        'payload_size',
+        'signature_valid',
+        'signature_received',
+        'webhook_status',
+        'processing_duration_ms',
+        'user',
+        'error_message',
+        'raw_payload',
+        'created_at'
+    ]
+    ordering = ['-created_at']
+    
+    def has_add_permission(self, request):
+        # Les logs sont créés automatiquement, pas d'ajout manuel
+        return False
+    
+    def has_change_permission(self, request, obj=None):
+        # Les logs sont en lecture seule
+        return False

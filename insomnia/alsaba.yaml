@@ -1,6 +1,6 @@
 type: collection.insomnia.rest/5.0
 schema_version: "5.1"
-name: ALSABA COMPLET (v2.1)
+name: ALSABA
 meta:
   id: wrk_8c38339d2576430f82211f9be4fa00b5
   created: 1738183041000
@@ -64,7 +64,13 @@ collection:
     name: "KYC: Submit Verification"
     meta: { id: req_kyc_verify }
     method: POST
-    body: { mimeType: multipart/form-data, params: [{ name: document_type, value: id_card }, { name: front_image, type: file, fileName: front.jpg }] }
+    body: 
+      mimeType: multipart/form-data
+      params: 
+        - { name: document_type, value: id_card }
+        - { name: front_image, type: file, fileName: front.jpg }
+        - { name: back_image, type: file, fileName: back.jpg }
+        - { name: selfie_image, type: file, fileName: selfie.jpg }
     headers: [{ name: Authorization, value: "Bearer {{ access_token }}" }]
 
   - url: "{{ base_url }}/api/accounts/delete/"
@@ -222,6 +228,16 @@ collection:
   # ==========================================
   # OFFERS P2P
   # ==========================================
+  - url: "{{ base_url }}/api/offers/foreign/"
+    name: "Offer: Foreign List"
+    meta: { id: req_offer_foreign }
+    method: GET
+    parameters: 
+      - { name: currency_sell, value: "EUR", disabled: true }
+      - { name: currency_buy, value: "XOF", disabled: true }
+      - { name: min_amount, value: "50", disabled: true }
+      - { name: max_amount, value: "1000", disabled: true }
+    headers: [{ name: Authorization, value: "Bearer {{ access_token }}" }]
   - url: "{{ base_url }}/api/offers/"
     name: "Offer: List"
     meta: { id: req_offer_list }
@@ -382,7 +398,10 @@ collection:
     meta: { id: req_webhook_didit }
     method: POST
     body: { mimeType: application/json, text: '{"request_id": "req_sim", "status": "Approved"}' }
-    headers: [{ name: Content-Type, value: application/json }]
+    headers: 
+      - { name: Content-Type, value: application/json }
+      - { name: X-Signature, value: "VOTRE_SIGNATURE_HMAC_ICI" }
+      - { name: X-Timestamp, value: "1739126400" }
 
   - url: "{{ base_url }}/api/wallet/webhook/"
     name: "Webhook: Flutterwave"

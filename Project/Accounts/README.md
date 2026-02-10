@@ -59,20 +59,21 @@ Une fois authentifié.
 Nécessaire pour faire des transactions.
 
 ### Soumettre une vérification
-Initialise une session KYC avec Didit.
+Initialise ou soumet une session KYC avec Didit v3.
 
 *   **Endpoint** : `POST /api/accounts/kyc/verify/`
 *   **Header** : `Authorization: Bearer <votre_token>`
-*   **Body** : (Vide ou spécifiant le type de document si demandé, sinon géré par le SDK frontend)
-    ```json
-    {}
-    ```
-*   **Réponse** : URL de redirection Didit ou session ID.
+*   **Body (Multipart)** : 
+    - `document_type` : (ex: `passport`, `id_card`)
+    - `front_image` : (Fichier)
+    - `back_image` : (Fichier - Optionnel pour passeports)
+    - `selfie_image` : (Fichier - **Requis pour le Face Match**)
+*   **Logique** : Réalise une extraction OCR et un Face Match biométrique.
 
-### Webhook (Simulation)
-Didit appelle cette URL quand le KYC est fini.
+### Webhook
+Didit appelle cette URL quand le KYC est terminé.
 *   **Endpoint** : `POST /api/accounts/webhooks/didit/kyc/`
-*   **Note** : Ce endpoint est public mais protégé par signature (ou secret en local).
+*   **Sécurité** : Vérification obligatoire des headers `X-Signature` et `X-Timestamp`.
 
 ---
 

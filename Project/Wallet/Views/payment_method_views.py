@@ -1,5 +1,5 @@
 """
-Vues pour gérer les méthodes de paiement sauvegardées
+Views for managing saved payment methods
 """
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -25,17 +25,17 @@ logger = structlog.get_logger(__name__)
 class PaymentMethodListView(APIView):
     """
     GET /api/wallet/payment-methods/
-    Liste les méthodes de paiement sauvegardées de l'utilisateur
+    Lists the user's saved payment methods
     
     POST /api/wallet/payment-methods/
-    Crée une nouvelle méthode de paiement sauvegardée
+    Creates a new saved payment method
     """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Lister les méthodes de paiement",
-        description="Récupère les méthodes de paiement sauvegardées (cartes, comptes).",
-        tags=['Portefeuille'],
+        summary="List payment methods",
+        description="Retrieves saved payment methods (cards, accounts).",
+        tags=['Wallet'],
         operation_id="wallet_payment_methods_list",
         parameters=[
             OpenApiParameter(name='method_type', type=OpenApiTypes.STR, enum=['card', 'bank_account', 'orange_money'], required=False),
@@ -53,7 +53,7 @@ class PaymentMethodListView(APIView):
         }
     )
     def get(self, request):
-        """Liste les méthodes de paiement"""
+        """Lists payment methods"""
         method_type = request.query_params.get('method_type')  # card, bank_account, orange_money
         active_only = request.query_params.get('active_only', 'true').lower() == 'true'
         
@@ -72,10 +72,10 @@ class PaymentMethodListView(APIView):
         }, status=status.HTTP_200_OK)
 
     @extend_schema(
-        summary="Créer une méthode de paiement",
-        description="Ajoute une nouvelle méthode de paiement. 'method_type' détermine les champs requis.",
-        request=CreateCardPaymentMethodSerializer, # Simplification pour la doc, idéalement polymorphique
-        tags=['Portefeuille'],
+        summary="Create a payment method",
+        description="Adds a new payment method. 'method_type' determines required fields.",
+        request=CreateCardPaymentMethodSerializer, # Simplified for doc, ideally polymorphic
+        tags=['Wallet'],
         operation_id="wallet_payment_methods_create",
         responses={
             201: inline_serializer(
@@ -98,7 +98,7 @@ class PaymentMethodListView(APIView):
         }
     )
     def post(self, request):
-        """Crée une méthode de paiement"""
+        """Creates a payment method"""
         method_type = request.data.get('method_type')
         
         if method_type == 'card':
@@ -110,14 +110,14 @@ class PaymentMethodListView(APIView):
         else:
             return Response({
                 "success": False,
-                "error": "method_type doit être 'card', 'bank_account' ou 'orange_money'",
+                "error": "method_type must be 'card', 'bank_account' or 'orange_money'",
                 "code": "invalid_method_type"
             }, status=status.HTTP_400_BAD_REQUEST)
         
         if not serializer.is_valid():
             return Response({
                 "success": False,
-                "error": "Données invalides",
+                "error": "Invalid data",
                 "details": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
         
@@ -162,7 +162,7 @@ class PaymentMethodListView(APIView):
             
             return Response({
                 "success": True,
-                "message": "Méthode de paiement créée avec succès",
+                "message": "Payment method created successfully",
                 "payment_method": result_serializer.data
             }, status=status.HTTP_201_CREATED)
             
@@ -170,7 +170,7 @@ class PaymentMethodListView(APIView):
             logger.error("payment_method_creation_failed", error=str(e), user_id=str(request.user.id))
             return Response({
                 "success": False,
-                "error": f"Erreur lors de la création: {str(e)}",
+                "error": f"Error during creation: {str(e)}",
                 "code": "creation_failed"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -178,19 +178,19 @@ class PaymentMethodListView(APIView):
 class PaymentMethodDetailView(APIView):
     """
     GET /api/wallet/payment-methods/{id}/
-    Récupère une méthode de paiement
+    Retrieves a payment method
     
     PATCH /api/wallet/payment-methods/{id}/
-    Met à jour une méthode de paiement
+    Updates a payment method
     
     DELETE /api/wallet/payment-methods/{id}/
-    Désactive une méthode de paiement
+    Disables a payment method
     """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Détail d'une méthode de paiement",
-        tags=['Portefeuille'],
+        summary="Payment method detail",
+        tags=['Wallet'],
         operation_id="wallet_payment_methods_retrieve",
         responses={
             200: inline_serializer(
@@ -200,11 +200,11 @@ class PaymentMethodDetailView(APIView):
                     'payment_method': PaymentMethodSerializer()
                 }
             ),
-            404: {"description": "Non trouvée"}
+            404: {"description": "Not found"}
         }
     )
     def get(self, request, payment_method_id):
-        """Récupère une méthode de paiement"""
+        """Retrieves a payment method"""
         try:
             payment_method = payment_method_service.get_payment_method(
                 request.user, payment_method_id
@@ -219,7 +219,7 @@ class PaymentMethodDetailView(APIView):
         except PaymentMethod.DoesNotExist:
             return Response({
                 "success": False,
-                "error": "Méthode de paiement non trouvée",
+                "error": "Payment method not found",
                 "code": "payment_method_not_found"
             }, status=status.HTTP_404_NOT_FOUND)
         except ValueError as e:
@@ -230,10 +230,10 @@ class PaymentMethodDetailView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
-        summary="Mettre à jour une méthode de paiement",
-        description="Met à jour le label ou le statut par défaut.",
+        summary="Update a payment method",
+        description="Updates the label or default status.",
         request=UpdatePaymentMethodSerializer,
-        tags=['Portefeuille'],
+        tags=['Wallet'],
         operation_id="wallet_payment_methods_update",
         responses={
             200: inline_serializer(
@@ -244,12 +244,12 @@ class PaymentMethodDetailView(APIView):
                     'payment_method': PaymentMethodSerializer()
                 }
             ),
-            400: {"description": "Données invalides"},
-            404: {"description": "Non trouvée"}
+            400: {"description": "Invalid data"},
+            404: {"description": "Not found"}
         }
     )
     def patch(self, request, payment_method_id):
-        """Met à jour une méthode de paiement"""
+        """Updates a payment method"""
         try:
             payment_method = payment_method_service.get_payment_method(
                 request.user, payment_method_id
@@ -259,17 +259,17 @@ class PaymentMethodDetailView(APIView):
             if not serializer.is_valid():
                 return Response({
                     "success": False,
-                    "error": "Données invalides",
+                    "error": "Invalid data",
                     "details": serializer.errors
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             validated_data = serializer.validated_data
             
-            # Mise à jour des champs
+            # Field updates
             if 'label' in validated_data:
                 payment_method.label = validated_data['label']
             if 'is_default' in validated_data:
-                # Si on définit comme défaut, désactiver les autres
+                # If setting as default, disable others
                 if validated_data['is_default']:
                     PaymentMethod.objects.filter(
                         user=request.user,
@@ -292,21 +292,21 @@ class PaymentMethodDetailView(APIView):
             
             return Response({
                 "success": True,
-                "message": "Méthode de paiement mise à jour avec succès",
+                "message": "Payment method updated successfully",
                 "payment_method": result_serializer.data
             }, status=status.HTTP_200_OK)
             
         except PaymentMethod.DoesNotExist:
             return Response({
                 "success": False,
-                "error": "Méthode de paiement non trouvée",
+                "error": "Payment method not found",
                 "code": "payment_method_not_found"
             }, status=status.HTTP_404_NOT_FOUND)
 
     @extend_schema(
-        summary="Supprimer une méthode de paiement",
-        description="Désactive (soft delete) une méthode de paiement. Elle ne sera plus proposée pour les paiements.",
-        tags=['Portefeuille'],
+        summary="Delete a payment method",
+        description="Disables (soft delete) a payment method. It will no longer be offered for payments.",
+        tags=['Wallet'],
         operation_id="wallet_payment_methods_destroy",
         responses={
             200: inline_serializer(
@@ -319,7 +319,7 @@ class PaymentMethodDetailView(APIView):
         }
     )
     def delete(self, request, payment_method_id):
-        """Désactive une méthode de paiement (soft delete)"""
+        """Disables a payment method (soft delete)"""
         try:
             payment_method = payment_method_service.get_payment_method(
                 request.user, payment_method_id
@@ -337,13 +337,13 @@ class PaymentMethodDetailView(APIView):
             
             return Response({
                 "success": True,
-                "message": "Méthode de paiement désactivée avec succès"
+                "message": "Payment method disabled successfully"
             }, status=status.HTTP_200_OK)
             
         except PaymentMethod.DoesNotExist:
             return Response({
                 "success": False,
-                "error": "Méthode de paiement non trouvée",
+                "error": "Payment method not found",
                 "code": "payment_method_not_found"
             }, status=status.HTTP_404_NOT_FOUND)
 
@@ -351,14 +351,14 @@ class PaymentMethodDetailView(APIView):
 class PaymentMethodSetDefaultView(APIView):
     """
     POST /api/wallet/payment-methods/{id}/set-default/
-    Définit une méthode de paiement comme méthode par défaut
+    Sets a payment method as default
     """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Définir comme défaut",
-        description="Définit cette méthode de paiement comme celle par défaut pour son type.",
-        tags=['Portefeuille'],
+        summary="Set as default",
+        description="Sets this payment method as the default for its type.",
+        tags=['Wallet'],
         responses={
             200: inline_serializer(
                 name='PaymentMethodSetDefaultResponse',
@@ -372,20 +372,20 @@ class PaymentMethodSetDefaultView(APIView):
         request=None
     )
     def post(self, request, payment_method_id):
-        """Définit une méthode comme défaut"""
+        """Sets a method as default"""
         try:
             payment_method = payment_method_service.get_payment_method(
                 request.user, payment_method_id
             )
             
-            # Désactiver les autres méthodes par défaut du même type
+            # Disable other default methods of the same type
             PaymentMethod.objects.filter(
                 user=request.user,
                 method_type=payment_method.method_type,
                 is_default=True
             ).exclude(id=payment_method.id).update(is_default=False)
             
-            # Définir celle-ci comme défaut
+            # Set this one as default
             payment_method.is_default = True
             payment_method.save()
             
@@ -397,13 +397,13 @@ class PaymentMethodSetDefaultView(APIView):
             
             return Response({
                 "success": True,
-                "message": "Méthode de paiement définie comme méthode par défaut",
+                "message": "Payment method set as default",
                 "payment_method": PaymentMethodSerializer(payment_method).data
             }, status=status.HTTP_200_OK)
             
         except PaymentMethod.DoesNotExist:
             return Response({
                 "success": False,
-                "error": "Méthode de paiement non trouvée",
+                "error": "Payment method not found",
                 "code": "payment_method_not_found"
             }, status=status.HTTP_404_NOT_FOUND)

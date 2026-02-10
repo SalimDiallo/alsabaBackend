@@ -11,7 +11,7 @@ logger = structlog.get_logger(__name__)
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_wallet_for_new_user(sender, instance, created, **kwargs):
     """
-    Crée automatiquement un wallet pour chaque nouvel utilisateur
+    Automatically creates a wallet for each new user
     """
     if created:
         try:

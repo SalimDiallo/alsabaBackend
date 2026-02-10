@@ -32,14 +32,14 @@ logger = structlog.get_logger(__name__)
 class WalletView(APIView):
     """
     GET /api/wallet/
-    Récupère les informations du portefeuille de l'utilisateur
+    Retrieves user wallet information
     """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Obtenir le portefeuille",
-        description="Retourne les informations du portefeuille de l'utilisateur connecté (solde, devise, transactions récentes).",
-        tags=['Portefeuille'],
+        summary="Get wallet",
+        description="Returns information about the connected user's wallet (balance, currency, recent transactions).",
+        tags=['Wallet'],
         responses={
             200: inline_serializer(
                 name='WalletResponse',
@@ -65,16 +65,16 @@ class WalletView(APIView):
 class DepositView(APIView):
     """
     POST /api/wallet/deposit/
-    Initie un dépôt sur le portefeuille
+    Initiates a deposit to the wallet
     """
     permission_classes = [IsAuthenticated]
     throttle_scope = 'deposit'
 
     @extend_schema(
-        summary="Initier un dépôt",
-        description="Initie une transaction de dépôt via Flutterwave. Retourne un lien de paiement (v3) ou les instructions de redirection.",
+        summary="Initiate a deposit",
+        description="Initiates a deposit transaction via Flutterwave. Returns a payment link (v3) or redirection instructions.",
         request=DepositSerializer,
-        tags=['Portefeuille'],
+        tags=['Wallet'],
         responses={
             201: inline_serializer(
                 name='DepositResponse',
@@ -101,7 +101,7 @@ class DepositView(APIView):
                     'available_balance': serializers.FloatField(required=False)
                 }
             ),
-            429: {"description": "Limite de taux atteinte (throttle)"}
+            429: {"description": "Rate limit reached (throttle)"}
         }
     )
     @idempotent_endpoint()
@@ -115,36 +115,36 @@ class DepositView(APIView):
             )
             return Response({
                 "success": False,
-                "error": "Données invalides",
+                "error": "Invalid data",
                 "details": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Extraction sécurisée des métadonnées (IP réelle, Agent, etc.)
+        # Secure extraction of metadata (real IP, Agent, etc.)
         request_meta = auth_utils.extract_request_metadata(request)
 
-        # Extraction des détails de carte si méthode card et pas de payment_method_id
+        # Card details extraction if method is card and no payment_method_id
         card_details = None
         validated_data = serializer.validated_data
         payment_method_id = validated_data.get('payment_method_id')
         card_token = validated_data.get('card_token')
         
         if validated_data['payment_method'] == 'card':
-            # 1. Si payment_method_id fourni, on a juste besoin du CVV
+            # 1. If payment_method_id provided, we only need the CVV
             if payment_method_id:
                 if not validated_data.get('card_cvv'):
                     return Response({
                         "success": False,
-                        "error": "CVV requis même avec une méthode sauvegardée",
+                        "error": "CVV required even with a saved method",
                         "code": "cvv_required"
                     }, status=status.HTTP_400_BAD_REQUEST)
                 card_details = {
                     'cvv': validated_data['card_cvv']
                 }
-            # 2. Si card_token fourni (PCI-DSS)
+            # 2. If card_token provided (PCI-DSS)
             elif card_token:
-                # Pas besoin de détails de carte, le token suffit
+                # No card details needed, token is enough
                 pass
-            # 3. Sinon, détails complets requis
+            # 3. Otherwise, full details required
             else:
                 card_details = {
                     'number': validated_data['card_number'],
@@ -174,7 +174,7 @@ class DepositView(APIView):
                 "available_balance": result.get("available_balance")
             }, status=result.get("status_code", status.HTTP_400_BAD_REQUEST))
 
-        # Sérialisation de la transaction
+        # Transaction serialization
         transaction_data = TransactionSerializer(result["transaction"]).data
 
         logger.info(
@@ -187,7 +187,7 @@ class DepositView(APIView):
 
         return Response({
             "success": True,
-            "message": "Dépôt initié avec succès",
+            "message": "Deposit initiated successfully",
             "transaction": transaction_data,
             "payment_link": result["payment_link"],
             "reference": result["reference"],
@@ -207,16 +207,16 @@ class DepositView(APIView):
 class WithdrawalView(APIView):
     """
     POST /api/wallet/withdraw/
-    Initie un retrait du portefeuille
+    Initiates a withdrawal from the wallet
     """
     permission_classes = [IsAuthenticated]
     throttle_scope = 'withdrawal'
 
     @extend_schema(
-        summary="Initier un retrait",
-        description="Initie une transaction de retrait depuis le portefeuille vers un compte bancaire ou mobile money via Flutterwave.",
+        summary="Initiate a withdrawal",
+        description="Initiates a withdrawal transaction from the wallet to a bank account or mobile money via Flutterwave.",
         request=WithdrawalSerializer,
-        tags=['Portefeuille'],
+        tags=['Wallet'],
         responses={
             201: inline_serializer(
                 name='WithdrawalResponse',
@@ -256,27 +256,27 @@ class WithdrawalView(APIView):
             )
             return Response({
                 "success": False,
-                "error": "Données invalides",
+                "error": "Invalid data",
                 "details": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Préparation des détails du compte selon la méthode
+        # Account details preparation according to the method
         validated_data = serializer.validated_data
         payment_method = validated_data['payment_method']
         payment_method_id = validated_data.get('payment_method_id')
         
-        # Si payment_method_id fourni, account_details sera construit dans wallet_service
+        # If payment_method_id provided, account_details will be built in wallet_service
         account_details = None
         if not payment_method_id:
             if payment_method == 'card':
-                # Retrait vers compte bancaire
+                # Withdrawal to bank account
                 account_details = {
                     'account_number': validated_data['account_number'],
                     'bank_code': validated_data['bank_code'],
                     'account_name': validated_data.get('account_name') or f"{request.user.first_name} {request.user.last_name}".strip() or request.user.full_phone_number,
                     'bank_name': validated_data.get('bank_name'),
                     'bank_country': validated_data.get('bank_country'),
-                    'type': 'bank_account'  # Type par défaut
+                    'type': 'bank_account'  # Default type
                 }
             elif payment_method == 'orange_money':
                 account_details = {
@@ -284,7 +284,7 @@ class WithdrawalView(APIView):
                     'beneficiary_name': f"{request.user.first_name} {request.user.last_name}".strip() or request.user.full_phone_number
                 }
 
-        # Extraction sécurisée des métadonnées (IP réelle, Agent, etc.)
+        # Secure extraction of metadata (real IP, Agent, etc.)
         request_meta = auth_utils.extract_request_metadata(request)
 
         result = wallet_service.initiate_withdrawal(
@@ -307,7 +307,7 @@ class WithdrawalView(APIView):
                 "required_amount": result.get("required_amount")
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Sérialisation de la transaction
+        # Transaction serialization
         transaction_data = TransactionSerializer(result["transaction"]).data
 
         logger.info(
@@ -320,7 +320,7 @@ class WithdrawalView(APIView):
 
         return Response({
             "success": True,
-            "message": "Retrait initié avec succès",
+            "message": "Withdrawal initiated successfully",
             "transaction": transaction_data,
             "reference": result["reference"],
             "amount": result["amount"],
@@ -338,14 +338,14 @@ class WithdrawalView(APIView):
 class TransactionListView(APIView):
     """
     GET /api/wallet/transactions/
-    Liste les transactions de l'utilisateur avec filtrage
+    Lists user transactions with filtering
     """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Lister les transactions",
-        description="Liste l'historique des transactions avec filtrage et pagination.",
-        tags=['Portefeuille'],
+        summary="List transactions",
+        description="Lists transaction history with filtering and pagination.",
+        tags=['Wallet'],
         parameters=[
             OpenApiParameter(name='transaction_type', type=OpenApiTypes.STR, enum=['deposit', 'withdrawal'], required=False),
             OpenApiParameter(name='status', type=OpenApiTypes.STR, enum=['pending', 'processing', 'completed', 'failed', 'cancelled'], required=False),
@@ -358,24 +358,24 @@ class TransactionListView(APIView):
         responses={200: TransactionSerializer(many=True)}
     )
     def get(self, request):
-        # Validation des paramètres de filtrage
+        # Filtering parameters validation
         filter_serializer = TransactionListSerializer(data=request.query_params)
         if not filter_serializer.is_valid():
             return Response({
                 "success": False,
-                "error": "Paramètres de filtrage invalides",
+                "error": "Invalid filtering parameters",
                 "details": filter_serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
 
         filters = filter_serializer.validated_data
 
-        # Récupération du wallet
+        # Wallet retrieval
         wallet = wallet_service.get_or_create_wallet(request.user)
 
-        # Construction de la requête avec optimisation N+1
+        # Query construction with N+1 optimization
         queryset = wallet.transactions.all().select_related('wallet', 'payment_method_saved')
 
-        # Application des filtres
+        # Filters application
         if filters.get('transaction_type'):
             queryset = queryset.filter(transaction_type=filters['transaction_type'])
 
@@ -398,7 +398,7 @@ class TransactionListView(APIView):
 
         transactions = queryset.order_by('-created_at')[offset:offset + limit]
 
-        # Sérialisation
+        # Serialization
         serializer = TransactionSerializer(transactions, many=True)
 
         return Response({
@@ -417,25 +417,25 @@ class TransactionListView(APIView):
 class TransactionDetailView(APIView):
     """
     GET /api/wallet/transactions/{id}/
-    Détail d'une transaction spécifique
+    Detail of a specific transaction
     """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Détail d'une transaction",
-        description="Récupère les détails d'une transaction spécifique par ID.",
-        tags=['Portefeuille'],
+        summary="Transaction detail",
+        description="Retrieves details of a specific transaction by ID.",
+        tags=['Wallet'],
         responses={
             200: TransactionSerializer,
-            404: {"description": "Transaction introuvable"}
+            404: {"description": "Transaction not found"}
         }
     )
     def get(self, request, transaction_id):
         try:
-            # Récupération du wallet de l'utilisateur
+            # Retrieve user wallet
             wallet = wallet_service.get_or_create_wallet(request.user)
 
-            # Récupération de la transaction (sécurisée par wallet)
+            # Retrieve transaction (secured by wallet)
             transaction = wallet.transactions.get(id=transaction_id)
 
             serializer = TransactionSerializer(transaction)
@@ -448,7 +448,7 @@ class TransactionDetailView(APIView):
         except Transaction.DoesNotExist:
             return Response({
                 "success": False,
-                "error": "Transaction non trouvée",
+                "error": "Transaction not found",
                 "code": "transaction_not_found"
             }, status=status.HTTP_404_NOT_FOUND)
 
@@ -456,23 +456,23 @@ class TransactionDetailView(APIView):
 class FlutterwaveWebhookView(APIView):
     """
     POST /api/wallet/webhook/
-    Webhook pour recevoir les notifications Flutterwave
+    Webhook for receiving Flutterwave notifications
     """
-    permission_classes = []  # Pas d'authentification pour les webhooks
+    permission_classes = []  # No authentication for webhooks
 
     @extend_schema(
-        summary="Webhook Flutterwave",
-        description="Point de terminaison pour recevoir les notifications de paiement asynchrones de Flutterwave.",
-        tags=['Portefeuille'],
-        responses={200: {"description": "Webhook reçu"}},
+        summary="Flutterwave Webhook",
+        description="Endpoint for receiving asynchronous payment notifications from Flutterwave.",
+        tags=['Wallet'],
+        responses={200: {"description": "Webhook received"}},
         request=None
     )
     def post(self, request):
         """
-        Traite les webhooks Flutterwave avec vérification de signature
+        Processes Flutterwave webhooks with signature verification
         """
         try:
-            # Récupérer la signature depuis les headers
+            # Retrieve signature from headers
             signature = request.META.get('HTTP_X_FLUTTERWAVE_SIGNATURE') or \
                        request.META.get('HTTP_SIGNATURE') or \
                        request.META.get('HTTP_X_VERIFY_HASH')
@@ -514,15 +514,15 @@ class FlutterwaveWebhookView(APIView):
 class ConfirmDepositView(APIView):
     """
     POST /api/wallet/deposit/{transaction_id}/confirm/
-    Confirme un dépôt (généralement appelé par webhook ou admin)
+    Confirms a deposit (usually called by webhook or admin)
     """
     permission_classes = [IsAdminUser]
 
     @extend_schema(
-        summary="Confirmer un dépôt (Admin)",
-        description="Confirme manuellement un dépôt.",
+        summary="Confirm a deposit (Admin)",
+        description="Manually confirms a deposit.",
         request=TransactionConfirmSerializer,
-        tags=['Portefeuille'],
+        tags=['Wallet'],
         responses={
             200: inline_serializer(
                 name='ConfirmDepositResponse',
@@ -549,7 +549,7 @@ class ConfirmDepositView(APIView):
         if not serializer.is_valid():
             return Response({
                 "success": False,
-                "error": "Données invalides",
+                "error": "Invalid data",
                 "details": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
 
@@ -575,7 +575,7 @@ class ConfirmDepositView(APIView):
 
         return Response({
             "success": True,
-            "message": "Dépôt confirmé avec succès",
+            "message": "Deposit confirmed successfully",
             "transaction": TransactionSerializer(result["transaction"]).data,
             "wallet_balance": result.get("wallet_balance"),
             "amount_credited": result.get("amount_credited")
@@ -585,15 +585,15 @@ class ConfirmDepositView(APIView):
 class CancelDepositView(APIView):
     """
     POST /api/wallet/deposit/{transaction_id}/cancel/
-    Annule un dépôt en attente
+    Cancels a pending deposit
     """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Annuler un dépôt",
-        description="Annule un dépôt en attente.",
+        summary="Cancel a deposit",
+        description="Cancels a pending deposit.",
         request=TransactionCancelSerializer,
-        tags=['Portefeuille'],
+        tags=['Wallet'],
         responses={
             200: inline_serializer(
                 name='CancelDepositResponse',
@@ -619,7 +619,7 @@ class CancelDepositView(APIView):
         if not serializer.is_valid():
             return Response({
                 "success": False,
-                "error": "Données invalides",
+                "error": "Invalid data",
                 "details": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
 
@@ -645,7 +645,7 @@ class CancelDepositView(APIView):
 
         return Response({
             "success": True,
-            "message": "Dépôt annulé avec succès",
+            "message": "Deposit cancelled successfully",
             "transaction": TransactionSerializer(result["transaction"]).data,
             "refund_amount": result.get("refund_amount")
         }, status=status.HTTP_200_OK)
@@ -654,15 +654,15 @@ class CancelDepositView(APIView):
 class ConfirmWithdrawalView(APIView):
     """
     POST /api/wallet/withdraw/{transaction_id}/confirm/
-    Confirme un retrait (généralement appelé par admin ou système)
+    Confirms a withdrawal (usually called by admin or system)
     """
     permission_classes = [IsAdminUser]
 
     @extend_schema(
-        summary="Confirmer un retrait (Admin)",
-        description="Confirme manuellement un retrait.",
+        summary="Confirm a withdrawal (Admin)",
+        description="Manually confirms a withdrawal.",
         request=TransactionConfirmSerializer,
-        tags=['Portefeuille'],
+        tags=['Wallet'],
         responses={200: TransactionSerializer}
     )
     def post(self, request, transaction_id):
@@ -670,7 +670,7 @@ class ConfirmWithdrawalView(APIView):
         if not serializer.is_valid():
             return Response({
                 "success": False,
-                "error": "Données invalides",
+                "error": "Invalid data",
                 "details": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
 
@@ -696,7 +696,7 @@ class ConfirmWithdrawalView(APIView):
 
         return Response({
             "success": True,
-            "message": "Retrait confirmé avec succès",
+            "message": "Withdrawal confirmed successfully",
             "transaction": TransactionSerializer(result["transaction"]).data,
             "wallet_balance": result.get("wallet_balance"),
             "amount_debited": result.get("amount_debited")
@@ -706,15 +706,15 @@ class ConfirmWithdrawalView(APIView):
 class CancelWithdrawalView(APIView):
     """
     POST /api/wallet/withdraw/{transaction_id}/cancel/
-    Annule un retrait en attente
+    Cancels a pending withdrawal
     """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Annuler un retrait",
-        description="Annule un retrait en attente. Rembourse le montant sur le portefeuille.",
+        summary="Cancel a withdrawal",
+        description="Cancels a pending withdrawal. Refunds the amount to the wallet.",
         request=TransactionCancelSerializer,
-        tags=['Portefeuille'],
+        tags=['Wallet'],
         responses={200: TransactionSerializer}
     )
     def post(self, request, transaction_id):
@@ -722,7 +722,7 @@ class CancelWithdrawalView(APIView):
         if not serializer.is_valid():
             return Response({
                 "success": False,
-                "error": "Données invalides",
+                "error": "Invalid data",
                 "details": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
 
@@ -748,7 +748,7 @@ class CancelWithdrawalView(APIView):
 
         return Response({
             "success": True,
-            "message": "Retrait annulé avec succès",
+            "message": "Withdrawal cancelled successfully",
             "transaction": TransactionSerializer(result["transaction"]).data,
             "refund_amount": result.get("refund_amount"),
             "wallet_balance": result.get("wallet_balance")
@@ -758,14 +758,14 @@ class CancelWithdrawalView(APIView):
 class TransactionStatusView(APIView):
     """
     GET /api/wallet/transactions/{transaction_id}/status/
-    Vérifie le statut d'une transaction
+    Checks transaction status
     """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Vérifier le statut d'une transaction",
-        description="Vérifie le statut (locaux et distant Flutterwave) d'une transaction.",
-        tags=['Portefeuille'],
+        summary="Check transaction status",
+        description="Checks the status (local and distant Flutterwave) of a transaction.",
+        tags=['Wallet'],
         responses={
              200: inline_serializer(
                 name='TransactionStatusResponse',
@@ -782,13 +782,13 @@ class TransactionStatusView(APIView):
     )
     def get(self, request, transaction_id):
         try:
-            # Récupération du wallet de l'utilisateur
+            # Retrieve user wallet
             wallet = wallet_service.get_or_create_wallet(request.user)
 
-            # Récupération de la transaction (sécurisée par wallet)
+            # Retrieve transaction (secured by wallet)
             transaction = wallet.transactions.get(id=transaction_id)
 
-            # Vérification du statut auprès de Flutterwave si nécessaire
+            # Status check with Flutterwave if necessary
             flutterwave_status = None
             if transaction.flutterwave_transaction_id and transaction.status in ['pending', 'processing']:
                 flutterwave_result = wallet_service.check_transaction_status(transaction)
@@ -809,12 +809,12 @@ class TransactionStatusView(APIView):
         except Transaction.DoesNotExist:
             return Response({
                 "success": False,
-                "error": "Transaction non trouvée",
+                "error": "Transaction not found",
                 "code": "transaction_not_found"
             }, status=status.HTTP_404_NOT_FOUND)
 
     def _get_next_actions(self, transaction, user):
-        """Retourne les actions possibles pour cette transaction"""
+        """Returns the possible actions for this transaction"""
         actions = []
 
         if transaction.status == 'pending':
@@ -822,7 +822,7 @@ class TransactionStatusView(APIView):
                 "action": "cancel",
                 "method": "POST",
                 "endpoint": f"/api/wallet/{transaction.transaction_type}/{{transaction_id}}/cancel/",
-                "description": f"Annuler ce {transaction.get_transaction_type_display()}"
+                "description": f"Cancel this {transaction.get_transaction_type_display()}"
             })
 
         if transaction.status == 'processing' and user.is_staff:
@@ -830,7 +830,7 @@ class TransactionStatusView(APIView):
                 "action": "confirm",
                 "method": "POST",
                 "endpoint": f"/api/wallet/{transaction.transaction_type}/{{transaction_id}}/confirm/",
-                "description": f"Confirmer ce {transaction.get_transaction_type_display()}"
+                "description": f"Confirm this {transaction.get_transaction_type_display()}"
             })
 
         return actions
@@ -839,15 +839,15 @@ class TransactionStatusView(APIView):
 class UpdateTransactionStatusView(APIView):
     """
     PATCH /api/wallet/transactions/{transaction_id}/status/
-    Met à jour le statut d'une transaction (admin seulement)
+    Updates the status of a transaction (admin only)
     """
     permission_classes = [IsAdminUser]
     
     @extend_schema(
-        summary="Mettre à jour le statut d'une transaction (Admin)",
-        description="Force la mise à jour du statut d'une transaction.",
+        summary="Update transaction status (Admin)",
+        description="Forces the status update of a transaction.",
         request=TransactionStatusUpdateSerializer,
-        tags=['Portefeuille'],
+        tags=['Wallet'],
         responses={200: TransactionSerializer}
     )
     def patch(self, request, transaction_id):
@@ -856,7 +856,7 @@ class UpdateTransactionStatusView(APIView):
         if not serializer.is_valid():
             return Response({
                 "success": False,
-                "error": "Données invalides",
+                "error": "Invalid data",
                 "details": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
 
@@ -883,7 +883,7 @@ class UpdateTransactionStatusView(APIView):
 
         return Response({
             "success": True,
-            "message": "Statut de la transaction mis à jour avec succès",
+            "message": "Transaction status updated successfully",
             "transaction": TransactionSerializer(result["transaction"]).data,
             "old_status": result.get("old_status"),
             "new_status": serializer.validated_data['status']
@@ -893,14 +893,14 @@ class UpdateTransactionStatusView(APIView):
 class WalletStatsView(APIView):
     """
     GET /api/wallet/stats/
-    Statistiques du portefeuille (admin seulement)
+    Wallet statistics (admin only)
     """
     permission_classes = [IsAdminUser]
     
     @extend_schema(
-        summary="Statistiques du portefeuille (Admin)",
-        description="Retourne des statistiques globales sur les portefeuilles.",
-        tags=['Portefeuille'],
+        summary="Wallet statistics (Admin)",
+        description="Returns global statistics about wallets.",
+        tags=['Wallet'],
         responses={200: OpenApiTypes.OBJECT}
     )
     def get(self, request):
@@ -916,19 +916,19 @@ class WalletStatsView(APIView):
 class RetryTransactionView(APIView):
     """
     POST /api/wallet/transactions/{transaction_id}/retry/
-    Réessaie une transaction échouée
+    Retries a failed transaction
     """
     permission_classes = [IsAuthenticated]
     serializer_class = TransactionSerializer
 
     @extend_schema(
-        summary="Réessayer une transaction échouée",
-        description="Tente de relancer ou confirmer une transaction marquée comme échouée ou annulée.",
-        tags=['Portefeuille'],
+        summary="Retry a failed transaction",
+        description="Attempts to relaunch or confirm a transaction marked as failed or cancelled.",
+        tags=['Wallet'],
         request=None,
         responses={
             200: TransactionSerializer,
-            501: {"description": "Non implémenté"}
+            501: {"description": "Not implemented"}
         }
     )
     def post(self, request, transaction_id):
@@ -936,20 +936,20 @@ class RetryTransactionView(APIView):
             wallet = wallet_service.get_or_create_wallet(request.user)
             transaction = wallet.transactions.get(id=transaction_id)
 
-            # Vérifier que la transaction peut être relancée
+            # Verify that the transaction can be retried
             if transaction.status not in ['failed', 'cancelled']:
                 return Response({
                     "success": False,
-                    "error": f"Impossible de relancer une transaction {transaction.get_status_display()}",
+                    "error": f"Cannot retry a {transaction.get_status_display()} transaction",
                     "code": "invalid_status_for_retry"
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Vérifier le statut auprès de Flutterwave
+            # Verify status with Flutterwave
             if transaction.flutterwave_transaction_id:
                 if transaction.transaction_type == 'deposit':
                     flutterwave_result = wallet_service.check_transaction_status(transaction)
                     if flutterwave_result.get("success") and flutterwave_result.get("status") == "completed":
-                        # La transaction a réussi côté Flutterwave, on la confirme
+                        # The transaction succeeded on the Flutterwave side, we confirm it
                         if transaction.transaction_type == 'deposit':
                             result = wallet_service.confirm_deposit(request.user, transaction_id)
                         else:
@@ -958,29 +958,29 @@ class RetryTransactionView(APIView):
                         if result["success"]:
                             return Response({
                                 "success": True,
-                                "message": "Transaction confirmée avec succès",
+                                "message": "Transaction confirmed successfully",
                                 "transaction": TransactionSerializer(result["transaction"]).data
                             }, status=status.HTTP_200_OK)
 
-            # Si on arrive ici, on doit relancer la transaction
-            # Pour l'instant, on retourne une erreur car la relance nécessite les détails originaux
+            # If we reach here, we must relaunch the transaction
+            # For now, we return an error because relaunch requires the original details
             return Response({
                 "success": False,
-                "error": "La relance automatique n'est pas encore implémentée. Veuillez créer une nouvelle transaction.",
+                "error": "Automatic retry is not yet implemented. Please create a new transaction.",
                 "code": "retry_not_implemented"
             }, status=status.HTTP_501_NOT_IMPLEMENTED)
 
         except Transaction.DoesNotExist:
             return Response({
                 "success": False,
-                "error": "Transaction non trouvée",
+                "error": "Transaction not found",
                 "code": "transaction_not_found"
             }, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.error("transaction_retry_error", error=str(e), transaction_id=str(transaction_id))
             return Response({
                 "success": False,
-                "error": "Erreur lors de la relance",
+                "error": "Error during retry",
                 "code": "retry_error"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -988,14 +988,14 @@ class RetryTransactionView(APIView):
 class EstimateFeesView(APIView):
     """
     POST /api/wallet/fees/estimate/
-    Estime les frais pour une transaction avant de l'initier
+    Estimates fees for a transaction before initiating it
     """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Estimer les frais",
-        description="Calcule les frais estimés pour une transaction donnée.",
-        tags=['Portefeuille'],
+        summary="Estimate fees",
+        description="Calculates estimated fees for a given transaction.",
+        tags=['Wallet'],
         request=inline_serializer(
             name='EstimateFeesRequest',
             fields={
@@ -1036,14 +1036,14 @@ class EstimateFeesView(APIView):
     )
     def post(self, request):
         """
-        Estime les frais pour un dépôt ou retrait
+        Estimates fees for a deposit or withdrawal
         
         Body:
         {
             "transaction_type": "deposit" | "withdrawal",
             "amount": 100.00,
             "payment_method": "card" | "orange_money",
-            "currency": "EUR" (optionnel, utilise celui du wallet si absent)
+            "currency": "EUR" (optional, uses the wallet's if absent)
         }
         """
         try:
@@ -1054,22 +1054,22 @@ class EstimateFeesView(APIView):
             if not all([amount, transaction_type, payment_method]):
                 return Response({
                     "success": False,
-                    "error": "amount, transaction_type et payment_method sont requis",
+                    "error": "amount, transaction_type and payment_method are required",
                     "code": "missing_parameters"
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             if transaction_type not in ['deposit', 'withdrawal']:
                 return Response({
                     "success": False,
-                    "error": "transaction_type doit être 'deposit' ou 'withdrawal'",
+                    "error": "transaction_type must be 'deposit' or 'withdrawal'",
                     "code": "invalid_transaction_type"
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Récupérer la devise du wallet
+            # Retrieve wallet currency
             wallet = wallet_service.get_or_create_wallet(request.user)
             currency = request.data.get('currency') or wallet.currency
             
-            # Calculer les frais
+            # Calculate fees
             if transaction_type == 'deposit':
                 fee = WalletService._calculate_deposit_fee(amount, payment_method, currency)
             else:
@@ -1097,13 +1097,13 @@ class EstimateFeesView(APIView):
         except ValueError as e:
             return Response({
                 "success": False,
-                "error": "Montant invalide",
+                "error": "Invalid amount",
                 "code": "invalid_amount"
             }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.error("fee_estimation_error", error=str(e))
             return Response({
                 "success": False,
-                "error": "Erreur lors de l'estimation des frais",
+                "error": "Error during fee estimation",
                 "code": "estimation_error"
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

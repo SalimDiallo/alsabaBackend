@@ -19,7 +19,7 @@ class AuditLogAdmin(admin.ModelAdmin):
     list_display = ('timestamp', 'action', 'user_id', 'offer_id')
     list_filter = ('action',)
     search_fields = ('user_id', 'offer_id', 'action')
-    # Les logs d'audit ne doivent être ni modifiables ni supprimables
+    # Audit logs should be neither modifiable nor deletable
     def has_add_permission(self, request):
         return False
     def has_change_permission(self, request, obj=None):

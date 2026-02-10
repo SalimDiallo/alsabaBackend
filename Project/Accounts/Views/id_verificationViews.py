@@ -1,19 +1,21 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
-from django.utils import timezone
-import structlog
+import base64
 from datetime import datetime
+from django.utils import timezone
+from django.core.files.base import ContentFile
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
+import structlog
 
 from ..utils import auth_utils
 from ..models import User, KYCDocument
 from ..Serializers.KYC_serializers import KYCVerifySerializer
-#from ..Services.KYC_services import kyc_service
-
 from ..Services.KYC_services import kyc_service
+from ..Services.kyc_security_service import kyc_security_service
+
 
 logger = structlog.get_logger(__name__)
 
@@ -26,8 +28,11 @@ class KYCVerifyView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Soumettre un document KYC",
-        description="Envoie un document d'identité (image base64 ou URL) pour vérification par Didit.",
+        summary="Soumettre un document KYC + Selfie",
+        description=(
+            "Envoie un document d'identité (recto/verso) et optionnellement un selfie pour vérification Didit v3. "
+            "Le verso est désormais optionnel pour les passeports. Si un selfie est fourni, un Face Match v3 est effectué."
+        ),
         request=KYCVerifySerializer,
         tags=['Profil & KYC'],
         responses={
@@ -129,6 +134,7 @@ class KYCVerifyView(APIView):
         document_type = validated_data['document_type']
         front_image = validated_data['front_image']
         back_image = validated_data.get('back_image')
+        selfie_image = validated_data.get('selfie_image')
         vendor_data = validated_data.get('vendor_data') or f"auto_{user.id}_{timezone.now().strftime('%Y%m%d%H%M%S')}"
 
         # Création de l'enregistrement local
@@ -144,6 +150,8 @@ class KYCVerifyView(APIView):
             kyc_doc.front_image.save(f"{filename_prefix}_front.jpg", front_image)
             if back_image:
                 kyc_doc.back_image.save(f"{filename_prefix}_back.jpg", back_image)
+            if selfie_image:
+                kyc_doc.selfie_image.save(f"{filename_prefix}_selfie.jpg", selfie_image)
             # --- AUDIT TRAIL ---
             kyc_doc.accessed_at = timezone.now()
             kyc_doc.accessed_by = str(user.id)
@@ -206,7 +214,41 @@ class KYCVerifyView(APIView):
         kyc_doc.save()
 
         if status_didit == "Approved":
+            # Si un selfie a été fourni, on lance le Face Match v3
+            if selfie_image:
+                
+                # Utilisation directe du front_image pour le Face Match (plus robuste)
+                ref_image_to_use = front_image
+
+                match_result = kyc_service.match_face(
+                    selfie_image=selfie_image,
+                    ref_image=ref_image_to_use,
+                    vendor_data=vendor_data
+                )
+                
+                if not match_result["success"] or match_result["status"] != "Approved":
+                    # Échec du Face Match -> Rejet du KYC même si le document était OK
+                    reason = match_result.get("status") or match_result.get("message", "Échec Face Match")
+                    logger.warning("kyc_final_rejection", 
+                                   user_id=str(user.id), 
+                                   step="face_match", 
+                                   reason=reason)
+                    
+                    result["status"] = "FaceMatchFailed"
+                    id_verification["decline_reason"] = f"La photo ne correspond pas au document ({reason})"
+                    return self._handle_kyc_rejection(user, kyc_doc, result, id_verification, vendor_data)
+
+                kyc_doc.verification_note += f" | Face Match OK (Score: {match_result.get('score')})"
+                kyc_doc.save()
+                
+                # Update kyc_request_id with the Face Match ID (the latest one)
+                if match_result.get("request_id"):
+                    user.kyc_request_id = match_result["request_id"]
+                    user.save()
+
             return self._handle_kyc_approval(user, kyc_doc, result, id_verification, vendor_data)
+        elif status_didit == "Pending":
+            return self._handle_kyc_pending(user, kyc_doc, result, id_verification, vendor_data)
         else:
             return self._handle_kyc_rejection(user, kyc_doc, result, id_verification, vendor_data)
 
@@ -277,6 +319,30 @@ class KYCVerifyView(APIView):
                 "vendor_data": vendor_data
             }
         }, status=status.HTTP_200_OK)
+
+    def _handle_kyc_pending(self, user, kyc_doc, result, id_verification, vendor_data):
+        user.kyc_status = 'pending'
+        user.kyc_vendor_data = vendor_data
+        user.kyc_request_id = result.get("request_id")
+        user.save()
+
+        kyc_doc.verification_status = 'pending'
+        kyc_doc.save()
+
+        logger.info(
+            "kyc_pending",
+            user_id=str(user.id),
+            vendor_data=vendor_data,
+            request_id=result.get("request_id")
+        )
+
+        return Response({
+            "success": True,
+            "message": "Votre document est en cours de revue manuelle. Nous vous informerons dès que possible.",
+            "kyc_status": "pending",
+            "vendor_data": vendor_data,
+            "request_id": result.get("request_id"),
+        }, status=status.HTTP_202_ACCEPTED)
 
     def _handle_kyc_rejection(self, user, kyc_doc, result, id_verification, vendor_data):
         user.kyc_status = 'rejected'

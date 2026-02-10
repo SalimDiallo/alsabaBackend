@@ -12,19 +12,19 @@ logger = structlog.get_logger(__name__)
 
 class WalletService:
     """
-    Service de gestion des portefeuilles et transactions
+    Service for managing wallets and transactions.
     """
 
     @staticmethod
     def create_wallet_for_user(user):
         """
-        Crée un wallet pour un nouvel utilisateur
+        Creates a wallet for a new user.
 
         Args:
-            user: Instance User
+            user: User instance
 
         Returns:
-            Wallet: Le wallet créé
+            Wallet: The created wallet
         """
         wallet = Wallet.objects.create(user=user)
         logger.info("wallet_created", user_id=str(user.id), wallet_id=str(wallet.id))
@@ -33,13 +33,13 @@ class WalletService:
     @staticmethod
     def get_or_create_wallet(user):
         """
-        Récupère ou crée le wallet d'un utilisateur
+        Retrieves or creates a user's wallet.
 
         Args:
-            user: Instance User
+            user: User instance
 
         Returns:
-            Wallet: Le wallet de l'utilisateur
+            Wallet: The user's wallet
         """
         wallet, created = Wallet.objects.get_or_create(user=user)
         if created:
@@ -51,48 +51,48 @@ class WalletService:
                         payment_method_id=None, save_payment_method=False, 
                         payment_method_label=None, redirect_url=None, card_token=None):
         """
-        Initie un dépôt sur le wallet
+        Initiates a deposit to the wallet.
         
         Args:
-            user: Instance User
-            amount: Montant dans la devise du wallet
-            payment_method: 'card' ou 'orange_money'
-            card_details: Détails de la carte (requis si pas de payment_method_id ni card_token)
-            request_meta: Métadonnées de la requête
-            payment_method_id: ID d'une méthode de paiement sauvegardée (optionnel)
-            save_payment_method: Sauvegarder cette méthode pour usage futur
-            payment_method_label: Nom pour la méthode sauvegardée
-            card_token: Token de carte (pour PCI-DSS compliant frontend)
+            user: User instance
+            amount: Amount in wallet currency
+            payment_method: 'card' or 'orange_money'
+            card_details: Card details (required if no payment_method_id or card_token)
+            request_meta: Request metadata
+            payment_method_id: ID of a saved payment method (optional)
+            save_payment_method: Save this method for future use
+            payment_method_label: Name for the saved method
+            card_token: Card token (for PCI-DSS compliant frontend)
             
         Returns:
-            dict: Résultat avec transaction et payment_link
+            dict: Result with transaction and payment_link
         """
-        # Vérification KYC
+        # KYC Verification
         if user.kyc_status != 'verified':
             return {
                 "success": False,
-                "error": "Vérification d'identité requise avant les dépôts",
+                "error": "Identity verification required before deposits",
                 "code": "kyc_required"
             }
 
-        # Récupération du wallet
+        # Retrieve wallet
         wallet = WalletService.get_or_create_wallet(user)
 
-        # Utiliser Decimal pour la précision
+        # Use Decimal for precision
         amount_dec = Decimal(str(amount))
 
-        # Validation du montant selon la devise
+        # Amount validation per currency
         if not WalletService._validate_amount_for_currency(amount_dec, wallet.currency):
             return {
                 "success": False,
-                "error": f"Montant invalide pour la devise {wallet.currency}",
+                "error": f"Invalid amount for currency {wallet.currency}",
                 "code": "invalid_amount"
             }
 
-        # Calcul des frais selon la devise
+        # Calculate fees based on currency
         fee_amount = WalletService._calculate_deposit_fee(amount_dec, payment_method, wallet.currency)
 
-        # Gestion de la méthode de paiement sauvegardée
+        # Handle saved payment method
         saved_payment_method = None
         if payment_method_id:
             try:
@@ -101,20 +101,20 @@ class WalletService:
                     user, payment_method_id, method_type=method_type
                 )
                 if payment_method == 'card':
-                    # TODO: Lier le token saved_payment_method.flutterwave_token
-                    # Pour l'instant on garde la logique existante demandant les détails si pas de tokenisation complète
+                    # TODO: Link the saved_payment_method.flutterwave_token
+                    # For now keep existing logic requesting details if no full tokenization
                     if not card_details and not card_token:
-                         # Si on a un payment_method_id, on devrait pouvoir déduire un token ou customer_id
+                         # If we have a payment_method_id, we should be able to deduce a token or customer_id
                          pass 
             except (PaymentMethod.DoesNotExist, ValueError) as e:
                 return {
                     "success": False,
-                    "error": f"Méthode de paiement non trouvée ou invalide: {str(e)}",
+                    "error": f"Payment method not found or invalid: {str(e)}",
                     "code": "payment_method_not_found"
                 }
 
         with db_transaction.atomic():
-            # Création de la transaction
+            # Transaction creation
             transaction = Transaction.objects.create(
                 wallet=wallet,
                 transaction_type='deposit',
@@ -127,7 +127,7 @@ class WalletService:
                 user_agent=request_meta.get('user_agent') if request_meta else None,
             )
 
-            # Préparer l'adresse pour Flutterwave
+            # Prepare address for Flutterwave
             address_data = None
             country_iso = user.kyc_nationality or "FR" 
             if len(country_iso) > 2:
@@ -149,7 +149,7 @@ class WalletService:
             currency=wallet.currency,
             payment_method=payment_method,
             customer_email=user.email,
-            customer_phone=user.phone_number, # Numéro national (7-10 chiffres)
+            customer_phone=user.phone_number, # National number (7-10 digits)
             country_code=user.country_code.replace('+', ''), # Ex: 33
             customer_name=(f"{user.first_name} {user.last_name}".strip() or 
                            f"User {user.full_phone_number}"),
@@ -157,7 +157,7 @@ class WalletService:
             card_token=card_token,
             address=address_data,
             customer_id=user.flutterwave_customer_id,
-            redirect_url=redirect_url, # Passer l'URL demandée
+            redirect_url=redirect_url, # Pass requested URL
             meta={
                 "transaction_id": str(transaction.id),
                 "user_id": str(user.id),
@@ -165,23 +165,23 @@ class WalletService:
             }
         )
         
-        # Si un ID customer a été créé ou récupéré via 409 fallback, on le cache
-        flw_customer_id = flutterwave_result.get("customer_id") # Note: nécessite d'être retourné par les services
+        # If a customer ID was created or retrieved via 409 fallback, cache it
+        flw_customer_id = flutterwave_result.get("customer_id") # Note: needs to be returned by services
         if not user.flutterwave_customer_id and flw_customer_id:
             user.flutterwave_customer_id = flw_customer_id
             user.save(update_fields=['flutterwave_customer_id'])
         
         with db_transaction.atomic():
-            # Sauvegarder la méthode de paiement si demandé
+            # Save payment method if requested
             if save_payment_method and not saved_payment_method and payment_method == 'card' and card_details:
                 try:
                     new_payment_method = payment_method_service.create_card_payment_method(
                         user=user,
-                        label=payment_method_label or f"Carte {card_details.get('number', '')[-4:]}",
+                        label=payment_method_label or f"Card {card_details.get('number', '')[-4:]}",
                         card_number=card_details['number'],
                         card_expiry_month=str(card_details['exp_month']),
                         card_expiry_year=str(card_details['exp_year']),
-                        card_cvv=card_details['cvv'],  # Ne sera pas stocké
+                        card_cvv=card_details['cvv'],  # Will not be stored
                         is_default=False
                     )
                     transaction.payment_method_saved = new_payment_method
@@ -199,17 +199,17 @@ class WalletService:
                     "code": flutterwave_result.get("code")
                 }
 
-            # Mise à jour de la transaction avec les références Flutterwave
+            # Update transaction with Flutterwave references
             transaction.flutterwave_reference = flutterwave_result["reference"]
-            # Utiliser charge_id pour les dépôts (carte ou Orange Money)
+            # Use charge_id for deposits (card or Orange Money)
             transaction.flutterwave_transaction_id = str(flutterwave_result.get("charge_id", ""))
             
-            # Utiliser le statut retourné par Flutterwave s'il est cohérent
+            # Use status returned by Flutterwave if consistent
             flw_status = flutterwave_result.get("status")
             if flw_status == "requires_authorization":
-                transaction.status = 'pending' # En attente d'action user
+                transaction.status = 'pending' # Waiting for user action
             elif flw_status == "successful":
-                transaction.status = 'processing' # Sera finalisé par webhook
+                transaction.status = 'processing' # Will be finalized by webhook
             else:
                 transaction.status = 'processing'
                 
@@ -227,7 +227,7 @@ class WalletService:
             return {
                 "success": True,
                 "transaction": transaction,
-                "payment_link": flutterwave_result.get("payment_link"),  # Peut ne pas exister pour Orange Money
+                "payment_link": flutterwave_result.get("payment_link"),  # May not exist for Orange Money
                 "reference": flutterwave_result["reference"],
                 "amount": amount,
                 "fee": fee_amount,
@@ -239,60 +239,60 @@ class WalletService:
     def initiate_withdrawal(user, amount, payment_method, account_details, request_meta=None,
                            payment_method_id=None, save_payment_method=False, payment_method_label=None):
         """
-        Initie un retrait du wallet
+        Initiates a withdrawal from the wallet.
 
         Args:
-            user: Instance User
-            amount: Montant dans la devise du wallet
-            payment_method: 'card' (compte bancaire) ou 'orange_money'
-            account_details: Détails du compte destinataire (requis si pas de payment_method_id)
-            request_meta: Métadonnées de la requête
-            payment_method_id: ID d'une méthode de paiement sauvegardée (optionnel)
-            save_payment_method: Sauvegarder cette méthode pour usage futur
-            payment_method_label: Nom pour la méthode sauvegardée
+            user: User instance
+            amount: Amount in wallet currency
+            payment_method: 'card' (bank account) or 'orange_money'
+            account_details: Recipient account details (required if no payment_method_id)
+            request_meta: Request metadata
+            payment_method_id: ID of a saved payment method (optional)
+            save_payment_method: Save this method for future use
+            payment_method_label: Name for the saved method
 
         Returns:
-            dict: Résultat de l'opération
+            dict: Result of the operation
         """
-        # Vérification KYC
+        # KYC Verification
         if user.kyc_status != 'verified':
             return {
                 "success": False,
-                "error": "Vérification d'identité requise avant les retraits",
+                "error": "Identity verification required before withdrawals",
                 "code": "kyc_required"
             }
 
-        # Utiliser Decimal pour la précision absolue
+        # Use Decimal for absolute precision
         amount_dec = Decimal(str(amount))
 
         with db_transaction.atomic():
-            # VERROUILLAGE PHYSIQUE (Pessimistic Locking)
+            # PHYSICAL LOCKING (Pessimistic Locking)
             wallet = Wallet.objects.select_for_update().get(user=user)
 
-            # Validation du montant selon la devise
+            # Amount validation per currency
             if not WalletService._validate_amount_for_currency(amount_dec, wallet.currency):
                 return {
                     "success": False,
-                    "error": f"Montant invalide pour la devise {wallet.currency}",
+                    "error": f"Invalid amount for currency {wallet.currency}",
                     "code": "invalid_amount"
                 }
 
-            # Calcul des frais selon la devise
+            # Calculate fees based on currency
             fee_amount = WalletService._calculate_withdrawal_fee(amount_dec, payment_method, wallet.currency)
 
-            # Vérification du solde rigoureuse sous verrou
+            # Rigorous balance check under lock
             total_deduct = amount_dec + fee_amount
             if wallet.balance_cents < int(total_deduct * 100):
                 return {
                     "success": False,
-                    "error": "Solde insuffisant pour couvrir les frais",
+                    "error": "Insufficient balance to cover fees",
                     "code": "insufficient_balance_with_fees",
                     "available_balance": wallet.balance,
                     "required_amount": total_deduct,
                     "currency": wallet.currency
                 }
 
-            # Gestion de la méthode de paiement sauvegardée
+            # Handle saved payment method
             saved_payment_method = None
             if payment_method_id:
                 try:
@@ -300,7 +300,7 @@ class WalletService:
                     saved_payment_method = payment_method_service.get_payment_method(
                         user, payment_method_id, method_type=method_type
                     )
-                    # Construire account_details à partir de la méthode sauvegardée
+                    # Build account_details from saved method
                     if payment_method == 'card':
                         account_details = {
                             'account_number': saved_payment_method.account_number,
@@ -317,11 +317,11 @@ class WalletService:
                 except (PaymentMethod.DoesNotExist, ValueError) as e:
                     return {
                         "success": False,
-                        "error": f"Méthode de paiement non trouvée ou invalide: {str(e)}",
+                        "error": f"Payment method not found or invalid: {str(e)}",
                         "code": "payment_method_not_found"
                     }
 
-            # Création de la transaction
+            # Transaction creation
             transaction = Transaction.objects.create(
                 wallet=wallet,
                 transaction_type='withdrawal',
@@ -335,11 +335,11 @@ class WalletService:
                 status='pending'
             )
 
-            # PROTECTION: Débit immédiat du solde pour éviter les duplications (Race Condition)
+            # PROTECTION: Immediate balance debit to avoid duplications (Race Condition)
             wallet.subtract_balance(total_deduct)
             transaction.balance_adjusted = True
 
-            # Stockage des détails de paiement
+            # Store payment details
             if payment_method == 'card':
                 transaction.card_last_four = account_details.get('account_number', '')[-4:] if account_details.get('account_number') else None
             elif payment_method == 'orange_money':
@@ -347,13 +347,13 @@ class WalletService:
 
             transaction.save()
             
-            # Sauvegarder la méthode de paiement si demandé
+            # Save payment method if requested
             if save_payment_method and not saved_payment_method:
                 try:
                     if payment_method == 'card':
                         new_payment_method = payment_method_service.create_bank_account_payment_method(
                             user=user,
-                            label=payment_method_label or f"Compte {account_details.get('account_number', '')[-4:]}",
+                            label=payment_method_label or f"Account {account_details.get('account_number', '')[-4:]}",
                             account_number=account_details.get('account_number'),
                             bank_code=account_details.get('bank_code'),
                             account_name=account_details.get('account_name'),
@@ -364,7 +364,7 @@ class WalletService:
                     elif payment_method == 'orange_money':
                         new_payment_method = payment_method_service.create_orange_money_payment_method(
                             user=user,
-                            label=payment_method_label or "Mon Orange Money",
+                            label=payment_method_label or "My Orange Money",
                             orange_money_number=account_details.get('phone_number'),
                             is_default=False
                         )
@@ -373,11 +373,11 @@ class WalletService:
                 except Exception as e:
                     logger.exception("failed_to_save_payment_method", user_id=str(user.id))
 
-        # APPEL FLUTTERWAVE (Hors verrou DB pour éviter de bloquer la ligne trop longtemps)
-        # Préparer recipient_details selon le format attendu par Flutterwave
+        # FLUTTERWAVE CALL (Outside DB lock to avoid blocking the row too long)
+        # Prepare recipient_details according to Flutterwave format
         recipient_details = None
         if payment_method == 'card':
-            # Retrait vers compte bancaire
+            # Withdrawal to bank account
             recipient_details = {
                 "account_number": account_details.get('account_number'),
                 "bank_code": account_details.get('bank_code'),
@@ -387,10 +387,10 @@ class WalletService:
             if account_details.get('bank_country'):
                 recipient_details["bank_country"] = account_details['bank_country']
         elif payment_method == 'orange_money':
-            # Extraction du numéro national et du code pays séparément
-            # On prend soit le msisdn complet soit orange_money_number
+            # Extract national number and country code separately
+            # Use either full msisdn or orange_money_number
             full_phone = account_details.get('phone_number') or user.full_phone_number
-            # On réuitilise la même logique que pour le dépôt pour plus de sécurité
+            # Reuse same logic as deposit for safety
             from Accounts.utils import AuthUtils
             country_code, national_phone = AuthUtils.parse_phone_number(full_phone)
             
@@ -401,14 +401,14 @@ class WalletService:
             }
         
         flutterwave_result = flutterwave_service.initiate_withdrawal(
-            amount=float(amount_dec),  # Utilisation du Decimal converti
+            amount=float(amount_dec),  # Conversion to float from Decimal
             payment_method=payment_method,
             recipient_details=recipient_details,
             narration=f"Wallet withdrawal - Transaction {transaction.id.hex[:8]}"
         )
 
         if not flutterwave_result["success"]:
-            # RESTAURER LE SOLDE en cas d'échec immédiat
+            # RESTORE BALANCE on immediate failure
             wallet.add_balance(total_deduct)
             transaction.balance_adjusted = False
             
@@ -422,9 +422,9 @@ class WalletService:
                 "code": flutterwave_result.get("code")
             }
 
-        # Mise à jour de la transaction
+        # Update transaction
         transaction.flutterwave_reference = flutterwave_result["reference"]
-        # Utiliser charge_id pour les dépôts (carte ou Orange Money)
+        # Use charge_id for deposits (card or Orange Money)
         transaction.flutterwave_transaction_id = str(flutterwave_result.get("charge_id", ""))
         transaction.status = 'processing'
         transaction.save()
@@ -451,19 +451,19 @@ class WalletService:
     @staticmethod
     def process_webhook(flutterwave_data):
         """
-        Traite un webhook Flutterwave avec vérification d'idempotence
+        Processes a Flutterwave webhook with idempotency check.
 
         Args:
-            flutterwave_data: Données du webhook
+            flutterwave_data: Webhook data
 
         Returns:
-            dict: Résultat du traitement
+            dict: Processing result
         """
         event_type = flutterwave_data.get("event")
         data = flutterwave_data.get("data", {})
-        event_id = flutterwave_data.get("id")  # ID unique de l'événement webhook
+        event_id = flutterwave_data.get("id")  # Unique webhook event ID
         
-        # IDEMPOTENCE: Vérifier si cet événement a déjà été traité
+        # IDEMPOTENCY: Check if this event has already been processed
         if event_id:
             existing_transaction = Transaction.objects.filter(
                 flutterwave_event_id=event_id
@@ -478,7 +478,7 @@ class WalletService:
                 )
                 return {
                     "success": True, 
-                    "message": "Événement déjà traité (idempotence)",
+                    "message": "Event already processed (idempotency)",
                     "transaction_id": str(existing_transaction.id)
                 }
 
@@ -488,11 +488,11 @@ class WalletService:
             return WalletService._process_transfer_webhook(data, event_id)
         else:
             logger.info("webhook_ignored", event_type=event_type)
-            return {"success": True, "message": "Event ignoré"}
+            return {"success": True, "message": "Event ignored"}
 
     @staticmethod
     def _process_payment_webhook(data, event_id=None):
-        """Traite un webhook de paiement (dépôt)"""
+        """Processes a payment webhook (deposit)"""
         tx_ref = data.get("tx_ref")
         status = data.get("status")
         flutterwave_id = str(data.get("id"))
@@ -504,7 +504,7 @@ class WalletService:
             )
 
             if status == "successful":
-                # Stocker l'event_id pour idempotence
+                # Store event_id for idempotency
                 if event_id and not transaction.flutterwave_event_id:
                     transaction.flutterwave_event_id = event_id
                     transaction.save(update_fields=['flutterwave_event_id'])
@@ -517,32 +517,32 @@ class WalletService:
                     event_id=event_id
                 )
                 
-                # Notification de dépôt
+                # Deposit notification
                 from Notifications.services import NotificationService
                 NotificationService.send(
                     user=transaction.wallet.user,
-                    title="Dépôt reçu",
-                    body=f"Votre dépôt de {transaction.amount_euros} {transaction.currency} a été confirmé.",
+                    title="Deposit received",
+                    body=f"Your deposit of {transaction.amount_euros} {transaction.currency} has been confirmed.",
                     notification_type='transaction',
                     data={'transaction_id': str(transaction.id)},
                     channels=['push', 'email']
                 )
 
-                return {"success": True, "message": "Dépôt traité avec succès"}
+                return {"success": True, "message": "Deposit processed successfully"}
             else:
                 transaction.mark_failed(
                     error_message=f"Payment {status}",
                     error_code="payment_failed"
                 )
-                return {"success": True, "message": "Échec du dépôt enregistré"}
+                return {"success": True, "message": "Deposit failure recorded"}
 
         except Transaction.DoesNotExist:
             logger.warning("webhook_transaction_not_found", tx_ref=tx_ref)
-            return {"success": False, "error": "Transaction non trouvée"}
+            return {"success": False, "error": "Transaction not found"}
 
     @staticmethod
     def _process_transfer_webhook(data, event_id=None):
-        """Traite un webhook de transfert (retrait)"""
+        """Processes a transfer webhook (withdrawal)"""
         reference = data.get("reference")
         status = data.get("status")
 
@@ -553,24 +553,24 @@ class WalletService:
             )
 
             if status == "successful":
-                # Stocker l'event_id pour idempotence
+                # Store event_id for idempotency
                 if event_id and not transaction.flutterwave_event_id:
                     transaction.flutterwave_event_id = event_id
                 
                 transaction.mark_completed()
                 
-                # Sauvegarder les informations supplémentaires
+                # Save additional information
                 proof = data.get("payment_information", {}).get("proof")
                 if proof:
                     transaction.transfer_proof = proof
                 
-                # Construire extra_data avec les infos pertinentes
+                # Build extra_data with relevant info
                 extra_info = {
                     "bank": data.get("bank"),
                     "debit_information": data.get("debit_information"),
                     "webhook_meta": data.get("meta")
                 }
-                # Mettre à jour extra_data sans écraser l'existant si possible
+                # Update extra_data without overwriting if possible
                 if transaction.extra_data:
                     transaction.extra_data.update(extra_info)
                 else:
@@ -587,20 +587,20 @@ class WalletService:
                 )
 
 
-                # Notification de retrait
+                # Withdrawal notification
                 from Notifications.services import NotificationService
                 NotificationService.send(
                     user=transaction.wallet.user,
-                    title="Retrait confirmé",
-                    body=f"Votre retrait de {transaction.amount_euros} {transaction.currency} a été envoyé avec succès.",
+                    title="Withdrawal confirmed",
+                    body=f"Your withdrawal of {transaction.amount_euros} {transaction.currency} has been sent successfully.",
                     notification_type='transaction',
                     data={'transaction_id': str(transaction.id)},
                     channels=['push', 'email']
                 )
 
-                return {"success": True, "message": "Retrait traité avec succès"}
+                return {"success": True, "message": "Withdrawal processed successfully"}
             else:
-                # REMBOURSER LE SOLDE en cas d'échec du transfert
+                # REFUND BALANCE on transfer failure
                 if transaction.balance_adjusted:
                     total_to_refund = (Decimal(transaction.amount_cents) + Decimal(transaction.fee_cents)) / 100
                     transaction.wallet.add_balance(total_to_refund)
@@ -610,54 +610,54 @@ class WalletService:
                     error_message=f"Transfer {status}",
                     error_code="transfer_failed"
                 )
-                return {"success": True, "message": "Échec du retrait enregistré et solde remboursé"}
+                return {"success": True, "message": "Withdrawal failure recorded and balance refunded"}
 
         except Transaction.DoesNotExist:
             logger.warning("webhook_transfer_not_found", reference=reference)
-            return {"success": False, "error": "Transaction non trouvée"}
+            return {"success": False, "error": "Transaction not found"}
 
     @staticmethod
     def _validate_amount_for_currency(amount, currency):
         """
-        Valide le montant selon les règles de la devise
+        Validates amount according to currency rules.
 
         Args:
-            amount: Montant à valider
-            currency: Code devise
+            amount: Amount to validate
+            currency: Currency code
 
         Returns:
-            bool: True si valide
+            bool: True if valid
         """
         if amount <= 0:
             return False
 
-        # Règles spécifiques selon la devise
+        # Specific rules per currency
         if currency == 'EUR':
             return amount <= 10000  # Max 10,000€
-        elif currency in ['XAF', 'XOF']:  # Franc CFA
+        elif currency in ['XAF', 'XOF']:  # CFA Franc
             return amount <= 5000000  # Max 5M FCFA
         elif currency == 'NGN':
             return amount <= 5000000  # Max 5M NGN
         elif currency in ['GHS', 'KES', 'ZAR']:
-            return amount <= 100000  # Max 100k dans ces devises
+            return amount <= 100000  # Max 100k in these currencies
         else:
-            return amount <= 10000  # Défaut
+            return amount <= 10000  # Default
 
     @staticmethod
     def _calculate_deposit_fee(amount, payment_method, currency):
         """
-        Calcule les frais de dépôt selon la méthode et la devise
+        Calculates deposit fees based on method and currency.
 
         Args:
-            amount: Montant du dépôt
-            payment_method: 'card' ou 'orange_money'
-            currency: Code devise
+            amount: Deposit amount
+            payment_method: 'card' or 'orange_money'
+            currency: Currency code
 
         Returns:
-            Decimal: Montant des frais
+            Decimal: Fee amount
         """
         if payment_method == 'card':
-            # Frais pour carte : 2.9% + frais fixes selon devise
+            # Card fee: 2.9% + fixed fee per currency
             fee_rate = Decimal('0.029')
             if currency == 'EUR':
                 fixed_fee = Decimal('0.25')
@@ -666,9 +666,9 @@ class WalletService:
             elif currency == 'NGN':
                 fixed_fee = Decimal('100')  # 100 NGN
             else:
-                fixed_fee = Decimal('1')  # 1 unité par défaut
+                fixed_fee = Decimal('1')  # 1 unit by default
         else:  # orange_money
-            # Frais pour mobile money : 5%
+            # Mobile money fee: 5%
             fee_rate = Decimal('0.05')
             fixed_fee = Decimal('0')
 
@@ -677,18 +677,18 @@ class WalletService:
     @staticmethod
     def _calculate_withdrawal_fee(amount, payment_method, currency):
         """
-        Calcule les frais de retrait selon la méthode et la devise
+        Calculates withdrawal fees based on method and currency.
 
         Args:
-            amount: Montant du retrait
-            payment_method: 'card' ou 'orange_money'
-            currency: Code devise
+            amount: Withdrawal amount
+            payment_method: 'card' or 'orange_money'
+            currency: Currency code
 
         Returns:
-            Decimal: Montant des frais
+            Decimal: Fee amount
         """
         if payment_method == 'card':
-            # Frais pour carte : 3% + frais fixes
+            # Card fee: 3% + fixed fee
             fee_rate = Decimal('0.03')
             if currency == 'EUR':
                 fixed_fee = Decimal('0.50')
@@ -697,9 +697,9 @@ class WalletService:
             elif currency == 'NGN':
                 fixed_fee = Decimal('200')  # 200 NGN
             else:
-                fixed_fee = Decimal('2')  # 2 unités par défaut
+                fixed_fee = Decimal('2')  # 2 units by default
         else:  # orange_money
-            # Frais pour mobile money : 6%
+            # Mobile money fee: 6%
             fee_rate = Decimal('0.06')
             fixed_fee = Decimal('0')
 
@@ -707,7 +707,7 @@ class WalletService:
 
     @staticmethod
     def _get_currency_symbol(currency):
-        """Retourne le symbole de la devise"""
+        """Returns the currency symbol"""
         symbols = {
             'EUR': '€',
             'XAF': 'FCFA',
@@ -727,39 +727,39 @@ class WalletService:
 
     @staticmethod
     def _get_currency_name(currency):
-        """Retourne le nom complet de la devise"""
+        """Returns the full currency name"""
         names = {
             'EUR': 'Euro',
-            'XAF': 'Franc CFA (CEMAC)',
-            'XOF': 'Franc CFA (BCEAO)',
-            'NGN': 'Naira Nigérian',
-            'GHS': 'Cedi Ghanéen',
-            'KES': 'Shilling Kényan',
-            'ZAR': 'Rand Sud-Africain',
-            'TZS': 'Shilling Tanzanien',
-            'UGX': 'Shilling Ougandais',
-            'RWF': 'Franc Rwandais',
-            'BIF': 'Franc Burundais',
-            'ZMW': 'Kwacha Zambien',
-            'ZWD': 'Dollar Zimbabwéen',
+            'XAF': 'CFA Franc (CEMAC)',
+            'XOF': 'CFA Franc (BCEAO)',
+            'NGN': 'Nigerian Naira',
+            'GHS': 'Ghanaian Cedi',
+            'KES': 'Kenyan Shilling',
+            'ZAR': 'South African Rand',
+            'TZS': 'Tanzanian Shilling',
+            'UGX': 'Ugandan Shilling',
+            'RWF': 'Rwandan Franc',
+            'BIF': 'Burundian Franc',
+            'ZMW': 'Zambian Kwacha',
+            'ZWD': 'Zimbabwean Dollar',
         }
         return names.get(currency, currency)
 
     @staticmethod
     def confirm_deposit(user, transaction_id, confirmation_data=None):
         """
-        Confirme un dépôt
+        Confirms a deposit.
 
         Args:
-            user: Instance User
-            transaction_id: UUID de la transaction
-            confirmation_data: Données de confirmation
+            user: User instance
+            transaction_id: Transaction UUID
+            confirmation_data: Confirmation data
 
         Returns:
-            dict: Résultat de l'opération
+            dict: Result of the operation
         """
         try:
-            # Récupération de la transaction (globale pour staff, scopée au wallet pour user normal)
+            # Transaction retrieval (global for staff, scoped to wallet for normal user)
             if user.is_staff or user.is_superuser:
                 transaction = Transaction.objects.get(
                     id=transaction_id,
@@ -772,24 +772,24 @@ class WalletService:
                     transaction_type='deposit'
                 )
 
-            # Vérification du statut
+            # Status check
             if transaction.status not in ['pending', 'processing']:
                 return {
                     "success": False,
-                    "error": f"Impossible de confirmer un dépôt {transaction.get_status_display()}",
+                    "error": f"Cannot confirm a {transaction.get_status_display()} deposit",
                     "code": "invalid_status"
                 }
 
             with db_transaction.atomic():
-                # Calculer le montant à créditer
+                # Calculate amount to credit
                 amount_to_credit = Decimal(str(transaction.amount_cents)) / Decimal('100')
 
-                # Marquer la transaction comme terminée (cela crédite automatiquement le wallet)
+                # Mark transaction as completed (this automatically credits the wallet)
                 transaction.mark_completed()
                 transaction.completed_at = timezone.now()
                 transaction.save()
 
-                # Rafraîchir le wallet pour obtenir le solde à jour
+                # Refresh wallet to get updated balance
                 transaction.wallet.refresh_from_db()
 
                 logger.info(
@@ -810,50 +810,50 @@ class WalletService:
         except Transaction.DoesNotExist:
             return {
                 "success": False,
-                "error": "Transaction non trouvée",
+                "error": "Transaction not found",
                 "code": "transaction_not_found"
             }
         except Exception as e:
             logger.error("deposit_confirmation_error", error=str(e), transaction_id=str(transaction_id))
             return {
                 "success": False,
-                "error": "Erreur lors de la confirmation",
+                "error": "Error during confirmation",
                 "code": "confirmation_error"
             }
 
     @staticmethod
     def cancel_deposit(user, transaction_id, cancellation_data):
         """
-        Annule un dépôt
+        Cancels a deposit.
 
         Args:
-            user: Instance User
-            transaction_id: UUID de la transaction
-            cancellation_data: Données d'annulation
+            user: User instance
+            transaction_id: Transaction UUID
+            cancellation_data: Cancellation data
 
         Returns:
-            dict: Résultat de l'opération
+            dict: Result of the operation
         """
         try:
-            # Récupération du wallet
+            # Retrieve wallet
             wallet = WalletService.get_or_create_wallet(user)
 
-            # Récupération de la transaction
+            # Retrieve transaction
             transaction = wallet.transactions.get(
                 id=transaction_id,
                 transaction_type='deposit'
             )
 
-            # Vérification du statut
+            # Status check
             if transaction.status not in ['pending', 'processing']:
                 return {
                     "success": False,
-                    "error": f"Impossible d'annuler un dépôt {transaction.get_status_display()}",
+                    "error": f"Cannot cancel a {transaction.get_status_display()} deposit",
                     "code": "invalid_status"
                 }
 
             with db_transaction.atomic():
-                # Annuler la transaction
+                # Cancel the transaction
                 transaction.mark_cancelled(
                     reason=cancellation_data.get("reason"),
                     notes=cancellation_data.get("notes")
@@ -869,38 +869,38 @@ class WalletService:
                 return {
                     "success": True,
                     "transaction": transaction,
-                    "refund_amount": 0  # Pas de remboursement pour les dépôts annulés
+                    "refund_amount": 0  # No refund for cancelled deposits
                 }
 
         except Transaction.DoesNotExist:
             return {
                 "success": False,
-                "error": "Transaction non trouvée",
+                "error": "Transaction not found",
                 "code": "transaction_not_found"
             }
         except Exception as e:
             logger.exception("deposit_cancellation_error", transaction_id=str(transaction_id))
             return {
                 "success": False,
-                "error": "Erreur lors de l'annulation",
+                "error": "Error during cancellation",
                 "code": "cancellation_error"
             }
 
     @staticmethod
     def confirm_withdrawal(user, transaction_id, confirmation_data=None):
         """
-        Confirme un retrait
+        Confirms a withdrawal.
 
         Args:
-            user: Instance User
-            transaction_id: UUID de la transaction
-            confirmation_data: Données de confirmation
+            user: User instance
+            transaction_id: Transaction UUID
+            confirmation_data: Confirmation data
 
         Returns:
-            dict: Résultat de l'opération
+            dict: Result of the operation
         """
         try:
-            # Récupération de la transaction (globale pour staff, scopée au wallet pour user normal)
+            # Transaction retrieval (global for staff, scoped to wallet for normal user)
             if user.is_staff or user.is_superuser:
                 transaction = Transaction.objects.get(
                     id=transaction_id,
@@ -913,15 +913,15 @@ class WalletService:
                     transaction_type='withdrawal'
                 )
 
-            # Vérification du statut
+            # Status check
             if transaction.status not in ['pending', 'processing']:
                 return {
                     "success": False,
-                    "error": f"Impossible de confirmer un retrait {transaction.get_status_display()}",
+                    "error": f"Cannot confirm a {transaction.get_status_display()} withdrawal",
                     "code": "invalid_status"
                 }
 
-            # Marquer comme terminé (le débit a déjà été fait à l'initiation)
+            # Mark as completed (debit was already done at initiation)
             with db_transaction.atomic():
                 transaction.status = 'completed'
                 transaction.completed_at = timezone.now()
@@ -945,56 +945,56 @@ class WalletService:
         except Transaction.DoesNotExist:
             return {
                 "success": False,
-                "error": "Transaction non trouvée",
+                "error": "Transaction not found",
                 "code": "transaction_not_found"
             }
         except Exception as e:
             logger.exception("withdrawal_confirmation_error", transaction_id=str(transaction_id))
             return {
                 "success": False,
-                "error": "Erreur lors de l'confirmation",
+                "error": "Error during confirmation",
                 "code": "confirmation_error"
             }
 
     @staticmethod
     def cancel_withdrawal(user, transaction_id, cancellation_data):
         """
-        Annule un retrait et rembourse le wallet
+        Cancels a withdrawal and refunds the wallet.
 
         Args:
-            user: Instance User
-            transaction_id: UUID de la transaction
-            cancellation_data: Données d'annulation
+            user: User instance
+            transaction_id: Transaction UUID
+            cancellation_data: Cancellation data
 
         Returns:
-            dict: Résultat de l'opération
+            dict: Result of the operation
         """
         try:
-            # Récupération du wallet
+            # Retrieve wallet
             wallet = WalletService.get_or_create_wallet(user)
 
-            # Récupération de la transaction
+            # Retrieve transaction
             transaction = wallet.transactions.get(
                 id=transaction_id,
                 transaction_type='withdrawal'
             )
 
-            # Vérification du statut
+            # Status check
             if transaction.status not in ['pending', 'processing']:
                 return {
                     "success": False,
-                    "error": f"Impossible d'annuler un retrait {transaction.get_status_display()}",
+                    "error": f"Cannot cancel a {transaction.get_status_display()} withdrawal",
                     "code": "invalid_status"
                 }
 
             with db_transaction.atomic():
-                # Calculer le montant à rembourser (montant + frais)
+                # Calculate amount to refund (amount + fees)
                 total_amount = Decimal(str(transaction.amount_cents + transaction.fee_cents)) / Decimal('100')
 
-                # Rembourser le wallet
+                # Refund the wallet
                 wallet.add_balance(total_amount)
 
-                # Annuler la transaction
+                # Cancel the transaction
                 transaction.mark_cancelled(
                     reason=cancellation_data.get("reason"),
                     notes=cancellation_data.get("notes")
@@ -1019,33 +1019,33 @@ class WalletService:
         except Transaction.DoesNotExist:
             return {
                 "success": False,
-                "error": "Transaction non trouvée",
+                "error": "Transaction not found",
                 "code": "transaction_not_found"
             }
         except Exception as e:
             logger.exception("withdrawal_cancellation_error", transaction_id=str(transaction_id))
             return {
                 "success": False,
-                "error": "Erreur lors de l'annulation",
+                "error": "Error during cancellation",
                 "code": "cancellation_error"
             }
 
     @staticmethod
     def check_transaction_status(transaction):
         """
-        Vérifie le statut d'une transaction auprès de Flutterwave
+        Checks transaction status with Flutterwave.
 
         Args:
-            transaction: Instance Transaction
+            transaction: Transaction instance
 
         Returns:
-            dict: Statut de la transaction
+            dict: Transaction status
         """
         try:
             if not transaction.flutterwave_transaction_id:
                 return {
                     "success": False,
-                    "error": "Transaction Flutterwave ID manquant",
+                    "error": "Flutterwave Transaction ID missing",
                     "code": "missing_flutterwave_id"
                 }
 
@@ -1061,18 +1061,18 @@ class WalletService:
                 )
 
             if result["success"]:
-                # Mapper le statut Flutterwave vers notre statut
+                # Map Flutterwave status to our status
                 flutterwave_status = result.get("flutterwave_status", result.get("status"))
-                mapped_status = result.get("status")  # Déjà mappé par verify_transaction/verify_transfer
+                mapped_status = result.get("status")  # Already mapped by verify_transaction/verify_transfer
                 
-                # Mettre à jour le statut local si nécessaire
+                # Update local status if necessary
                 if mapped_status == "completed" and transaction.status != "completed":
-                    # Transaction réussie côté Flutterwave, on la confirme
+                    # Successful transaction on Flutterwave side, confirm it
                     if transaction.transaction_type == 'deposit':
                         WalletService.confirm_deposit(transaction.wallet.user, transaction.id)
                     else:
                         WalletService.confirm_withdrawal(transaction.wallet.user, transaction.id)
-                    # Rafraîchir la transaction
+                    # Refresh transaction
                     transaction.refresh_from_db()
                 elif mapped_status in ["failed", "cancelled"] and transaction.status not in ["failed", "cancelled"]:
                     transaction.mark_failed(
@@ -1088,40 +1088,40 @@ class WalletService:
                         transaction_id=str(transaction.id))
             return {
                 "success": False,
-                "error": "Erreur lors de la vérification du statut",
+                "error": "Error during status check",
                 "code": "status_check_error"
             }
 
     @staticmethod
     def update_transaction_status(transaction_id, new_status, update_data=None):
         """
-        Met à jour le statut d'une transaction (admin)
+        Updates transaction status (admin).
 
         Args:
-            transaction_id: UUID de la transaction
-            new_status: Nouveau statut
-            update_data: Données supplémentaires
+            transaction_id: Transaction UUID
+            new_status: New status
+            update_data: Additional data
 
         Returns:
-            dict: Résultat de l'opération
+            dict: Result of the operation
         """
         try:
             transaction = Transaction.objects.get(id=transaction_id)
             old_status = transaction.status
 
-            # Validation des transitions de statut
+            # Status transition validation
             valid_transitions = {
                 'pending': ['processing', 'completed', 'failed', 'cancelled'],
                 'processing': ['completed', 'failed', 'cancelled'],
-                'completed': [],  # Ne peut pas changer une fois terminée
-                'failed': ['pending'],  # Peut être relancée
-                'cancelled': ['pending']  # Peut être relancée
+                'completed': [],  # Cannot change once completed
+                'failed': ['pending'],  # Can be restarted
+                'cancelled': ['pending']  # Can be restarted
             }
 
             if new_status not in valid_transitions.get(old_status, []):
                 return {
                     "success": False,
-                    "error": f"Transition de statut invalide: {old_status} -> {new_status}",
+                    "error": f"Invalid status transition: {old_status} -> {new_status}",
                     "code": "invalid_status_transition"
                 }
 
@@ -1135,7 +1135,7 @@ class WalletService:
                     )
                 elif new_status == 'cancelled':
                     transaction.mark_cancelled(
-                        reason=update_data.get("notes", "Annulé manuellement"),
+                        reason=update_data.get("notes", "Manually cancelled"),
                         notes=update_data.get("notes")
                     )
                 else:
@@ -1159,31 +1159,31 @@ class WalletService:
         except Transaction.DoesNotExist:
             return {
                 "success": False,
-                "error": "Transaction non trouvée",
+                "error": "Transaction not found",
                 "code": "transaction_not_found"
             }
         except Exception as e:
             logger.error("transaction_status_update_error", error=str(e), transaction_id=str(transaction_id))
             return {
                 "success": False,
-                "error": "Erreur lors de la mise à jour du statut",
+                "error": "Error during status update",
                 "code": "status_update_error"
             }
 
     @staticmethod
     def get_wallet_statistics():
         """
-        Retourne les statistiques globales des wallets
+        Returns global wallet statistics.
 
         Returns:
-            dict: Statistiques
+            dict: Statistics
         """
         try:
             total_wallets = Wallet.objects.count()
             total_balance = Wallet.objects.aggregate(
                 total=Sum('balance_cents')
             )['total'] or 0
-            # Convertir de centimes en unités
+            # Convert from cents to units
             total_balance = total_balance / 100 if total_balance else 0
 
             transactions_stats = Transaction.objects.aggregate(
@@ -1197,7 +1197,7 @@ class WalletService:
                 total_fees=Sum('fee_cents', filter=Q(status='completed')) or 0
             )
 
-            # Volume par devise
+            # Volume by currency
             volume_by_currency = {}
             for currency_data in Transaction.objects.filter(status='completed').values('currency').annotate(
                 volume=Sum('amount_cents'),
@@ -1205,7 +1205,7 @@ class WalletService:
             ):
                 currency = currency_data['currency']
                 volume_by_currency[currency] = {
-                    'volume': currency_data['volume'] / 100,  # Convertir en unités
+                    'volume': currency_data['volume'] / 100,  # Convert to units
                     'count': currency_data['count']
                 }
 
@@ -1229,10 +1229,10 @@ class WalletService:
         except Exception as e:
             logger.error("wallet_statistics_error", error=str(e))
             return {
-                "error": "Erreur lors de la génération des statistiques",
+                "error": "Error during statistics generation",
                 "generated_at": timezone.now().isoformat()
             }
 
 
-# Instance globale du service
+# Global service instance
 wallet_service = WalletService()

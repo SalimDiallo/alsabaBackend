@@ -270,3 +270,66 @@ class KYCDocument(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.get_document_type_display()} ({self.get_verification_status_display()})"
+
+
+class WebhookAuditLog(models.Model):
+    """
+    Audit trail pour tous les webhooks Didit reçus
+    Permet le monitoring, debugging et analyse de sécurité
+    """
+    WEBHOOK_STATUS_CHOICES = (
+        ('received', 'Reçu'),
+        ('signature_invalid', 'Signature Invalide'),
+        ('processed', 'Traité avec succès'),
+        ('failed', 'Échec de traitement'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Identifiants
+    request_id = models.CharField(max_length=100, db_index=True, help_text="request_id de Didit")
+    didit_status = models.CharField(max_length=50, blank=True, help_text="Statut KYC (Approved, Declined, Pending)")
+    
+    # Métadonnées de la requête
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    payload_size = models.IntegerField(help_text="Taille du payload en bytes")
+    
+    # Vérification de signature
+    signature_valid = models.BooleanField(default=False)
+    signature_received = models.CharField(max_length=100, blank=True, help_text="Premiers caractères de la signature")
+    
+    # Traitement
+    webhook_status = models.CharField(max_length=20, choices=WEBHOOK_STATUS_CHOICES, default='received')
+    processing_duration_ms = models.IntegerField(null=True, blank=True, help_text="Durée de traitement en millisecondes")
+    
+    # Résultat
+    user = models.ForeignKey(
+        'User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='webhook_logs',
+        help_text="Utilisateur concerné (si trouvé)"
+    )
+    error_message = models.TextField(blank=True)
+    
+    # Payload complet (pour debugging)
+    raw_payload = models.JSONField(default=dict, help_text="Payload webhook complet")
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "webhook_audit_logs"
+        verbose_name = "Webhook Audit Log"
+        verbose_name_plural = "Webhook Audit Logs"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['request_id']),
+            models.Index(fields=['webhook_status', 'created_at']),
+            models.Index(fields=['signature_valid', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"Webhook {self.request_id} - {self.get_webhook_status_display()} ({self.created_at})"

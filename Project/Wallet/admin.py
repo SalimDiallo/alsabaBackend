@@ -12,7 +12,7 @@ class WalletAdmin(admin.ModelAdmin):
     def balance(self, obj):
         symbol = self._get_currency_symbol(obj.currency)
         return f"{obj.balance} {symbol}"
-    balance.short_description = "Solde"
+    balance.short_description = "Balance"
 
     def _get_currency_symbol(self, currency):
         symbols = {
@@ -43,16 +43,16 @@ class TransactionAdmin(admin.ModelAdmin):
     def amount_euros(self, obj):
         symbol = self._get_currency_symbol(obj.currency)
         return f"{obj.amount_euros} {symbol}"
-    amount_euros.short_description = "Montant"
+    amount_euros.short_description = "Amount"
 
     def fee_euros(self, obj):
         symbol = self._get_currency_symbol(obj.currency)
         return f"{obj.fee_euros} {symbol}"
-    fee_euros.short_description = "Frais"
+    fee_euros.short_description = "Fees"
 
     def wallet_user(self, obj):
         return obj.wallet.user.full_phone_number
-    wallet_user.short_description = "Utilisateur"
+    wallet_user.short_description = "User"
 
     def _get_currency_symbol(self, currency):
         symbols = {
