@@ -7,17 +7,17 @@ logger = structlog.get_logger(__name__)
 
 class ExchangeRateService:
     """
-    Service pour récupérer les taux de change en temps réel.
-    Utilise Redis pour mettre en cache les taux afin de limiter les appels API.
+    Service for retrieving real-time exchange rates.
+    Uses Redis to cache rates to limit API calls.
     """
     
     CACHE_KEY_PREFIX = "exchange_rates_"
-    CACHE_TIMEOUT = 3600  # Mise en cache pendant 1 heure (3600s)
+    CACHE_TIMEOUT = 3600  # Caching for 1 hour (3600s)
 
     @classmethod
     def get_rates(cls, base_currency="MAD"):
         """
-        Récupère les taux de change pour une devise de base donnée.
+        Retrieves exchange rates for a given base currency.
         """
         cache_key = f"{cls.CACHE_KEY_PREFIX}{base_currency}"
         rates = cache.get(cache_key)
@@ -32,7 +32,7 @@ class ExchangeRateService:
     @classmethod
     def fetch_and_cache_rates(cls, base_currency="MAD"):
         """
-        Appelle l'API externe et stocke le résultat dans le cache.
+        Calls the external API and stores the result in the cache.
         """
         api_key = getattr(settings, 'EXCHANGERATE_API_KEY', None)
         base_url = getattr(settings, 'EXCHANGERATE_BASE_URL', "https://v6.exchangerate-api.com/v6/")
@@ -50,7 +50,7 @@ class ExchangeRateService:
 
             if data.get("result") == "success":
                 rates = data.get("conversion_rates")
-                # Mise en cache
+                # Caching
                 cache_key = f"{cls.CACHE_KEY_PREFIX}{base_currency}"
                 cache.set(cache_key, rates, cls.CACHE_TIMEOUT)
                 logger.info("exchange_rates_updated", base=base_currency, count=len(rates))
@@ -66,7 +66,7 @@ class ExchangeRateService:
     @classmethod
     def convert(cls, amount, from_currency, to_currency):
         """
-        Convertit un montant d'une devise à une autre.
+        Converts an amount from one currency to another.
         """
         if from_currency == to_currency:
             return amount
@@ -81,7 +81,7 @@ class ExchangeRateService:
     @classmethod
     def get_rate(cls, from_currency, to_currency):
         """
-        Récupère le taux spécifique entre deux devises.
+        Retrieves the specific rate between two currencies.
         """
         rates = cls.get_rates(from_currency)
         if rates:

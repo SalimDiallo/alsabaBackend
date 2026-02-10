@@ -110,6 +110,11 @@ services:
       - DATABASE_PORT=5432
       - REDIS_BROKER_URL=redis://redis:6379/0
       - REDIS_BACKEND_URL=redis://redis:6379/0
+      # Sentry Config
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - SENTRY_FORCED=${SENTRY_FORCED:-False}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-alsaba@1.0.0}
     # Commande pour lancer le worker
     command: celery -A Project worker -l info
     volumes:
@@ -143,6 +148,11 @@ services:
       - DATABASE_PORT=5432
       - REDIS_BROKER_URL=redis://redis:6379/0
       - REDIS_BACKEND_URL=redis://redis:6379/0
+      # Sentry Config
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - SENTRY_FORCED=${SENTRY_FORCED:-False}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-alsaba@1.0.0}
     # Commande pour lancer le scheduler
     command: celery -A Project beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
@@ -188,12 +198,44 @@ services:
     networks:
       - alsaba_network
 
+  # Service de backup PostgreSQL automatisé
+  backup:
+    build:
+      context: ./docker/backup
+      dockerfile: Dockerfile.backup
+    container_name: alsaba_backup
+    restart: unless-stopped
+    environment:
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - BACKUP_DIR=/backups
+      - BACKUP_RETENTION_DAYS=30
+      - SENTRY_DSN=${SENTRY_DSN}
+      - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL}
+    volumes:
+      - backup_data:/backups
+      - ./docker/backup:/scripts:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - alsaba_network
+    healthcheck:
+      test: [ "CMD", "test", "-f", "/backups/last_backup.json" ]
+      interval: 1h
+      timeout: 10s
+      retries: 3
+
 volumes:
   postgres_data:
   redis_data:
   static_volume:
   media_volume:
   pgadmin_data:
+  backup_data:
 
 
 networks:

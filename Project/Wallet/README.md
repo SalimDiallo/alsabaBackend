@@ -1,43 +1,43 @@
-# Wallet App - Guide de Test des Endpoints
+# Wallet App - Endpoint Testing Guide
 
-Ce module gère les fonds, les dépôts et les retraits via Flutterwave.
+This module manages funds, deposits, and withdrawals via Flutterwave.
 
-## 1. Informations Portefeuille
+## 1. Wallet Information
 
-### Consulter le solde
-*   **Endpoint** : `GET /api/wallet/`
-*   **Header** : `Authorization: Bearer <votre_token>`
-*   **Réponse** : Solde actuel, devise, etc.
+### Check balance
+*   **Endpoint**: `GET /api/wallet/`
+*   **Header**: `Authorization: Bearer <your_token>`
+*   **Response**: Current balance, currency, etc.
 
 ---
 
-## 2. Dépôt (Deposit)
+## 2. Deposit
 
-Pour ajouter des fonds via Mobile Money ou Carte.
+To add funds via Mobile Money or Card.
 
-### Initier un dépôt
-*   **Endpoint** : `POST /api/wallet/deposit/`
-*   **Body** :
+### Initiate a deposit
+*   **Endpoint**: `POST /api/wallet/deposit/`
+*   **Body**:
     ```json
     {
         "amount": 5000,
-        "currency": "XOF",  // ou EUR, USD...
-        "payment_method": "mobile_money", // ou "card"
-        "phone_number": "0612345678" // Requis pour Mobile Money
+        "currency": "XOF",  // or EUR, USD...
+        "payment_method": "mobile_money", // or "card"
+        "phone_number": "0612345678" // Required for Mobile Money
     }
     ```
-*   **Réponse** : Un lien de paiement Flutterwave (`payment_link`) ou une instruction.
+*   **Response**: A Flutterwave payment link (`payment_link`) or an instruction.
 
-### Simulation Webhook (Callback)
-Pour valider le dépôt en local sans payer réellement (si en mode test).
-*   **Endpoint** : `POST /api/wallet/webhook/`
-*   **Body (Exemple Flutterwave)** :
+### Webhook Simulation (Callback)
+To validate the deposit locally without actually paying (if in test mode).
+*   **Endpoint**: `POST /api/wallet/webhook/`
+*   **Body (Flutterwave Example)**:
     ```json
     {
         "event": "charge.completed",
         "data": {
             "id": 123456,
-            "tx_ref": "TX_...", // Le tx_ref retourné à l'initiation
+            "tx_ref": "TX_...", // The tx_ref returned at initiation
             "flw_ref": "FLW_...",
             "amount": 5000,
             "currency": "XOF",
@@ -48,33 +48,33 @@ Pour valider le dépôt en local sans payer réellement (si en mode test).
 
 ---
 
-## 3. Retrait (Withdrawal)
+## 3. Withdrawal
 
-Pour récupérer des fonds vers un compte bancaire ou Mobile Money.
+To retrieve funds to a bank account or Mobile Money.
 
-### Demander un retrait
-*   **Endpoint** : `POST /api/wallet/withdraw/`
-*   **Body** :
+### Request a withdrawal
+*   **Endpoint**: `POST /api/wallet/withdraw/`
+*   **Body**:
     ```json
     {
         "amount": 1000,
         "currency": "XOF",
         "beneficiary_account": "0612345678",
-        "beneficiary_bank": "ORANGE_MONEY" // Code banque/opérateur
+        "beneficiary_bank": "ORANGE_MONEY" // Bank/operator code
     }
     ```
 
-### Confirmer le retrait (Si requis)
-Pour valider définitivement l'envoi.
-*   **Endpoint** : `POST /api/wallet/withdraw/<transaction_id>/confirm/`
+### Confirm withdrawal (If required)
+To definitively validate the sending.
+*   **Endpoint**: `POST /api/wallet/withdraw/<transaction_id>/confirm/`
 
 ---
 
-## 4. Historique
+## 4. History
 
-### Lister les transactions
-*   **Endpoint** : `GET /api/wallet/transactions/`
-*   **Filtres possibles** : `?type=deposit`, `?status=completed`
+### List transactions
+*   **Endpoint**: `GET /api/wallet/transactions/`
+*   **Possible filters**: `?type=deposit`, `?status=completed`
 
-### Détail d'une transaction
-*   **Endpoint** : `GET /api/wallet/transactions/<transaction_id>/`
+### Transaction detail
+*   **Endpoint**: `GET /api/wallet/transactions/<transaction_id>/`

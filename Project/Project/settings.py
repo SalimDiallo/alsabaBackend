@@ -34,6 +34,24 @@ else:
     load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 
+# ===================================
+# MONITORING AVEC SENTRY (INITIALISATION PRÉCOCE)
+# ===================================
+SENTRY_DSN = os.getenv('SENTRY_DSN')
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development' if os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes') else 'production')
+SENTRY_FORCED = os.getenv('SENTRY_FORCED', 'False').lower() in ('true', '1', 'yes')
+SENTRY_RELEASE = os.getenv('SENTRY_RELEASE', 'alsaba@1.0.0')
+
+if SENTRY_DSN and (os.getenv('DEBUG', 'False').lower() not in ('true', '1', 'yes') or SENTRY_FORCED):
+    from .sentry_config import configure_sentry
+    configure_sentry(
+        dsn=SENTRY_DSN,
+        environment=ENVIRONMENT,
+        release=SENTRY_RELEASE,
+        debug=os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
+    )
+
+
 # Celery Configuration
 CELERY_BROKER_URL = os.getenv('REDIS_BROKER_URL', os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0'))
 CELERY_RESULT_BACKEND = os.getenv('REDIS_BACKEND_URL', os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0'))
@@ -185,8 +203,8 @@ REST_FRAMEWORK = {
 AUTH_USER_MODEL = 'Accounts.User'
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=3),
+    'REFRESH_TOKEN_LIFETIME': timedelta(minutes=10),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
@@ -487,24 +505,7 @@ structlog.configure(
 
 
 
-# Monitoring avec Sentry
-SENTRY_DSN = os.getenv('SENTRY_DSN')
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'development' if DEBUG else 'production')
-if SENTRY_DSN and not DEBUG:
-    import sentry_sdk
-    from sentry_sdk.integrations.django import DjangoIntegration
-    from sentry_sdk.integrations.celery import CeleryIntegration
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        environment=ENVIRONMENT,
-        integrations=[DjangoIntegration(), CeleryIntegration()],
-        traces_sample_rate=0.1,
-        send_default_pii=False,
-        ignore_errors=[
-            'rest_framework.exceptions.NotFound',
-            'rest_framework.exceptions.PermissionDenied',
-        ],
-    )
+# Sentry est maintenant initialisé au début du fichier pour capturer plus d'erreurs.
 
 # Didit settings - validation stricte
 DIDIT_WEBHOOK_SECRET = os.getenv('DIDIT_WEBHOOK_SECRET')

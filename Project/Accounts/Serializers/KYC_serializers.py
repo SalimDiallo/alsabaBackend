@@ -40,6 +40,13 @@ class KYCVerifySerializer(serializers.Serializer):
         validators=[validate_file_size, validate_file_type]
     )
 
+    selfie_image = serializers.FileField(
+        required=False,
+        allow_null=True,
+        help_text="Selfie pour comparaison faciale (JPEG, PNG, WebP, TIFF - max 5MB)",
+        validators=[validate_file_size, validate_file_type]
+    )
+
     perform_document_liveness = serializers.BooleanField(
         default=False,  # ← Valeur par défaut officielle Didit = false
         help_text="Active la détection de fraude sur le document (photo de photo, copie d'écran, etc.)"
@@ -97,6 +104,11 @@ class KYCVerifySerializer(serializers.Serializer):
         if value:
             return self._validate_image(value, "verso")
         return value
+    
+    def validate_selfie_image(self, value):
+        if value:
+            return self._validate_image(value, "selfie")
+        return value
 
     def _validate_image(self, image, side):
         errors = []
@@ -129,15 +141,21 @@ class KYCVerifySerializer(serializers.Serializer):
                 img = Image.open(buf)
                 img.load()
 
-                if img.width < 800 or img.height < 600:
-                    errors.append("Résolution trop faible (min 800×600 recommandé)")
+                # Résolution min plus souple pour les selfies
+                min_w = 400 if side == "selfie" else 800
+                min_h = 400 if side == "selfie" else 600
+
+                if img.width < min_w or img.height < min_h:
+                    errors.append(f"Résolution trop faible (min {min_w}x{min_h})")
                 
                 ratio = img.width / img.height
-                if not 0.5 <= ratio <= 2.0:
+                if side != "selfie" and not 0.5 <= ratio <= 2.0:
                     errors.append("Proportions incorrectes pour un document")
         except (IOError, SyntaxError) as e:
             # On tolère les PDF ou images corrompues qui passent par le validateur initial
             # mais échouent à l'ouverture PIL.
+            import structlog
+            logger = structlog.get_logger(__name__)
             logger.debug("pil_skip_or_failure", error=str(e), side=side)
             pass  
 
@@ -152,16 +170,11 @@ class KYCVerifySerializer(serializers.Serializer):
         back = data.get('back_image')
 
         requires_back = {'id_card', 'drivers_license', 'residence_permit'}
-        no_back = {'passport'}
-
+        
+        # On ne bloque plus le verso pour les passeports, car certains pays ont des passeports multi-pages/recto-verso
         if dt in requires_back and not back:
             raise serializers.ValidationError({
                 "back_image": f"Verso obligatoire pour {dict(self.DOCUMENT_TYPE_CHOICES)[dt]}"
-            })
-
-        if dt in no_back and back:
-            raise serializers.ValidationError({
-                "back_image": f"Verso non requis pour {dict(self.DOCUMENT_TYPE_CHOICES)[dt]}"
             })
 
         return data

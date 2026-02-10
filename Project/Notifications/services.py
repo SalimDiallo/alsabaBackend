@@ -8,14 +8,14 @@ logger = structlog.get_logger(__name__)
 
 class NotificationService:
     """
-    Service unifié pour envoyer des notifications via plusieurs canaux (In-App, SMS/Twilio).
-    Utilise Celery pour l'envoi asynchrone (sauf pour la création DB qui est rapide).
+    Unified service to send notifications via multiple channels (In-App, SMS/Twilio).
+    Uses Celery for asynchronous sending (except for DB creation which is fast).
     """
 
     @staticmethod
     def verify_twilio_signature(uri, signature, params):
         """
-        Vérifie la signature d'un webhook Twilio.
+        Verifies the signature of a Twilio webhook.
         """
         auth_token = getattr(settings, 'TWILIO_AUTH_TOKEN', None)
         if not auth_token:
@@ -28,23 +28,23 @@ class NotificationService:
     @staticmethod
     def send(user, title, body, notification_type='system', data=None, channels=None):
         """
-        Envoie une notification à un utilisateur.
+        Sends a notification to a user.
         
         Args:
-            user (User): L'utilisateur destinataire.
-            title (str): Titre de la notif.
-            body (str): Corps du message.
+            user (User): The recipient user.
+            title (str): Title of the notification.
+            body (str): Message body.
             notification_type (str): Type (transaction, offer, etc.).
-            data (dict): Données méta (ex: ID transaction) pour deep linking.
-            channels (list): Liste des canaux ['db', 'sms']. Défaut: tous.
+            data (dict): Meta data (e.g.: transaction ID) for deep linking.
+            channels (list): List of channels ['db', 'sms']. Default: all.
         """
         if channels is None:
-            channels = ['db', 'sms', 'ws', 'push'] # Ajout de 'push' par défaut
+            channels = ['db', 'sms', 'ws', 'push'] # Adding 'push' by default
 
         if data is None:
             data = {}
 
-        # 1. Enregistrement en base de données (In-App History)
+        # 1. Database recording (In-App History)
         if 'db' in channels:
             try:
                 Notification.objects.create(
@@ -84,7 +84,7 @@ class NotificationService:
 
         # 3. Push Notification (FCM) - Async
         if 'push' in channels:
-            # Récupérer les tokens FCM actifs pour cet utilisateur
+            # Retrieve active FCM tokens for this user
             registration_ids = list(Device.objects.filter(
                 user=user, 
                 is_active=True, 
@@ -104,11 +104,11 @@ class NotificationService:
 
         # 4. SMS Notification (Twilio) - Async
         if 'sms' in channels:
-            # On récupère tous les numéros de téléphone actifs de l'utilisateur
+            # We retrieve all active phone numbers of the user
             phone_numbers = list(Device.objects.filter(user=user, is_active=True).values_list('phone_number', flat=True))
             
             if phone_numbers:
-                # Appel Tâche Celery
+                # Celery Task Call
                 from .tasks import send_sms_notification_task
                 send_sms_notification_task.delay(
                     phone_numbers=phone_numbers,

@@ -77,3 +77,4 @@ drf-spectacular-sidecar==2024.12.1
 daphne
 channels
 channels-redis
+sentry-sdk[django]==1.40.0

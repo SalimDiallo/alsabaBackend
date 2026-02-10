@@ -22,15 +22,15 @@ logger = structlog.get_logger(__name__)
 class OfferListView(generics.ListAPIView):
     """
     GET /api/offers/
-    Liste les offres visibles (OPEN ou les miennes).
+    Lists visible offers (OPEN or mine).
     """
     serializer_class = OfferSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        summary="Lister les offres P2P",
-        description="Liste les offres disponibles (OPEN) ou celles impliquant l'utilisateur connecté.",
-        tags=['Offres P2P'],
+        summary="List P2P offers",
+        description="Lists available offers (OPEN) or those involving the connected user.",
+        tags=['P2P Offers'],
         responses={200: OfferSerializer(many=True)}
     )
     def get_queryset(self):
@@ -41,23 +41,74 @@ class OfferListView(generics.ListAPIView):
             Q(accepted_by=user)
         ).select_related('user', 'accepted_by').order_by('-created_at')
 
+class ForeignOfferListView(generics.ListAPIView):
+    """
+    GET /api/offers/foreign/
+    Lists OPEN offers that do not come from the user's country.
+    Optional filters: currency_sell, currency_buy, min_amount, max_amount.
+    """
+    serializer_class = OfferSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        summary="List foreign offers",
+        description="Lists OPEN offers excluding those created by users from the same country as the connected user.",
+        tags=['P2P Offers'],
+        parameters=[
+            OpenApiParameter(name='currency_sell', type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Currency sold by the creator"),
+            OpenApiParameter(name='currency_buy', type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Currency the creator wants to receive"),
+            OpenApiParameter(name='min_amount', type=OpenApiTypes.FLOAT, location=OpenApiParameter.QUERY, description="Minimum amount (in currency_sell units)"),
+            OpenApiParameter(name='max_amount', type=OpenApiTypes.FLOAT, location=OpenApiParameter.QUERY, description="Maximum amount (in currency_sell units)"),
+        ],
+        responses={200: OfferSerializer(many=True)}
+    )
+    def get_queryset(self):
+        user = self.request.user
+        # Exclude offers from the user's country
+        queryset = Offer.objects.filter(status='OPEN').exclude(user__country_code=user.country_code)
+
+        # Additional Filters
+        cs = self.request.query_params.get('currency_sell')
+        cb = self.request.query_params.get('currency_buy')
+        min_amt = self.request.query_params.get('min_amount')
+        max_amt = self.request.query_params.get('max_amount')
+
+        if cs:
+            queryset = queryset.filter(currency_sell=cs.upper())
+        if cb:
+            queryset = queryset.filter(currency_buy=cb.upper())
+        if min_amt:
+            try:
+                min_cents = int(float(min_amt) * 100)
+                queryset = queryset.filter(amount_sell_cents__gte=min_cents)
+            except ValueError:
+                pass
+        if max_amt:
+            try:
+                max_cents = int(float(max_amt) * 100)
+                queryset = queryset.filter(amount_sell_cents__lte=max_cents)
+            except ValueError:
+                pass
+
+        return queryset.select_related('user', 'accepted_by').order_by('-created_at')
+
 class CreateOfferView(APIView):
     """
     POST /api/offers/create/
-    Créer une nouvelle offre.
+    Create a new offer.
     """
     permission_classes = [permissions.IsAuthenticated]
     throttle_scope = 'offer_create'
 
     @extend_schema(
-        summary="Créer une offre P2P",
-        description="Crée une nouvelle offre de swap de devises. L'utilisateur doit avoir un solde suffisant dans la devise de vente.",
+        summary="Create a P2P offer",
+        description="Creates a new currency swap offer. The user must have a sufficient balance in the selling currency.",
         request=CreateOfferSerializer,
-        tags=['Offres P2P'],
+        tags=['P2P Offers'],
         responses={
             201: OfferSerializer,
-            400: {"description": "Solde insuffisant ou données invalides"},
-            429: {"description": "Limite de création atteinte"}
+            400: {"description": "Insufficient balance or invalid data"},
+            429: {"description": "Creation limit reached"}
         }
     )
     @idempotent_endpoint()
@@ -87,37 +138,37 @@ class CreateOfferView(APIView):
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 logger.exception("create_offer_failed", user_id=str(request.user.id))
-                return Response({'error': "Une erreur est survenue"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response({'error': "An error occurred"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class UpdateOfferView(APIView):
     """
     PUT /api/offers/{id}/update/
-    Modifier une offre existante (Seulement si OPEN et Owner).
+    Modify an existing offer (Only if OPEN and Owner).
     """
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        summary="Modifier une offre P2P",
-        description="Permet de modifier une offre existante si elle est encore ouverte (OPEN) et appartient à l'utilisateur.",
+        summary="Modify a P2P offer",
+        description="Allows modifying an existing offer if it is still open (OPEN) and belongs to the user.",
         request=UpdateOfferSerializer,
-        tags=['Offres P2P'],
-        responses={200: OfferSerializer, 403: {"description": "Non autorisé"}}
+        tags=['P2P Offers'],
+        responses={200: OfferSerializer, 403: {"description": "Unauthorized"}}
     )
     def put(self, request, id):
         offer = get_object_or_404(Offer, id=id)
         if offer.user != request.user:
-            return Response({'error': "Non autorisé"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'error': "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
         
         if offer.status != 'OPEN':
-             return Response({'error': "Impossible de modifier une offre en cours de traitement"}, status=status.HTTP_400_BAD_REQUEST)
+             return Response({'error': "Cannot modify an offer currently being processed"}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = UpdateOfferSerializer(data=request.data)
         if serializer.is_valid():
             data = serializer.validated_data
             try:
-                # Mise à jour des champs
+                # Field updates
                 if 'amount_sell' in data:
                     offer.amount_sell_cents = int(data['amount_sell'] * 100)
                 if 'currency_sell' in data:
@@ -127,7 +178,7 @@ class UpdateOfferView(APIView):
                 if 'currency_buy' in data:
                     offer.currency_buy = data['currency_buy']
                 
-                # Recalcul du taux si montants changés
+                # Recalculate rate if amounts changed
                 if 'amount_sell' in data or 'amount_buy' in data:
                     from decimal import Decimal
                     offer.rate = Decimal(offer.amount_buy_cents) / Decimal(offer.amount_sell_cents)
@@ -143,7 +194,7 @@ class UpdateOfferView(APIView):
 class OfferDetailView(generics.RetrieveAPIView):
     """
     GET /api/offers/{id}/
-    Détail d'une offre.
+    Offer detail.
     """
     serializer_class = OfferSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -151,10 +202,10 @@ class OfferDetailView(generics.RetrieveAPIView):
     lookup_field = 'id'
 
     @extend_schema(
-        summary="Détail d'une offre P2P",
-        description="Récupère les informations complètes d'une offre spécifique.",
-        tags=['Offres P2P'],
-        responses={200: OfferSerializer, 404: {"description": "Offre introuvable"}}
+        summary="P2P offer detail",
+        description="Retrieves the full information of a specific offer.",
+        tags=['P2P Offers'],
+        responses={200: OfferSerializer, 404: {"description": "Offer not found"}}
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
@@ -162,20 +213,20 @@ class OfferDetailView(generics.RetrieveAPIView):
 class AcceptOfferView(APIView):
     """
     POST /api/offers/{id}/accept/
-    Accepter une offre.
+    Accept an offer.
     """
     permission_classes = [permissions.IsAuthenticated]
     throttle_scope = 'offer_accept'
 
     @extend_schema(
-        summary="Accepter une offre P2P",
-        description="Permet à un second utilisateur d'accepter une offre ouverte. L'accepteur doit fournir les détails de son bénéficiaire (celui qui recevra les fonds).",
+        summary="Accept a P2P offer",
+        description="Allows a second user to accept an open offer. The accepter must provide their beneficiary details (who will receive the funds).",
         request=AcceptOfferSerializer,
-        tags=['Offres P2P'],
+        tags=['P2P Offers'],
         responses={
             200: OfferSerializer,
-            400: {"description": "Offre non disponible ou déjà acceptée"},
-            403: {"description": "L'auteur ne peut pas accepter sa propre offre"}
+            400: {"description": "Offer not available or already accepted"},
+            403: {"description": "The author cannot accept their own offer"}
         }
     )
     @idempotent_endpoint()
@@ -201,23 +252,23 @@ class AcceptOfferView(APIView):
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 logger.exception("accept_offer_failed", offer_id=str(id), user_id=str(request.user.id))
-                return Response({'error': "Erreur lors de l'acceptation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response({'error': "Error during acceptance"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class ValidateOfferView(APIView):
     """
     POST /api/offers/{id}/validate/
-    A1 valide et ajoute son bénéficiaire (B2).
+    A1 validates and adds their beneficiary (B2).
     """
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        summary="Valider une offre (Vendeur)",
-        description="Le créateur de l'offre (Vendeur) valide l'acceptation et fournit les détails du bénéficiaire qui recevra les fondus de l'accepteur.",
+        summary="Validate an offer (Seller)",
+        description="The offer creator (Seller) validates the acceptance and provides details of the beneficiary who will receive the funds from the accepter.",
         request=ValidateOfferSerializer,
-        tags=['Offres P2P'],
-        responses={200: OfferSerializer, 400: {"description": "Action non autorisée à ce stade"}}
+        tags=['P2P Offers'],
+        responses={200: OfferSerializer, 400: {"description": "Action not authorized at this stage"}}
     )
     def post(self, request, id):
         serializer = ValidateOfferSerializer(data=request.data)
@@ -241,22 +292,22 @@ class ValidateOfferView(APIView):
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 logger.exception("validate_offer_failed", offer_id=str(id), user_id=str(request.user.id))
-                return Response({'error': "Erreur lors de la validation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response({'error': "Error during validation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class ConfirmOfferView(APIView):
     """
     POST /api/offers/{id}/confirm/
-    Valider et exécuter le swap.
+    Validate and execute the swap.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        summary="Confirmer la transaction P2P",
-        description="Valide et exécute techniquement le swap (transfert des fonds entre les wallets et libération de l'escrow) une fois toutes les conditions réunies.",
-        tags=['Offres P2P'],
-        responses={200: OfferSerializer, 400: {"description": "Conditions de swap non remplies"}},
+        summary="Confirm P2P transaction",
+        description="Validates and technically executes the swap (transfer of funds between wallets and release of escrow) once all conditions are met.",
+        tags=['P2P Offers'],
+        responses={200: OfferSerializer, 400: {"description": "Swap conditions not met"}},
         request=None
     )
     def post(self, request, id):
@@ -268,19 +319,19 @@ class ConfirmOfferView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.exception("confirm_offer_failed", offer_id=str(id))
-            return Response({'error': "Erreur lors de la confirmation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': "Error during confirmation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class BeneficiaryConfirmView(APIView):
     """
     POST /api/offers/{id}/beneficiary-confirm/
-    Confirmation par un bénéficiaire (B1 ou B2).
+    Confirmation by a beneficiary (B1 or B2).
     """
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        summary="Confirmation bénéficiaire P2P",
-        description="Permet à l'un des bénéficiaires impliqués dans le swap de confirmer manuellement la réception des fonds hors-plateforme si nécessaire.",
-        tags=['Offres P2P'],
+        summary="P2P beneficiary confirmation",
+        description="Allows one of the beneficiaries involved in the swap to manually confirm the receipt of funds off-platform if necessary.",
+        tags=['P2P Offers'],
         responses={200: OfferSerializer},
         request=None
     )
@@ -295,26 +346,26 @@ class BeneficiaryConfirmView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.exception("beneficiary_confirm_failed", offer_id=str(id), user_id=str(request.user.id))
-            return Response({'error': "Erreur lors de la confirmation bénéficiaire"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': "Error during beneficiary confirmation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class CancelOfferView(APIView):
     """
     POST /api/offers/{id}/cancel/
-    Annuler une offre.
+    Cancel an offer.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        summary="Annuler une offre P2P",
-        description="Annule une offre existante. Si l'offre était en cours de traitement, les fonds en escrow sont restitués.",
-        tags=['Offres P2P'],
-        responses={200: OfferSerializer, 400: {"description": "Annulation impossible à ce stade"}},
+        summary="Cancel a P2P offer",
+        description="Cancels an existing offer. If the offer was being processed, the escrowed funds are returned.",
+        tags=['P2P Offers'],
+        responses={200: OfferSerializer, 400: {"description": "Cancellation impossible at this stage"}},
         request=None
     )
     def post(self, request, id):
         offer = get_object_or_404(Offer, id=id)
         if offer.user != request.user and not request.user.is_staff:
-             return Response({'error': "Non autorisé"}, status=status.HTTP_403_FORBIDDEN)
+             return Response({'error': "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
              
         try:
             SecureEscrowService.cancel_transaction(offer.id, reason="Cancelled by user")
@@ -326,16 +377,16 @@ class CancelOfferView(APIView):
 class DisputeOfferView(APIView):
     """
     POST /api/offers/{id}/dispute/
-    Ouvrir un litige.
+    Open a dispute.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        summary="Ouvrir un litige",
-        description="Ouvre un litige formel sur une offre en cours de transaction. Bloque l'exécution jusqu'à résolution par un admin.",
+        summary="Open a dispute",
+        description="Opens a formal dispute on an offer in transaction. Blocks execution until resolution by an admin.",
         request=DisputeOfferSerializer,
-        tags=['Offres P2P'],
-        responses={200: OfferSerializer, 400: {"description": "Litige impossible"}}
+        tags=['P2P Offers'],
+        responses={200: OfferSerializer, 400: {"description": "Dispute impossible"}}
     )
     def post(self, request, id):
         serializer = DisputeOfferSerializer(data=request.data)
@@ -351,24 +402,24 @@ class DisputeOfferView(APIView):
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 logger.exception("dispute_offer_failed", offer_id=str(id))
-                return Response({'error': "Erreur interne"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return Response({'error': "Internal error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# ✅ NOUVEAU: Endpoints pour la gestion des litiges
+# Endpoints for dispute management
 class InitiateDisputeView(APIView):
     """
     POST /api/offers/{offer_id}/disputes/
-    Initier un litige sur une offre.
+    Initiate a dispute on an offer.
     """
     permission_classes = [permissions.IsAuthenticated]
     
     @extend_schema(
-        summary="Initier un litige",
-        description="Crée un nouveau litige associé à un offre spécifique. Bloque le swap si celui-ci n'a pas été confirmé.",
+        summary="Initiate a dispute",
+        description="Creates a new dispute associated with a specific offer. Blocks the swap if it hasn't been confirmed.",
         request=InitiateDisputeSerializer,
-        tags=['Offres P2P'],
-        responses={201: DisputeSerializer, 400: {"description": "Litige déjà existant ou offre terminée"}}
+        tags=['P2P Offers'],
+        responses={201: DisputeSerializer, 400: {"description": "Dispute already exists or offer completed"}}
     )
     def post(self, request, offer_id):
         serializer = InitiateDisputeSerializer(data=request.data)
@@ -389,11 +440,11 @@ class InitiateDisputeView(APIView):
         except ValidationError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Offer.DoesNotExist:
-            return Response({'error': 'Offre non trouvée'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': 'Offer not found'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.exception("initiate_dispute_failed", offer_id=offer_id)
             return Response(
-                {'error': 'Erreur lors de la création du litige'},
+                {'error': 'Error during dispute creation'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -401,25 +452,25 @@ class InitiateDisputeView(APIView):
 class DisputeDetailView(APIView):
     """
     GET /api/disputes/{dispute_id}/
-    Récupérer les détails d'un litige.
+    Retrieve dispute details.
     """
     permission_classes = [permissions.IsAuthenticated]
     
     @extend_schema(
-        summary="Détail d'un litige",
-        description="Récupère les détails d'un litige spécifique (raisons, preuves, statut).",
-        tags=['Offres P2P'],
-        responses={200: DisputeSerializer, 403: {"description": "Non autorisé"}, 404: {"description": "Introuvable"}}
+        summary="Dispute details",
+        description="Retrieves the details of a specific dispute (reasons, evidence, status).",
+        tags=['P2P Offers'],
+        responses={200: DisputeSerializer, 403: {"description": "Unauthorized"}, 404: {"description": "Not found"}}
     )
     def get(self, request, dispute_id):
         dispute = get_object_or_404(Dispute, id=dispute_id)
         
-        # Vérifier l'accès: partie de l'offre ou admin
+        # Check access: part of the offer or admin
         if (dispute.offer.user != request.user and
             dispute.offer.accepted_by != request.user and
             not request.user.is_staff):
             return Response(
-                {'error': 'Non autorisé'},
+                {'error': 'Unauthorized'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -429,15 +480,15 @@ class DisputeDetailView(APIView):
 class ListDisputesView(generics.ListAPIView):
     """
     GET /api/disputes/
-    Lister les litiges (pour l'utilisateur ou pour les admins).
+    List disputes (for user or for admins).
     """
     serializer_class = DisputeSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     @extend_schema(
-        summary="Lister les litiges",
-        description="Liste tous les litiges accessibles à l'utilisateur connecté (ses propres litiges ou tous pour les admins).",
-        tags=['Offres P2P'],
+        summary="List disputes",
+        description="Lists all disputes accessible to the connected user (their own disputes or all for admins).",
+        tags=['P2P Offers'],
         responses={200: DisputeSerializer(many=True)}
     )
     def get(self, request, *args, **kwargs):
@@ -446,13 +497,13 @@ class ListDisputesView(generics.ListAPIView):
     def get_queryset(self):
         user = self.request.user
         
-        # Admin voit tous les litiges
+        # Admin sees all disputes
         if user.is_staff:
             return Dispute.objects.all().select_related(
                 'offer', 'initiated_by', 'reviewed_by'
             ).order_by('-created_at')
         
-        # User voit seulement ses litiges (initiés ou concernant ses offres)
+        # User only sees their own disputes (initiated or concerning their offers)
         return Dispute.objects.filter(
             Q(initiated_by_id=user.id) |
             Q(offer__user_id=user.id) |
@@ -463,21 +514,21 @@ class ListDisputesView(generics.ListAPIView):
 class ResolveDisputeView(APIView):
     """
     POST /api/disputes/{dispute_id}/resolve/
-    Résoudre un litige (Admin only).
+    Resolve a dispute (Admin only).
     """
     permission_classes = [permissions.IsAuthenticated]
     
     @extend_schema(
-        summary="Résoudre un litige (Admin)",
-        description="Permet à un administrateur de trancher un litige, soit par annulation du swap, soit par exécution forcée.",
+        summary="Resolve a dispute (Admin)",
+        description="Allows an administrator to decide a dispute, either by cancelling the swap or by forced execution.",
         request=ResolveDisputeSerializer,
-        tags=['Offres P2P'],
-        responses={200: DisputeSerializer, 403: {"description": "Action réservée aux admins"}}
+        tags=['P2P Offers'],
+        responses={200: DisputeSerializer, 403: {"description": "Action reserved for admins"}}
     )
     def post(self, request, dispute_id):
         if not request.user.is_staff:
             return Response(
-                {'error': 'Seul un administrateur peut résoudre les litiges'},
+                {'error': 'Only an administrator can resolve disputes'},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -496,27 +547,27 @@ class ResolveDisputeView(APIView):
         except ValidationError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Dispute.DoesNotExist:
-            return Response({'error': 'Litige non trouvé'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': 'Dispute not found'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.exception("resolve_dispute_failed", dispute_id=dispute_id)
             return Response(
-                {'error': 'Erreur lors de la résolution'},
+                {'error': 'Error during resolution'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 class ExchangeRateView(APIView):
     """
     GET /api/offers/exchange-rates/
-    Récupère les taux de change officiels pour une devise donnée.
+    Retrieves official exchange rates for a given currency.
     """
     permission_classes = [permissions.AllowAny]
 
     @extend_schema(
-        summary="Obtenir les taux de change officiels",
-        description="Récupère les taux de change actuels depuis ExchangeRate-API (avec mise en cache Redis). Utile pour guider l'utilisateur lors de la création d'une offre.",
-        tags=['Offres P2P'],
+        summary="Get official exchange rates",
+        description="Retrieves current exchange rates from ExchangeRate-API (with Redis caching). Useful for guiding the user when creating an offer.",
+        tags=['P2P Offers'],
         parameters=[
-            OpenApiParameter(name='base', type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Devise de base (ex: EUR, XOF, NGN). Défaut: EUR")
+            OpenApiParameter(name='base', type=OpenApiTypes.STR, location=OpenApiParameter.QUERY, description="Base currency (ex: EUR, XOF, NGN). Default: EUR")
         ],
         responses={200: OpenApiTypes.OBJECT}
     )
@@ -533,5 +584,5 @@ class ExchangeRateView(APIView):
             }, status=status.HTTP_200_OK)
         
         return Response({
-            "error": "Impossible de récupérer les taux pour le moment."
+            "error": "Unable to retrieve rates at the moment."
         }, status=status.HTTP_503_SERVICE_UNAVAILABLE)

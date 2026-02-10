@@ -11,7 +11,7 @@ logger = structlog.get_logger(__name__)
 class EncryptionUtils:
     """
     Utilitaires d'encryption pour Flutterwave
-    Utilise AES-256-GCM pour chiffrer les données sensibles
+    Uses AES-256-GCM to encrypt sensitive data
     """
 
     @staticmethod
@@ -20,9 +20,9 @@ class EncryptionUtils:
         Chiffre un texte en clair avec AES-256-GCM
 
         Args:
-            plaintext: Texte à chiffrer
-            encryption_key: Clé d'encryption en base64
-            nonce: Nonce de 12 bytes (généré automatiquement si None)
+            plaintext: Text to encrypt
+            encryption_key: Encryption key in base64
+            nonce: 12-byte nonce (automatically generated if None)
 
         Returns:
             tuple: (encrypted_base64, nonce_base64)
@@ -39,7 +39,7 @@ class EncryptionUtils:
             full_enc = ciphertext + tag
             
             # Formattage du nonce pour Flutterwave (doit être exactement 12 chars)
-            # Si le nonce est déjà un string alpha-numérique de 12 (ASCII), on le garde tel quel
+            # If the nonce is already a 12-character alphanumeric string (ASCII), keep it as is
             try:
                 nonce_str = nonce.decode('ascii')
                 if len(nonce_str) == 12:
@@ -55,9 +55,9 @@ class EncryptionUtils:
     @staticmethod
     def generate_nonce() -> bytes:
         """
-        Génère un nonce de 12 bytes pour AES-GCM.
-        Pour Flutterwave, on génère un string alphanumérique de 12 caractères
-        car ils valident la longueur du champ JSON à 12.
+        Generates a 12-byte nonce for AES-GCM.
+        For Flutterwave, we generate a 12-character alphanumeric string
+        because they validate the JSON field length at 12.
         """
         alphabet = string.ascii_letters + string.digits
         nonce_str = ''.join(secrets.choice(alphabet) for _ in range(12))
@@ -70,20 +70,20 @@ class EncryptionUtils:
         
         Args:
             payload_json: JSON string du payload
-            encryption_key: Clé d'encryption (FLUTTERWAVE_ENCRYPTION_KEY)
+            encryption_key: Encryption key (FLUTTERWAVE_ENCRYPTION_KEY)
             
         Returns:
-            str: Payload chiffré en base64
+            str: Base64 encrypted payload
         """
         from Crypto.Util.Padding import pad
         import json
         
         try:
-            # 1. Préparation des données (Padding PKCS7 requis pour ECB)
+            # 1. Data preparation (PKCS7 padding required for ECB)
             raw_data = payload_json.encode('utf-8')
             padded_data = pad(raw_data, AES.block_size)
             
-            # 2. Clé d'encryption
+            # 2. Encryption key
             key_bytes = encryption_key.encode('utf-8')
             
             # 3. Encryption AES-128-ECB

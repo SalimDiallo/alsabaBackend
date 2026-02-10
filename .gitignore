@@ -217,6 +217,16 @@ logs/
 *.local.py
 settings_local.py
 
+# Firebase credentials (NEVER commit these!)
+*firebase-credentials.json
+firebase-credentials*.json
+google-credentials*.json
+Project/firebase-credentials.json
+
+# Project documentation (local only)
+analyse_complete_projet.md
+architecture_diagrams.html
+
 # Database
 *.sqlite3
 *.db
