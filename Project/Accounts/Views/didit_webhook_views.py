@@ -257,4 +257,3 @@ class DiditWebhookView(APIView):
             "message": "L'endpoint du webhook Didit est actif.",
             "instructions": "Veuillez utiliser la méthode POST pour envoyer des données. Dans la console Didit, cliquez sur 'Send Test Webhook'."
         }, status=status.HTTP_200_OK)
-

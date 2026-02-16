@@ -108,7 +108,8 @@ SECRET_KEY = (os.getenv('SECRET_KEY') or '').strip() or _default_secret
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
 # Hosts autorisés - validation stricte
 if DEBUG:
-    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+    # En mode DEBUG, accepter tous les hosts pour faciliter le développement
+    ALLOWED_HOSTS = ['*']
 else:
     allowed_hosts = os.getenv('ALLOWED_HOSTS')
     if not allowed_hosts:
@@ -117,9 +118,6 @@ else:
             "Format: ALLOWED_HOSTS=api.yourdomain.com,yourdomain.com"
         )
     ALLOWED_HOSTS = allowed_hosts.split(',')
-
-if DEBUG:
-    ALLOWED_HOSTS += ['.ngrok-free.app', '.ngrok.io', '.ngrok-free.dev']
 
 # CSRF Trusted Origins for webhooks and external services
 CSRF_TRUSTED_ORIGINS = os.getenv(

@@ -79,11 +79,15 @@ class DiditKYCService:
                 timeout=self.timeout
             )
 
+
             if response.status_code == 200:
                 res = response.json()
+                
                 logger.info("didit_id_verification_success", 
                             status=res.get("id_verification", {}).get("status"),
                             request_id=res.get("request_id"))
+                
+                print(res)
                 return {
                     "success": True,
                     "request_id": res.get("request_id"),
