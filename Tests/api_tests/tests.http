@@ -1,0 +1,87 @@
+@baseUrl = http://127.0.0.1:8000/api/accounts
+@phoneNumber = 684499227
+@countryCode = +212
+@phoneNumberE164 = +212684499227
+
+### 1. Request OTP
+# @name requestOtp
+POST {{baseUrl}}/auth/phone/
+Content-Type: application/json
+
+{
+    "phone_number": "{{phoneNumber}}",
+    "country_code": "{{countryCode}}"
+}
+
+### 2. Verify OTP
+# @prompt otpCode Enter the OTP code received
+# @name verifyOtp
+POST {{baseUrl}}/auth/verify/
+Content-Type: application/json
+
+{
+    "phone_number": "{{phoneNumberE164}}",
+    "code": "{{otpCode}}",
+    "session_key": "{{requestOtp.response.body.session_key}}"
+}
+
+@authToken = {{verifyOtp.response.body.auth.token}}
+
+### 3. Get Profile
+GET {{baseUrl}}/profile/
+Authorization: Bearer {{authToken}}
+
+### 4. KYC Verify
+# NOTE: Ensure these image files exist relative to this file or update the paths.
+POST {{baseUrl}}/kyc/verify/
+Authorization: Bearer {{authToken}}
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="document_type"
+
+id_card
+--boundary
+Content-Disposition: form-data; name="front_image"; filename="carte_identite_recto.jpg"
+Content-Type: image/jpeg
+
+< ../test_images/carte_identite_recto.jpg
+--boundary
+Content-Disposition: form-data; name="back_image"; filename="carte_identite_verso.jpg"
+Content-Type: image/jpeg
+
+< ../test_images/carte_identite_verso.jpg
+--boundary
+Content-Disposition: form-data; name="perform_document_liveness"
+
+true
+--boundary
+Content-Disposition: form-data; name="min_age"
+
+18
+--boundary--
+
+### 5. Get Profile After KYC
+GET {{baseUrl}}/profile/
+Authorization: Bearer {{authToken}}
+
+### 6. Request Account Delete
+# @name requestDelete
+POST {{baseUrl}}/account/delete/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "reason": "Test de suppression"
+}
+
+### 7. Confirm Account Delete
+# @prompt deleteOtp Enter the OTP code received for deletion
+POST {{baseUrl}}/account/delete/confirm/
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+    "code": "{{deleteOtp}}",
+    "session_key": "{{requestDelete.response.body.session_key}}"
+}

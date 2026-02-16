@@ -1,0 +1,57 @@
+# ===================================
+# Fichier .dockerignore
+# Exclut les fichiers inutiles de l'image Docker
+# ===================================
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.env
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Fichiers locaux
+*.log
+*.sqlite3
+db.sqlite3
+*.local.py
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+Tests/
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+
+# Autres
+*.bak
+*.tmp
+tmp/
+temp/
+node_modules/
