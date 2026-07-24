@@ -11,6 +11,8 @@ class WalletSerializer(serializers.ModelSerializer):
     Sérialiseur pour le portefeuille
     """
     balance = serializers.SerializerMethodField()
+    locked_balance = serializers.SerializerMethodField()
+    available_balance = serializers.SerializerMethodField()
     currency_display = serializers.SerializerMethodField()
     user_phone = serializers.CharField(source='user.full_phone_number', read_only=True)
     transactions_count = serializers.SerializerMethodField()
@@ -22,6 +24,8 @@ class WalletSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'balance',
+            'locked_balance',
+            'available_balance',
             'currency',
             'currency_display',
             'user_phone',
@@ -36,9 +40,28 @@ class WalletSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def _locked_cents(self, obj):
+        """Somme des fonds actuellement bloqués en escrow pour cet utilisateur."""
+        from django.db.models import Sum
+        from Offer.models import EscrowLock
+        return EscrowLock.objects.filter(
+            user=obj.user, status='LOCKED'
+        ).aggregate(s=Sum('amount_cents'))['s'] or 0
+
     @extend_schema_field(OpenApiTypes.FLOAT)
     def get_balance(self, obj):
+        """Solde total (inclut les fonds bloqués en escrow)."""
         return float(obj.balance)
+
+    @extend_schema_field(OpenApiTypes.FLOAT)
+    def get_locked_balance(self, obj):
+        """Fonds bloqués en escrow (offres en cours)."""
+        return float(Decimal(self._locked_cents(obj)) / 100)
+
+    @extend_schema_field(OpenApiTypes.FLOAT)
+    def get_available_balance(self, obj):
+        """Solde réellement disponible = total - bloqué. C'est ce que l'utilisateur peut engager."""
+        return float(Decimal(obj.balance_cents - self._locked_cents(obj)) / 100)
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_currency_display(self, obj):

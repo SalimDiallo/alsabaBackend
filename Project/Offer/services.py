@@ -77,10 +77,15 @@ class SecureEscrowService:
         return offer
 
     @staticmethod
+    @db_transaction.atomic
     def accept_offer(user_accepter, offer_id, beneficiary_data=None):
         """
         A2 accepts A1's offer.
         beneficiary_data = B1 (A2's friend/beneficiary)
+
+        Toute la méthode s'exécute dans une transaction (décorateur atomic) afin que
+        le select_for_update ci-dessous verrouille bien la ligne. Sans transaction,
+        Django lèverait TransactionManagementError.
         """
         try:
             offer = Offer.objects.select_for_update().get(id=offer_id)
@@ -162,10 +167,14 @@ class SecureEscrowService:
         return offer
 
     @staticmethod
+    @db_transaction.atomic
     def validate_offer(user_validator, offer_id, beneficiary_data=None):
         """
         A1 validates A2's acceptance and adds beneficiary info (B2).
         Transition from ACCEPTED -> LOCKED.
+
+        Décorée atomic : le select_for_update ci-dessous doit s'exécuter dans une
+        transaction, sinon Django lève TransactionManagementError.
         """
         try:
             offer = Offer.objects.select_for_update().get(id=offer_id)
@@ -193,6 +202,7 @@ class SecureEscrowService:
         )
         
         # Notification to BENEFICIARIES (B1 and B2) for validation
+        from Notifications.services import NotificationService
         b1_phone = offer.accepted_beneficiary_data.get('phone')
         b2_phone = offer.beneficiary_data.get('phone')
         
@@ -640,6 +650,30 @@ class SecureEscrowService:
             return offer
 
     @staticmethod
+    def _release_offer_locks(offer, new_status='ROLLEDBACK'):
+        """
+        Libère tous les EscrowLock actifs d'une offre.
+
+        Les locks étant "virtuels" (le montant reste dans balance_cents et n'est
+        soustrait que du solde *disponible*), passer un lock en ROLLEDBACK rend
+        automatiquement les fonds du propriétaire à nouveau disponibles — sans aucun
+        mouvement d'argent réel.
+
+        Doit être appelé à l'intérieur d'une transaction (db_transaction.atomic).
+
+        Returns:
+            int: nombre de locks libérés.
+        """
+        locks = EscrowLock.objects.select_for_update().filter(offer=offer, status='LOCKED')
+        count = 0
+        for lock in locks:
+            lock.status = new_status
+            lock.released_at = timezone.now()
+            lock.save(update_fields=['status', 'released_at'])
+            count += 1
+        return count
+
+    @staticmethod
     def _calculate_hash(user_id, amount, offer_id):
         """Generates a SHA256 hash for lock integrity"""
         raw = f"{user_id}:{amount}:{offer_id}:{timezone.now().isoformat()}"
@@ -692,15 +726,18 @@ class SecureEscrowService:
             if user_initiator not in [offer.user, offer.accepted_by]:
                 raise ValidationError("You are not a party to this offer")
             
-            # Verify offer is in appropriate state
-            if offer.status not in ['LOCKED', 'RELEASED_TO_SELLER', 'RELEASED_TO_BUYER']:
+            # Verify offer is in appropriate state.
+            # Statuts RÉELS du modèle Offer : LOCKED (fonds bloqués, cas principal)
+            # ou COMPLETED (contester une non-réception). Les anciens statuts
+            # 'RELEASED_TO_SELLER'/'RELEASED_TO_BUYER' n'existaient pas.
+            if offer.status not in ['LOCKED', 'COMPLETED']:
                 raise ValidationError(f"Cannot create a dispute for an offer with status {offer.status}")
-            
+
             # Verify no existing dispute
             existing = Dispute.objects.filter(offer=offer, status__in=['open', 'under_review']).exists()
             if existing:
                 raise ValidationError("A dispute is already in progress for this offer")
-            
+
             # Create the dispute
             dispute = Dispute.objects.create(
                 offer=offer,
@@ -708,7 +745,15 @@ class SecureEscrowService:
                 reason=reason,
                 evidence=evidence or {}
             )
-            
+
+            # Gèle la transaction : tant que le litige est ouvert, le swap ne peut plus
+            # être confirmé (confirm_transaction exige le statut LOCKED). On ne gèle que
+            # depuis LOCKED ; un COMPLETED reste COMPLETED (les fonds ont déjà bougé et
+            # une reprise éventuelle relève du traitement manuel par le support).
+            if offer.status == 'LOCKED':
+                offer.status = 'DISPUTE'
+                offer.save(update_fields=['status'])
+
             SecureEscrowService._log_audit(
                 action="DISPUTE_INITIATED",
                 user=user_initiator,
@@ -755,31 +800,34 @@ class SecureEscrowService:
                 raise ValidationError(f"Dispute in {dispute.status} status, cannot be resolved")
             
             offer = dispute.offer
-            
-            # Implement the resolution
+
+            # Dans ce modèle d'escrow, les fonds sont "virtuellement" bloqués :
+            # le montant reste dans balance_cents et n'est retiré que du solde
+            # *disponible* (balance - Σ locks). Tant que l'offre est LOCKED, AUCUN
+            # argent n'a bougé. Résoudre le litige = libérer les EscrowLock pour que
+            # chaque partie récupère ses propres fonds.
+            #
+            # IMPORTANT : il ne faut PAS ajouter de solde ici (add_balance) sous peine
+            # de créer de la monnaie fantôme. On effectue un rollback des locks.
+            #
+            # NOTE : refund_a1 / refund_a2 / split aboutissent tous, pour l'instant, à
+            # un rollback complet (chaque partie garde ses fonds). Un vrai split partiel
+            # nécessiterait un grand-livre dédié et n'est volontairement pas implémenté
+            # ici pour éviter de corrompre les soldes.
             try:
-                if resolution == 'refund_a1':
-                    # Refund A1 (user who created the offer)
-                    _refund_user_for_dispute(offer.user, offer.amount_sell_cents, offer.currency_sell)
-                    
-                elif resolution == 'refund_a2':
-                    # Refund A2 (user who accepted)
-                    if offer.accepted_by:
-                        _refund_user_for_dispute(offer.accepted_by, offer.amount_buy_cents, offer.currency_buy)
-                    
-                elif resolution == 'split':
-                    # Split 50/50
-                    split_amount_a1 = offer.amount_sell_cents // 2
-                    split_amount_a2 = offer.amount_buy_cents // 2 if offer.accepted_by else 0
-                    
-                    _refund_user_for_dispute(offer.user, split_amount_a1, offer.currency_sell)
-                    if offer.accepted_by:
-                        _refund_user_for_dispute(offer.accepted_by, split_amount_a2, offer.currency_buy)
-            
+                released = SecureEscrowService._release_offer_locks(offer)
             except Exception as e:
                 logger.error("dispute_resolution_error", error=str(e), dispute_id=str(dispute_id))
                 raise ValidationError(f"Error during resolution: {str(e)}")
-            
+
+            logger.info(
+                "dispute_locks_released",
+                dispute_id=str(dispute_id),
+                offer_id=str(offer.id),
+                resolution=resolution,
+                locks_released=released
+            )
+
             # Update the dispute
             dispute.status = 'resolved'
             dispute.resolution = resolution
@@ -812,33 +860,3 @@ class SecureEscrowService:
             )
         
         return dispute
-
-
-def _refund_user_for_dispute(user, amount_cents, currency):
-    """
-    Utility to refund a user following a dispute resolution.
-    """
-    wallet = Wallet.objects.select_for_update().get(user=user)
-    
-    # Create a refund transaction
-    transaction_obj = Transaction.objects.create(
-        wallet=wallet,
-        amount_cents=amount_cents,
-        currency=currency,
-        transaction_type='refund',
-        status='completed',
-        description="Dispute resolution refund",
-        reference=f"DISPUTE_{timezone.now().timestamp()}"
-    )
-    
-    # Add funds to the wallet
-    wallet.balance_cents = models.F('balance_cents') + amount_cents
-    wallet.save(update_fields=['balance_cents'])
-    
-    logger.info(
-        "dispute_refund_issued",
-        user_id=str(user.id),
-        amount=amount_cents/100,
-        currency=currency,
-        transaction_id=str(transaction_obj.id)
-    )

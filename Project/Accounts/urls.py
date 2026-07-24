@@ -1,6 +1,6 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
-from .Views.registerLogViews import PhoneAuthView, VerifyOTPView, AuthStatusView, ResendOTPView
+from .Views.registerLogViews import PhoneAuthView, VerifyOTPView, AuthStatusView, ResendOTPView, LogoutView
 from .Views.id_verificationViews import KYCVerifyView
 from .Views.profile import ProfileView
 from .Views.delete import AccountDeleteRequestView, AccountDeleteConfirmView
@@ -14,6 +14,8 @@ urlpatterns = [
     path('auth/verify/', VerifyOTPView.as_view(), name='verify_otp'),
     path('auth/resend/', ResendOTPView.as_view(), name='resend_otp'),
     path('auth/status/', AuthStatusView.as_view(), name='auth_status'),
+    # Déconnexion (blacklist du refresh token)
+    path('auth/logout/', LogoutView.as_view(), name='logout'),
     # JWT Token refresh
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     # Profile User

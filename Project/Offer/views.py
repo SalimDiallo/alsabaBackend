@@ -111,7 +111,7 @@ class CreateOfferView(APIView):
             429: {"description": "Creation limit reached"}
         }
     )
-    @idempotent_endpoint()
+    @idempotent_endpoint(required=True)
     def post(self, request):
         serializer = CreateOfferSerializer(data=request.data)
         if serializer.is_valid():
@@ -229,7 +229,7 @@ class AcceptOfferView(APIView):
             403: {"description": "The author cannot accept their own offer"}
         }
     )
-    @idempotent_endpoint()
+    @idempotent_endpoint(required=True)
     def post(self, request, id):
         serializer = AcceptOfferSerializer(data=request.data)
         if serializer.is_valid():

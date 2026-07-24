@@ -84,22 +84,25 @@ class PhoneAuthView(APIView):
         country_code = serializer.validated_data['country_code']
 
         # 2. Vérification de l'utilisateur existant
-        try:
-            user = User.objects.get(full_phone_number=full_phone_number)
+        # NB: User.objects filtre les comptes actifs uniquement. On utilise
+        # with_deleted() pour aussi détecter un compte désactivé (is_active=False)
+        # et pouvoir le bloquer explicitement (sinon il serait traité comme un
+        # nouveau compte -> le 403 ne serait jamais atteint).
+        user = User.objects.with_deleted().filter(full_phone_number=full_phone_number).first()
+        if user is not None:
             action = 'login'
-            
+
             # Vérification du statut du compte
             if not user.is_active:
                 logger.warning(
-                    "inactive_account_attempt", 
+                    "inactive_account_attempt",
                     phone_number=auth_utils.mask_phone(full_phone_number)
                 )
                 return Response({
                     "error": "Ce compte a été désactivé",
                     "code": "account_disabled"
                 }, status=status.HTTP_403_FORBIDDEN)
-                
-        except User.DoesNotExist:
+        else:
             user = None
             action = 'register'
 
@@ -793,16 +796,16 @@ class AuthStatusView(APIView):
     def _get_next_steps(self, session_data, user):
         """
         Détermine les prochaines étapes pour l'utilisateur.
-        
+
         Args:
             session_data: Données de la session
             user: Objet User ou None
-            
+
         Returns:
             list: Liste des prochaines actions recommandées
         """
         next_steps = []
-        
+
         # Vérifier si c'est une session de suppression
         if session_data.get('action') == 'delete_account':
             if not session_data.get('verified'):
@@ -846,5 +849,67 @@ class AuthStatusView(APIView):
         
         if session_data.get('resent_count', 0) >= 2:
             next_steps.append("max_resend_warning")
-        
+
         return next_steps
+
+
+class LogoutView(APIView):
+    """
+    Déconnexion : blackliste le refresh token côté serveur.
+    POST /api/accounts/auth/logout/
+    Body: { "refresh": "<refresh_token>" }
+
+    AllowAny : l'apiClient front n'attache pas le Bearer sur cet endpoint.
+    La révocation ne nécessite que le refresh token lui-même.
+    Idempotent : un token déjà invalide renvoie quand même 200.
+    """
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Déconnexion (révocation du refresh token)",
+        description="Blackliste le refresh token fourni pour empêcher tout futur rafraîchissement.",
+        tags=['Authentification'],
+        request=inline_serializer(
+            name='LogoutRequest',
+            fields={'refresh': serializers.CharField()}
+        ),
+        responses={
+            200: inline_serializer(
+                name='LogoutResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                }
+            ),
+            400: inline_serializer(
+                name='LogoutError',
+                fields={
+                    'error': serializers.CharField(),
+                    'code': serializers.CharField(),
+                }
+            ),
+        }
+    )
+    def post(self, request):
+        from rest_framework_simplejwt.tokens import RefreshToken
+        from rest_framework_simplejwt.exceptions import TokenError
+
+        refresh = request.data.get('refresh')
+        if not refresh:
+            return Response({
+                "error": "Le refresh token est requis",
+                "code": "refresh_required"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            token = RefreshToken(refresh)
+            token.blacklist()
+            logger.info("user_logout", token_blacklisted=True)
+        except TokenError:
+            # Token déjà expiré/invalide : la déconnexion reste un succès (idempotent)
+            logger.info("user_logout_token_already_invalid")
+
+        return Response({
+            "success": True,
+            "message": "Déconnexion réussie"
+        }, status=status.HTTP_200_OK)

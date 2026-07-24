@@ -103,20 +103,29 @@ class Wallet(models.Model):
         logger.info("wallet_balance_added_atomic", user_id=str(self.user.id), amount=amount, new_balance=self.balance, currency=self.currency)
 
     def subtract_balance(self, amount):
-        """Subtracts an amount from the balance atomically"""
+        """Subtracts an amount from the balance atomically.
+
+        Lève ValidationError si le solde est insuffisant : on veut une erreur
+        applicative propre (400) plutôt qu'une IntegrityError brute sur la
+        contrainte DB `positive_balance_constraint` au milieu d'une transaction
+        (qui remonterait en 500 et casserait le flux). La contrainte DB reste le
+        garde-fou ultime contre les races.
+        """
         from django.db.models import F
+        from django.core.exceptions import ValidationError
         amount_cents = int(Decimal(str(amount)) * 100)
-        
+
         if self.balance_cents < amount_cents:
             logger.warning(
-                "insufficient_balance_pre_check",
+                "insufficient_balance",
                 user_id=str(self.user.id),
                 balance=self.balance,
                 required=amount
             )
-            # We let the DB constraint act but log something useful
-            # raise ValidationError(f"Insufficient balance (Required: {amount}, Available: {self.balance})")
-        
+            raise ValidationError(
+                f"Solde insuffisant (requis: {amount}, disponible: {self.balance})"
+            )
+
         self.balance_cents = F('balance_cents') - amount_cents
         self.save(update_fields=['balance_cents'])
         self.refresh_from_db()

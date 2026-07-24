@@ -106,6 +106,14 @@ SECRET_KEY = (os.getenv('SECRET_KEY') or '').strip() or _default_secret
 
 # DEBUG
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
+
+# SECURITE : interdit le fallback SECRET_KEY par défaut en production
+if not DEBUG and SECRET_KEY == _default_secret:
+    raise ValueError(
+        "SECRET_KEY doit être configurée en production (.env). "
+        "La clé 'django-insecure-...' par défaut est interdite hors DEBUG."
+    )
+
 # Hosts autorisés - validation stricte
 if DEBUG:
     ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
@@ -133,6 +141,31 @@ if DEBUG:
 
 # Secure Proxy Header for HTTPS behind ngrok/proxies
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# ===================================
+# DURCISSEMENT SÉCURITÉ (PRODUCTION UNIQUEMENT)
+# Activé automatiquement quand DEBUG=False. Suppose un reverse-proxy TLS
+# (Nginx/Traefik) devant l'app qui envoie X-Forwarded-Proto=https.
+# ===================================
+if not DEBUG:
+    # Redirige tout le trafic HTTP vers HTTPS
+    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True').lower() in ('true', '1', 'yes')
+    # Cookies uniquement transmis en HTTPS
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # Cookies inaccessibles au JS et protégés CSRF
+    SESSION_COOKIE_HTTPONLY = True
+    CSRF_COOKIE_HTTPONLY = False  # doit rester lisible par le front si CSRF utilisé côté web
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SAMESITE = 'Lax'
+    # HSTS : force HTTPS côté navigateur (1 an, sous-domaines inclus, préchargement)
+    SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '31536000'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    # Anti-sniffing MIME et clickjacking
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
 
 # Application definition
@@ -169,7 +202,11 @@ CORS_ALLOWED_ORIGINS = os.getenv(
 if not DEBUG and not CORS_ALLOWED_ORIGINS:
     raise ValueError("CORS_ALLOWED_ORIGINS must be configured in production (.env file)")
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_HEADERS = ['*']
+# Liste explicite d'en-têtes autorisés (déconseillé d'utiliser '*' avec credentials).
+# On étend les en-têtes par défaut de django-cors-headers avec 'idempotency-key'
+# (utilisé par le front sur les opérations financières).
+from corsheaders.defaults import default_headers
+CORS_ALLOW_HEADERS = list(default_headers) + ['idempotency-key']
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -198,9 +235,16 @@ REST_FRAMEWORK = {
 
 AUTH_USER_MODEL = 'Accounts.User'
 
+# Durées configurables via .env. Valeurs par défaut adaptées à une app mobile :
+#   access  = 60 min  (le front rafraîchit automatiquement sur 401)
+#   refresh = 7 jours (rotation + blacklist activées => sécurité conservée)
+# NB: 3 min / 10 min (ancienne valeur) déconnectait l'utilisateur en continu.
+JWT_ACCESS_MINUTES = int(os.getenv('JWT_ACCESS_MINUTES', '60'))
+JWT_REFRESH_DAYS = int(os.getenv('JWT_REFRESH_DAYS', '7'))
+
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=3),
-    'REFRESH_TOKEN_LIFETIME': timedelta(minutes=10),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=JWT_ACCESS_MINUTES),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=JWT_REFRESH_DAYS),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
@@ -217,6 +261,23 @@ FLUTTERWAVE_CURRENCY = os.getenv('FLUTTERWAVE_CURRENCY', 'EUR')
 # ExchangeRate-API Configuration
 EXCHANGERATE_API_KEY = os.getenv('EXCHANGERATE_API_KEY', '')
 EXCHANGERATE_BASE_URL = "https://v6.exchangerate-api.com/v6/"
+
+# ===================================
+# Moteur de recommandation d'offres
+# ===================================
+# Poids des sous-scores (normalisés en interne). Surcharge partielle possible.
+RECOMMENDATION_WEIGHTS = {
+    'corridor_affinity': float(os.getenv('RECO_W_CORRIDOR', '0.30')),
+    'rate_competitiveness': float(os.getenv('RECO_W_RATE', '0.30')),
+    'amount_fit': float(os.getenv('RECO_W_AMOUNT', '0.15')),
+    'reputation': float(os.getenv('RECO_W_REPUTATION', '0.15')),
+    'freshness': float(os.getenv('RECO_W_FRESHNESS', '0.10')),
+}
+# Score minimal (0-100) pour déclencher une notification push.
+RECOMMENDATION_NOTIFY_THRESHOLD = int(os.getenv('RECOMMENDATION_NOTIFY_THRESHOLD', '62'))
+# Bornes de candidats (performance).
+RECOMMENDATION_MAX_CANDIDATES = int(os.getenv('RECOMMENDATION_MAX_CANDIDATES', '1000'))
+RECOMMENDATION_FEED_CANDIDATES = int(os.getenv('RECOMMENDATION_FEED_CANDIDATES', '200'))
 
 
 # Swagger / API Documentation Settings
@@ -389,9 +450,28 @@ CACHES = {
 }
 
 
-# Email Configuration (Set to Console for fallback, as project uses SMS-only)
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# Email Configuration
+# Si EMAIL_HOST est configuré (typiquement en prod), on envoie réellement via SMTP.
+# Sinon on retombe sur la console (dev). En prod SANS SMTP, on lève une erreur car
+# NotificationService envoie des emails (dépôts, offres...) : ils partiraient dans le vide.
+EMAIL_HOST = os.getenv('EMAIL_HOST', '')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
+EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False').lower() in ('true', '1', 'yes')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@alsaba.com')
+
+if EMAIL_HOST:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+elif not DEBUG:
+    raise ValueError(
+        "EMAIL_HOST doit être configuré en production (.env) : "
+        "les notifications par email (dépôts, offres, transactions) en dépendent.\n"
+        "Sinon, retirez le canal 'email' des appels NotificationService.send(...)."
+    )
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 # Validation stricte des clés API
 DIDIT_API_KEY = os.getenv('DIDIT_API_KEY')

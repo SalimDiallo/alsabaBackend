@@ -104,7 +104,7 @@ class DepositView(APIView):
             429: {"description": "Rate limit reached (throttle)"}
         }
     )
-    @idempotent_endpoint()
+    @idempotent_endpoint(required=True)
     def post(self, request):
         serializer = DepositSerializer(data=request.data, context={'request': request})
         if not serializer.is_valid():
@@ -245,7 +245,7 @@ class WithdrawalView(APIView):
             429: {"description": "Limite de taux atteinte (throttle)"}
         }
     )
-    @idempotent_endpoint()
+    @idempotent_endpoint(required=True)
     def post(self, request):
         serializer = WithdrawalSerializer(data=request.data)
         if not serializer.is_valid():
@@ -472,8 +472,13 @@ class FlutterwaveWebhookView(APIView):
         Processes Flutterwave webhooks with signature verification
         """
         try:
-            # Retrieve signature from headers
-            signature = request.META.get('HTTP_X_FLUTTERWAVE_SIGNATURE') or \
+            # Retrieve signature from headers.
+            # Flutterwave v3 envoie l'en-tête 'verif-hash' (-> HTTP_VERIF_HASH).
+            # Flutterwave v4 envoie 'flutterwave-signature' (-> HTTP_FLUTTERWAVE_SIGNATURE).
+            # On lit toutes les variantes connues pour rester compatible.
+            signature = request.META.get('HTTP_VERIF_HASH') or \
+                       request.META.get('HTTP_FLUTTERWAVE_SIGNATURE') or \
+                       request.META.get('HTTP_X_FLUTTERWAVE_SIGNATURE') or \
                        request.META.get('HTTP_SIGNATURE') or \
                        request.META.get('HTTP_X_VERIFY_HASH')
             raw_body = request.body

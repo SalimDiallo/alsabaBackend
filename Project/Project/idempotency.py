@@ -8,14 +8,18 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-def idempotent_endpoint(cache_name='default', timeout=86400):
+def idempotent_endpoint(cache_name='default', timeout=86400, required=False):
     """
     Decorator to ensure idempotency for an API endpoint.
     Uses 'Idempotency-Key' header to cache responses.
-    
+
     Args:
         cache_name (str): The Django cache alias to use (default: 'default').
         timeout (int): Expiration time in seconds (default: 24h).
+        required (bool): If True, reject requests without an Idempotency-Key
+            header (400). À activer sur les opérations financières critiques
+            (dépôt, retrait, création/acceptation d'offre) pour empêcher les
+            doubles soumissions.
     """
     def decorator(view_func):
         @wraps(view_func)
@@ -23,8 +27,21 @@ def idempotent_endpoint(cache_name='default', timeout=86400):
             # 1. Check for Idempotency-Key header
             idempotency_key = request.headers.get('Idempotency-Key')
             if not idempotency_key:
-                # If optional or missing, proceed as normal OR reject depending on strictness
-                # Here we proceed but log it. For critical financial ops, client SHOULD send it.
+                if required:
+                    logger.warning(
+                        "idempotency_key_missing_on_required_endpoint",
+                        path=request.path,
+                        user_id=str(request.user.id) if request.user.is_authenticated else 'anon'
+                    )
+                    return Response(
+                        {
+                            "success": False,
+                            "error": "Idempotency-Key header requis pour cette opération",
+                            "code": "idempotency_key_required"
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                # Optionnel : on procède normalement.
                 return view_func(view_instance, request, *args, **kwargs)
 
             # 2. Scope the key to the user (security)

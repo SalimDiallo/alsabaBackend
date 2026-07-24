@@ -54,6 +54,7 @@ services:
       - DEBUG=${DEBUG:-True}
       - SECRET_KEY=${SECRET_KEY:?err}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:?err}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8080}
       - DATABASE_ENGINE=django.db.backends.postgresql
       - DATABASE_NAME=${POSTGRES_DB:?err}
       - DATABASE_USER=${POSTGRES_USER:?err}
@@ -215,7 +216,9 @@ services:
       - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL}
     volumes:
       - backup_data:/backups
-      - ./docker/backup:/scripts:ro
+      # Scripts fournis par l'image (fins de ligne normalisees LF).
+      # Ne pas monter ./docker/backup:/scripts : un checkout Windows (CRLF)
+      # casserait l'execution des scripts bash dans le conteneur.
     depends_on:
       db:
         condition: service_healthy
