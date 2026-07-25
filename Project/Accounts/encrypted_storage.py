@@ -26,7 +26,6 @@ Security Notes:
 import base64
 import hashlib
 import io
-import os
 from django.conf import settings
 from django.core.files.base import ContentFile, File
 from django.core.files.storage import FileSystemStorage
@@ -38,14 +37,25 @@ logger = structlog.get_logger(__name__)
 
 def get_fernet_key():
     """
-    Derive a Fernet-compatible key from Django's SECRET_KEY.
-    
+    Derive a Fernet-compatible key from KYC_ENCRYPTION_KEY (ou SECRET_KEY).
+
     Fernet requires a 32-byte base64-encoded key. We derive this
-    from SECRET_KEY using SHA256 to ensure consistent key length.
+    using SHA256 to ensure consistent key length.
+
+    /!\\ IMPORTANT — cette cle dechiffre les documents d'identite deja stockes.
+    La changer rend TOUS les documents existants definitivement illisibles.
+
+    KYC_ENCRYPTION_KEY existe pour decoupler ce secret de SECRET_KEY : sans lui,
+    toute rotation de SECRET_KEY (pratique de securite courante) detruirait
+    silencieusement les documents KYC. Si KYC_ENCRYPTION_KEY n'est pas defini on
+    retombe sur SECRET_KEY, ce qui preserve le dechiffrement des donnees deja
+    ecrites avant l'introduction de cette variable.
     """
-    # Use SECRET_KEY as the basis for encryption key
-    secret_key = settings.SECRET_KEY.encode('utf-8')
-    
+    # Use the dedicated KYC key if configured, else fall back to SECRET_KEY
+    # (backward compatible with documents encrypted before this split).
+    base_secret = getattr(settings, 'KYC_ENCRYPTION_KEY', None) or settings.SECRET_KEY
+    secret_key = base_secret.encode('utf-8')
+
     # SHA256 produces 32 bytes, perfect for Fernet
     key_hash = hashlib.sha256(secret_key).digest()
     

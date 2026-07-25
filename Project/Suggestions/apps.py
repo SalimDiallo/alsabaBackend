@@ -6,4 +6,4 @@ class SuggestionsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
 
     def ready(self):
-        import Suggestions.signals
+        pass

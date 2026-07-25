@@ -129,6 +129,13 @@ else:
 if DEBUG:
     ALLOWED_HOSTS += ['.ngrok-free.app', '.ngrok.io', '.ngrok-free.dev']
 
+# Le healthcheck Docker sonde http://localhost:8000/health/ depuis l'intérieur du
+# conteneur : sans ces hôtes, Django répondrait 400 en production et le conteneur
+# serait marqué unhealthy en boucle.
+for _internal_host in ('localhost', '127.0.0.1'):
+    if _internal_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_internal_host)
+
 # CSRF Trusted Origins for webhooks and external services
 CSRF_TRUSTED_ORIGINS = os.getenv(
     'CSRF_TRUSTED_ORIGINS',
@@ -150,6 +157,9 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 if not DEBUG:
     # Redirige tout le trafic HTTP vers HTTPS
     SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True').lower() in ('true', '1', 'yes')
+    # ...sauf les sondes de santé, appelées en HTTP interne (Docker, load balancer) :
+    # un 301 les ferait échouer.
+    SECURE_REDIRECT_EXEMPT = [r'^health/$', r'^ready/$']
     # Cookies uniquement transmis en HTTPS
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
@@ -251,11 +261,9 @@ SIMPLE_JWT = {
 }
 
 # Flutterwave Configuration
-FLUTTERWAVE_SECRET_KEY = os.getenv('FLUTTERWAVE_SECRET_KEY', '')
-FLUTTERWAVE_PUBLIC_KEY = os.getenv('FLUTTERWAVE_PUBLIC_KEY', '')
-FLUTTERWAVE_ENCRYPTION_KEY = os.getenv('FLUTTERWAVE_ENCRYPTION_KEY', '')
-FLUTTERWAVE_WEBHOOK_SECRET = os.getenv('FLUTTERWAVE_WEBHOOK_SECRET', '')
-FLUTTERWAVE_ENVIRONMENT = os.getenv('FLUTTERWAVE_ENVIRONMENT', 'sandbox')
+# Les clés, l'environnement et les URLs sont définis plus bas, dans le bloc
+# Flutterwave complet (avec validation production). Ne pas les redéclarer ici :
+# le second bloc écrasait celui-ci, ce qui rendait ces lignes trompeuses.
 FLUTTERWAVE_CURRENCY = os.getenv('FLUTTERWAVE_CURRENCY', 'EUR')
 
 # ExchangeRate-API Configuration
@@ -431,7 +439,6 @@ CACHES = {
         'TIMEOUT': 300,
     },
     # ✅ NOUVEAU: Cache Redis dédié pour le throttling (distribué)
-    # ✅ NOUVEAU: Cache Redis dédié pour le throttling (distribué)
     'throttle': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'unique-throttle-snowflake',
@@ -473,6 +480,12 @@ elif not DEBUG:
 else:
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
+# Clé de chiffrement des documents KYC (Accounts/encrypted_storage.py).
+# Découplée de SECRET_KEY : sans elle, une rotation de SECRET_KEY rendrait
+# TOUS les documents d'identité déjà stockés définitivement illisibles.
+# Vide -> repli sur SECRET_KEY (compatible avec les documents déjà chiffrés).
+KYC_ENCRYPTION_KEY = os.getenv('KYC_ENCRYPTION_KEY', '')
+
 # Validation stricte des clés API
 DIDIT_API_KEY = os.getenv('DIDIT_API_KEY')
 if not DIDIT_API_KEY:
@@ -485,6 +498,17 @@ elif DIDIT_API_KEY == 'your-key-here':
 
 # Flutterwave Configuration avec validations
 FLUTTERWAVE_ENVIRONMENT = os.getenv('FLUTTERWAVE_ENVIRONMENT', 'sandbox' if DEBUG else 'production')
+# Validation stricte : le code teste `!= 'production'` pour choisir l'URL, donc
+# une faute de frappe ('prod', 'Production', 'test') bascule en sandbox EN
+# SILENCE — aucun paiement reel n'aboutit et la validation des cles de
+# production ci-dessous est sautee. On echoue au demarrage plutot que de laisser
+# passer ca.
+_FLUTTERWAVE_ENVS = ('sandbox', 'production')
+if FLUTTERWAVE_ENVIRONMENT not in _FLUTTERWAVE_ENVS:
+    raise ValueError(
+        f"FLUTTERWAVE_ENVIRONMENT invalide : '{FLUTTERWAVE_ENVIRONMENT}'. "
+        f"Valeurs acceptees : {', '.join(_FLUTTERWAVE_ENVS)}."
+    )
 # Sandbox
 FLUTTERWAVE_SANDBOX_CLIENT_ID = os.getenv('FLUTTERWAVE_SANDBOX_CLIENT_ID', '')
 FLUTTERWAVE_SANDBOX_CLIENT_SECRET = os.getenv('FLUTTERWAVE_SANDBOX_CLIENT_SECRET', '')
@@ -518,6 +542,16 @@ if not DEBUG:
         for key_name, key_value in required_keys:
             if not key_value:
                 raise ValueError(f"Production: {key_name} must be configured in .env")
+
+        # L'URL de redirection post-paiement a pour defaut 'https://google.com'.
+        # Laisser ce defaut en production renverrait l'utilisateur sur Google
+        # apres avoir paye, sans confirmation.
+        if not os.getenv('FLUTTERWAVE_REDIRECT_URL'):
+            raise ValueError(
+                "Production: FLUTTERWAVE_REDIRECT_URL must be configured in .env "
+                "(le defaut https://google.com renverrait l'utilisateur sur Google "
+                "apres paiement)."
+            )
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 

@@ -1,0 +1,76 @@
+# ===================================
+# Surcouche PRODUCTION
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Par rapport au compose de dev :
+#   - daphne (serveur ASGI) au lieu de runserver
+#   - nginx en frontal : TLS, fichiers statiques, montee WebSocket
+#   - plus aucun code monte en volume (l'image fait foi)
+#   - ports PostgreSQL et Redis fermes vers l'exterieur
+#   - pgadmin / ngrok / flower ne demarrent pas (profil "tools")
+# ===================================
+
+services:
+  db:
+    ports: !override []          # plus d'exposition de PostgreSQL sur l'hote
+
+  redis:
+    ports: !override []          # idem pour Redis
+
+  web:
+    # Serveur ASGI de production (valeur par defaut de l'image).
+    command: !reset null
+    environment:
+      - DEBUG=False
+      # Un seul conteneur doit migrer. Si tu passes web a plusieurs instances,
+      # bascule cette variable a False et lance `manage.py migrate` en tache
+      # de deploiement dediee, sinon les instances migrent en concurrence.
+      - RUN_MIGRATIONS=True
+    ports: !override []          # nginx est le seul point d'entree
+    volumes: !override
+      # Le code n'est plus monte : c'est l'image construite qui fait foi.
+      # Les credentials Firebase restent montes (exclus de l'image a dessein).
+      - ./Project/firebase-credentials.json:/app/firebase-credentials.json:ro
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+
+  celery_worker:
+    environment:
+      - DEBUG=False
+    volumes: !override
+      - ./Project/firebase-credentials.json:/app/firebase-credentials.json:ro
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+
+  celery_beat:
+    environment:
+      - DEBUG=False
+    volumes: !override []
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: alsaba_nginx
+    restart: unless-stopped
+    environment:
+      # Domaine servi. Renseigne NGINX_SERVER_NAME dans .env.
+      - NGINX_SERVER_NAME=${NGINX_SERVER_NAME:?err}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      # Certificats TLS : fullchain.pem + privkey.pem (voir CONFIGURATION.md)
+      - ./docker/nginx/certs:/etc/nginx/certs:ro
+      # Servis directement par nginx, sans passer par Daphne
+      - static_volume:/app/staticfiles:ro
+      - media_volume:/app/media:ro
+    depends_on:
+      - web
+    networks:
+      - alsaba_network
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O-", "--spider", "http://localhost/health/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3

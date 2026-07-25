@@ -1,4 +1,3 @@
-from django.urls import re_path
 from Notifications.routing import websocket_urlpatterns as notifications_urlpatterns
 
 websocket_urlpatterns = []

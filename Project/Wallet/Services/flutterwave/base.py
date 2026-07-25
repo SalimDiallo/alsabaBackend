@@ -268,8 +268,6 @@ class FlutterwaveBaseService:
             bool: True si la signature est valide
         """
         import hmac
-        import hashlib
-        import base64
         
         if not self.webhook_secret:
             logger.warning("webhook_secret_not_configured")

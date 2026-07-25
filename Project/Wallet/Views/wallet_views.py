@@ -2,12 +2,10 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from django.utils import timezone
-from django.db.models import Q
 from decimal import Decimal
 import structlog
 
-from ..models import Wallet, Transaction
+from ..models import Transaction
 from Accounts.utils import auth_utils
 from ..Services.wallet_service import wallet_service, WalletService
 from ..Serializers.wallet_serializers import (
@@ -18,8 +16,7 @@ from ..Serializers.wallet_serializers import (
     TransactionListSerializer,
     TransactionConfirmSerializer,
     TransactionCancelSerializer,
-    TransactionStatusUpdateSerializer,
-    EstimateFeesSerializer, # Added
+    TransactionStatusUpdateSerializer, # Added
 )
 
 from Project.idempotency import idempotent_endpoint
@@ -1099,7 +1096,7 @@ class EstimateFeesView(APIView):
                 }
             }, status=status.HTTP_200_OK)
 
-        except ValueError as e:
+        except ValueError:
             return Response({
                 "success": False,
                 "error": "Invalid amount",

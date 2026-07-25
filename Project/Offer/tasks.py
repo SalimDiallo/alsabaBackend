@@ -40,7 +40,7 @@ def check_expired_offers():
                offer.id, 
                reason="Auto-expiration: Finalization delay exceeded"
             )
-        except Exception as e:
+        except Exception:
             logger.exception("failed_to_expire_offer", offer_id=str(offer.id))
 
     return f"Cleaned {count_open} OPEN offers, Processed {expired_locked_offers.count()} LOCKED offers."

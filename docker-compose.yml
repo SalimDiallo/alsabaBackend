@@ -75,10 +75,49 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/1}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      - SENTRY_FORCED=${SENTRY_FORCED:-False}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-alsaba@1.0.0}
+      # Email SMTP : la tache d'envoi tourne dans le worker, les deux services
+      # en ont besoin. Sans ces variables, les confirmations de depot/retrait
+      # ne partent pas (le .env de la racine n'est pas monte dans le conteneur).
+      - KYC_ENCRYPTION_KEY=${KYC_ENCRYPTION_KEY:-}
+      - EMAIL_HOST=${EMAIL_HOST:-}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER:-}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD:-}
+      - EMAIL_USE_TLS=${EMAIL_USE_TLS:-True}
+      - EMAIL_USE_SSL=${EMAIL_USE_SSL:-False}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-noreply@alsaba.com}
+      # Taux de change : sans cette cle, le service retombe en silence sur des
+      # taux fixes codes en dur (Wallet/Services/exchange_rate_service.py).
+      - EXCHANGERATE_API_KEY=${EXCHANGERATE_API_KEY:-}
+      # Firebase : chemin DANS le conteneur (le volume monte ./Project sur /app).
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-/app/firebase-credentials.json}
+      # Flutterwave : sans FLUTTERWAVE_ENVIRONMENT, on reste en sandbox et aucun
+      # paiement reel n'aboutit.
+      - FLUTTERWAVE_ENVIRONMENT=${FLUTTERWAVE_ENVIRONMENT:-sandbox}
+      - FLUTTERWAVE_REDIRECT_URL=${FLUTTERWAVE_REDIRECT_URL:-}
+      - FLUTTERWAVE_TIMEOUT=${FLUTTERWAVE_TIMEOUT:-30}
+      - FLUTTERWAVE_MAX_RETRIES=${FLUTTERWAVE_MAX_RETRIES:-3}
+      - FLUTTERWAVE_RETRY_DELAY=${FLUTTERWAVE_RETRY_DELAY:-2}
+    # Dev uniquement : rechargement a chaud. L'image utilise daphne par defaut
+    # (voir Dockerfile) pour la production.
+    command: python manage.py runserver 0.0.0.0:8000
     ports:
       - "8000:8000"
+    healthcheck:
+      # Liveness uniquement : /ready/ ferait redemarrer web quand c'est Postgres
+      # qui est en vrac, ce qui n'arrange rien.
+      test: [ "CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/', timeout=5).status==200 else 1)" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     volumes:
       - ./Project:/app # Montage du code pour dev (hot reload)
+      # Credentials Firebase en lecture seule : exclus de l'image (.dockerignore)
+      # pour ne pas cuire la cle de compte de service dans les layers.
+      - ./Project/firebase-credentials.json:/app/firebase-credentials.json:ro
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     depends_on:
@@ -114,10 +153,34 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - SENTRY_FORCED=${SENTRY_FORCED:-False}
       - SENTRY_RELEASE=${SENTRY_RELEASE:-alsaba@1.0.0}
+      # Email SMTP : la tache d'envoi tourne dans le worker, les deux services
+      # en ont besoin. Sans ces variables, les confirmations de depot/retrait
+      # ne partent pas (le .env de la racine n'est pas monte dans le conteneur).
+      - KYC_ENCRYPTION_KEY=${KYC_ENCRYPTION_KEY:-}
+      - EMAIL_HOST=${EMAIL_HOST:-}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER:-}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD:-}
+      - EMAIL_USE_TLS=${EMAIL_USE_TLS:-True}
+      - EMAIL_USE_SSL=${EMAIL_USE_SSL:-False}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-noreply@alsaba.com}
+      # Taux de change : sans cette cle, le service retombe en silence sur des
+      # taux fixes codes en dur (Wallet/Services/exchange_rate_service.py).
+      - EXCHANGERATE_API_KEY=${EXCHANGERATE_API_KEY:-}
+      # Firebase : chemin DANS le conteneur (le volume monte ./Project sur /app).
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-/app/firebase-credentials.json}
+      # Flutterwave : sans FLUTTERWAVE_ENVIRONMENT, on reste en sandbox et aucun
+      # paiement reel n'aboutit.
+      - FLUTTERWAVE_ENVIRONMENT=${FLUTTERWAVE_ENVIRONMENT:-sandbox}
+      - FLUTTERWAVE_REDIRECT_URL=${FLUTTERWAVE_REDIRECT_URL:-}
+      - FLUTTERWAVE_TIMEOUT=${FLUTTERWAVE_TIMEOUT:-30}
+      - FLUTTERWAVE_MAX_RETRIES=${FLUTTERWAVE_MAX_RETRIES:-3}
+      - FLUTTERWAVE_RETRY_DELAY=${FLUTTERWAVE_RETRY_DELAY:-2}
     # Commande pour lancer le worker
     command: celery -A Project worker -l info
     volumes:
       - ./Project:/app
+      - ./Project/firebase-credentials.json:/app/firebase-credentials.json:ro
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     depends_on:
@@ -152,6 +215,9 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - SENTRY_FORCED=${SENTRY_FORCED:-False}
       - SENTRY_RELEASE=${SENTRY_RELEASE:-alsaba@1.0.0}
+      # Cadence des taches planifiees (liberation d'escrow, reconciliation).
+      - OFFER_CHECK_INTERVAL=${OFFER_CHECK_INTERVAL:-600}
+      - TRANSACTION_RECONCILE_INTERVAL=${TRANSACTION_RECONCILE_INTERVAL:-1800}
     # Commande pour lancer le scheduler
     command: celery -A Project beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
@@ -163,11 +229,41 @@ services:
     networks:
       - alsaba_network
 
+  # Flower : monitoring des workers, files et taches Celery
+  flower:
+    image: mher/flower:2.0
+    container_name: alsaba_flower
+    restart: unless-stopped
+    # Outil de dev : ne demarre qu'avec --profile tools
+    profiles: ["tools"]
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # Auth basique obligatoire : sans elle, l'UI expose les arguments des
+      # taches (montants, identifiants de transaction) a qui atteint le port.
+      - FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH:?err}
+      - FLOWER_PURGE_OFFLINE_WORKERS=300
+    ports:
+      # Bind localhost uniquement : a exposer via le reverse-proxy si besoin.
+      - "127.0.0.1:5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - alsaba_network
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O- --spider http://localhost:5555/healthcheck || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Service pgAdmin
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: alsaba_pgadmin
     restart: unless-stopped
+    # Outil de dev : ne demarre qu'avec --profile tools
+    profiles: ["tools"]
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@alsaba.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
@@ -187,6 +283,8 @@ services:
     image: ngrok/ngrok:latest
     container_name: alsaba_ngrok
     restart: unless-stopped
+    # Outil de dev : ne demarre qu'avec --profile tools
+    profiles: ["tools"]
     command: "http web:8000 --log stdout"
     ports:
       - "4040:4040"

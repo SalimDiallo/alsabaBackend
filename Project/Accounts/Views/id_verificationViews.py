@@ -1,7 +1,5 @@
-import base64
 from datetime import datetime
 from django.utils import timezone
-from django.core.files.base import ContentFile
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,10 +9,9 @@ from rest_framework import serializers
 import structlog
 
 from ..utils import auth_utils
-from ..models import User, KYCDocument
+from ..models import KYCDocument
 from ..Serializers.KYC_serializers import KYCVerifySerializer
 from ..Services.KYC_services import kyc_service
-from ..Services.kyc_security_service import kyc_security_service
 
 
 logger = structlog.get_logger(__name__)

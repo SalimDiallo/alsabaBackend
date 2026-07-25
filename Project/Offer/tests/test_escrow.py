@@ -16,7 +16,7 @@ import pytest
 from django.core.exceptions import ValidationError
 
 from Offer.services import SecureEscrowService
-from Offer.models import Offer, EscrowLock
+from Offer.models import EscrowLock
 
 
 # Montants exprimés en unités ; en cents = *100

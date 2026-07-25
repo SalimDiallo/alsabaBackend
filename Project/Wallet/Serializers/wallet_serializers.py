@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from django.utils import timezone
 from decimal import Decimal
 from ..models import Wallet, Transaction
 from drf_spectacular.utils import extend_schema_field

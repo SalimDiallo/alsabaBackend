@@ -3,10 +3,8 @@ from django.conf import settings
 from django.utils import timezone
 import uuid
 import structlog
-import pycountry
 import phonenumbers
 from decimal import Decimal
-from phonenumbers import PhoneNumberFormat
 from fernet_fields import EncryptedCharField
 
 logger = structlog.get_logger(__name__)
@@ -142,7 +140,6 @@ class Wallet(models.Model):
         Returns:
             str: Code devise (EUR, XAF, XOF, NGN, etc.)
         """
-        from django.conf import settings
         
         try:
             # Parse the number to get the country code

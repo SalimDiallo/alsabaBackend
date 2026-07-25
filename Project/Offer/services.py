@@ -1,6 +1,5 @@
 import hashlib
 import json
-import uuid
 from datetime import timedelta
 from decimal import Decimal
 
@@ -11,7 +10,6 @@ from django.db.models import F
 
 from .models import Offer, EscrowLock, AuditLog
 from Wallet.models import Wallet, Transaction
-from Wallet.Services.wallet_service import WalletService
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -161,7 +159,7 @@ class SecureEscrowService:
                 body=f"Your offer of {offer.amount_sell} {offer.currency_sell} was accepted. Please validate the beneficiary to finalize.",
                 notification_type='offer',
                 data={'offer_id': str(offer.id), 'screen': 'offer_detail'},
-                channels=['push', 'email']
+                channels=['db', 'push', 'email']
             )
             
         return offer
@@ -216,7 +214,7 @@ class SecureEscrowService:
                 body=f"You have been designated as the beneficiary for an exchange of {offer.amount_sell} {offer.currency_sell}. Please confirm to receive funds.",
                 notification_type='offer',
                 data={'offer_id': str(offer.id), 'screen': 'offer_detail'},
-                channels=['push', 'sms']
+                channels=['db', 'push']
             )
             
         if b2_user:
@@ -226,7 +224,7 @@ class SecureEscrowService:
                 body=f"You have been designated as the beneficiary for an exchange of {offer.amount_buy} {offer.currency_buy}. Please confirm to receive funds.",
                 notification_type='offer',
                 data={'offer_id': str(offer.id), 'screen': 'offer_detail'},
-                channels=['push', 'sms']
+                channels=['db', 'push']
             )
         
         return offer
@@ -444,7 +442,7 @@ class SecureEscrowService:
                 body=f"Sale of {offer.amount_sell} {offer.currency_sell} completed successfully.",
                 notification_type='transaction',
                 data={'offer_id': str(offer.id)},
-                channels=['push', 'email']
+                channels=['db', 'push', 'email']
             )
 
             # A2 bought (Debited) -> Success buying notification
@@ -454,7 +452,7 @@ class SecureEscrowService:
                 body=f"Purchase of {offer.amount_buy} {offer.currency_buy} completed successfully.",
                 notification_type='transaction',
                 data={'offer_id': str(offer.id)},
-                channels=['push', 'email']
+                channels=['db', 'push', 'email']
             )
 
     @staticmethod

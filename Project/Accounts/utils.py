@@ -4,10 +4,7 @@ import re
 import ipaddress
 from django.utils import timezone
 from django.core.cache import cache
-from django.conf import settings
 import structlog
-from datetime import datetime
-from typing import Dict, Any, Optional
 logger = structlog.get_logger(__name__)
 
 

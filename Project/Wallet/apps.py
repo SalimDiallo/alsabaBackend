@@ -8,4 +8,4 @@ class WalletConfig(AppConfig):
 
     def ready(self):
         # Import signals to automatically create wallets
-        import Wallet.signals
+        pass

@@ -48,5 +48,8 @@ EXPOSE 8000
 # Script d'entrée
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
-# Commande par défaut
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Commande par défaut : serveur ASGI de production.
+# daphne et non gunicorn : l'app utilise des WebSockets (channels), que gunicorn
+# en WSGI ne sait pas servir.
+# Le compose de dev surcharge cette commande par runserver (rechargement à chaud).
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "Project.asgi:application"]

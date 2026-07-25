@@ -4,7 +4,6 @@ Implements auditing, encryption, and access management.
 """
 
 import hashlib
-import logging
 import json
 from datetime import timedelta
 from django.utils import timezone
@@ -94,7 +93,6 @@ class KYCSecurityService:
         Returns:
             JWT signature with signed payload
         """
-        from rest_framework_simplejwt.tokens import Token
         
         document = KYCSecurityService.get_kyc_document_with_audit(
             document_id, user, purpose=f'download_{field_name}'

@@ -2,7 +2,6 @@ from django.conf import settings
 from django.utils import timezone
 from .models import UserPreference
 from .recommendation_engine import RecommendationEngine, DEFAULT_NOTIFY_THRESHOLD
-from Accounts.models import User
 import structlog
 
 logger = structlog.get_logger(__name__)

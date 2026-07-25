@@ -2,7 +2,6 @@ from celery import shared_task
 from django.utils import timezone
 from datetime import timedelta
 from .models import Transaction
-from .Services.wallet_service import WalletService
 from .Services.flutterwave_service import flutterwave_service
 import structlog
 
@@ -92,7 +91,7 @@ def reconcile_transactions(self):
                 
             # Other statuses (pending) let them continue
             
-        except Exception as e:
+        except Exception:
             logger.exception("reconciliation_error", tx_id=str(tx.id))
 
     return f"Reconciled {count} transactions."

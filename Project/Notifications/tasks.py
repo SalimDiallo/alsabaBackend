@@ -71,62 +71,33 @@ def send_push_notification_task(registration_ids, title, body, data=None):
         return str(e)
 
 
-
-
-@shared_task
-def send_sms_notification_task(phone_numbers, message, data=None):
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={'max_retries': 3},
+)
+def send_email_notification_task(self, recipient, subject, body):
     """
-    Envoie un SMS via Twilio à une liste de numéros de téléphone.
-    
-    Args:
-        phone_numbers (list): Liste de numéros au format E.164
-        message (str): Contenu du SMS
-        data (dict): Métadonnées optionnelles (pour logging)
+    Envoie une notification par email.
+
+    Contrairement au push, on reessaie : ce canal porte les confirmations de
+    depot et de retrait, qui servent de trace ecrite pour l'utilisateur.
+    Un echec SMTP transitoire ne doit pas faire disparaitre la notification.
     """
-    from twilio.rest import Client
-    
-    account_sid = os.getenv('TWILIO_ACCOUNT_SID')
-    auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-    from_number = os.getenv('TWILIO_PHONE_NUMBER')
-    
-    if not all([account_sid, auth_token, from_number]):
-        logger.error("twilio_credentials_missing", 
-                    has_sid=bool(account_sid), 
-                    has_token=bool(auth_token), 
-                    has_number=bool(from_number))
-        return "Twilio not configured"
-    
-    if not phone_numbers:
-        return "No phone numbers provided"
-    
-    try:
-        client = Client(account_sid, auth_token)
-    except Exception as e:
-        logger.exception("twilio_client_init_failed")
-        return f"Twilio client error: {str(e)}"
-    
-    success_count = 0
-    failed_numbers = []
-    
-    for phone_number in phone_numbers:
-        try:
-            sms = client.messages.create(
-                body=message,
-                from_=from_number,
-                to=phone_number
-            )
-            success_count += 1
-            logger.info("sms_sent_success", to=phone_number, sid=sms.sid, status=sms.status)
-        except Exception as e:
-            failed_numbers.append(phone_number)
-            logger.error("sms_send_failed", to=phone_number, error=str(e))
-    
-    if failed_numbers:
-        logger.info("sms_send_partial_failure", 
-                    success=success_count, 
-                    failure=len(failed_numbers),
-                    failed_numbers_sample=failed_numbers[:5])
-    else:
-        logger.info("sms_send_complete", count=success_count)
-    
-    return f"Sent {success_count}/{len(phone_numbers)} SMS"
+    from django.conf import settings
+    from django.core.mail import send_mail
+
+    if not recipient:
+        return "No recipient"
+
+    send_mail(
+        subject=subject,
+        message=body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[recipient],
+        fail_silently=False,  # on veut l'exception pour declencher le retry
+    )
+    logger.info("email_sent", subject=subject)
+    return f"Sent email to 1 recipient"
+

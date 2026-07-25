@@ -2,8 +2,6 @@ from functools import wraps
 from django.core.cache import caches
 from rest_framework.response import Response
 from rest_framework import status
-import hashlib
-import json
 import structlog
 
 logger = structlog.get_logger(__name__)

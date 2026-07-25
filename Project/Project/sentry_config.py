@@ -81,11 +81,17 @@ def traces_sampler(sampling_context):
     Permet de capturer 100% des transactions critiques et 10% des autres.
     """
     # Contexte de la transaction
-    asgi_scope = sampling_context.get("asgi_scope")
-    
-    if asgi_scope:
-        path = asgi_scope.get("path", "")
-        
+    asgi_scope = sampling_context.get("asgi_scope") or sampling_context.get("wsgi_environ") or {}
+    path = asgi_scope.get("path") or asgi_scope.get("PATH_INFO") or ""
+    transaction_name = sampling_context.get("transaction_context", {}).get("name", "")
+
+    # Ignorer les sondes de santé : elles sont appelées en continu par Docker
+    # et le load balancer, et brûleraient le quota de transactions pour rien.
+    noise_paths = ('/health/', '/ready/', '/ping/')
+    if path in noise_paths or transaction_name in noise_paths:
+        return 0.0
+
+    if path:
         # 100% pour les endpoints critiques
         critical_paths = [
             '/api/wallet/deposit/',
@@ -103,14 +109,7 @@ def traces_sampler(sampling_context):
         if '/webhook/' in path:
             return 0.5
         
-        # 10% pour le reste
-        return 0.1
-    
-    # Ignorer les health checks et pings
-    if sampling_context.get("transaction_context", {}).get("name") in ["/health/", "/ping/"]:
-        return 0.0
-    
-    # Par défaut : 10%
+    # Par défaut : 10% (y compris les tâches Celery, qui n'ont pas de path)
     return 0.1
 
 
@@ -201,23 +200,26 @@ def add_transaction_context(transaction_type, user_id=None, currency=None, amoun
         amount (float): Montant
         **extra: Contexte additionnel
     """
-    with sentry_sdk.configure_scope() as scope:
-        # Tags
-        scope.set_tag("transaction_type", transaction_type)
-        if currency:
-            scope.set_tag("currency", currency)
-        
-        # Contexte utilisateur (sans PII)
-        if user_id:
-            scope.set_user({"id": str(user_id)})
-        
-        # Contexte personnalisé
-        scope.set_context("transaction", {
-            "type": transaction_type,
-            "currency": currency,
-            "amount": amount,
-            **extra
-        })
+    # Scope d'isolation : le contexte reste attaché à la requête / tâche Celery
+    # en cours, et non au span courant qui peut se fermer avant l'erreur.
+    scope = sentry_sdk.get_isolation_scope()
+
+    # Tags
+    scope.set_tag("transaction_type", transaction_type)
+    if currency:
+        scope.set_tag("currency", currency)
+
+    # Contexte utilisateur (sans PII)
+    if user_id:
+        scope.set_user({"id": str(user_id)})
+
+    # Contexte personnalisé
+    scope.set_context("transaction", {
+        "type": transaction_type,
+        "currency": currency,
+        "amount": amount,
+        **extra
+    })
 
 
 def capture_financial_error(error, transaction_type, user_id=None, amount=None, currency=None, **extra):
@@ -232,7 +234,7 @@ def capture_financial_error(error, transaction_type, user_id=None, amount=None, 
         currency (str): Devise
         **extra: Contexte additionnel
     """
-    with sentry_sdk.push_scope() as scope:
+    with sentry_sdk.new_scope() as scope:
         # Tags critiques
         scope.set_tag("critical", "true")
         scope.set_tag("category", "financial")

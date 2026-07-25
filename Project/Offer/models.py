@@ -2,7 +2,7 @@ from django.db import models
 from django.conf import settings
 import uuid
 from django.utils import timezone
-from fernet_fields import EncryptedCharField, EncryptedTextField, EncryptedIntegerField
+from fernet_fields import EncryptedTextField
 
 
 

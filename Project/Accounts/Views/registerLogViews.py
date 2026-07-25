@@ -7,7 +7,6 @@ from django.db import transaction as db_transaction, IntegrityError
 from django.utils import timezone
 from django.core.cache import cache
 import structlog
-from rest_framework.permissions import IsAuthenticated
 from ..utils import auth_utils
 from ..Serializers.OTP_serializers import PhoneAuthSerializer, VerifyOTPSerializer, ResendOTPSerializer
 

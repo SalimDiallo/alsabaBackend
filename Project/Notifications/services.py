@@ -1,29 +1,18 @@
 import structlog
-from django.conf import settings
 from .models import Notification, Device
 from django.utils import timezone
-from twilio.request_validator import RequestValidator
 
 logger = structlog.get_logger(__name__)
 
 class NotificationService:
     """
-    Unified service to send notifications via multiple channels (In-App, SMS/Twilio).
+    Unified service to send notifications via multiple channels
+    (In-App, WebSocket, Push FCM).
     Uses Celery for asynchronous sending (except for DB creation which is fast).
-    """
 
-    @staticmethod
-    def verify_twilio_signature(uri, signature, params):
-        """
-        Verifies the signature of a Twilio webhook.
-        """
-        auth_token = getattr(settings, 'TWILIO_AUTH_TOKEN', None)
-        if not auth_token:
-            logger.error("twilio_auth_token_missing")
-            return False
-            
-        validator = RequestValidator(auth_token)
-        return validator.validate(uri, params, signature)
+    Note: l'envoi de SMS a été retiré. L'OTP — le seul SMS du parcours — est
+    envoyé par Didit (Accounts/Services/OTP_services.py), pas depuis ici.
+    """
 
     @staticmethod
     def send(user, title, body, notification_type='system', data=None, channels=None):
@@ -36,10 +25,10 @@ class NotificationService:
             body (str): Message body.
             notification_type (str): Type (transaction, offer, etc.).
             data (dict): Meta data (e.g.: transaction ID) for deep linking.
-            channels (list): List of channels ['db', 'sms']. Default: all.
+            channels (list): List of channels ['db', 'ws', 'push']. Default: all.
         """
         if channels is None:
-            channels = ['db', 'sms', 'ws', 'push'] # Adding 'push' by default
+            channels = ['db', 'ws', 'push']
 
         if data is None:
             data = {}
@@ -102,19 +91,30 @@ class NotificationService:
             else:
                 logger.debug("no_fcm_tokens_for_push", user_id=str(user.id))
 
-        # 4. SMS Notification (Twilio) - Async
-        if 'sms' in channels:
-            # We retrieve all active phone numbers of the user
-            phone_numbers = list(Device.objects.filter(user=user, is_active=True).values_list('phone_number', flat=True))
-            
-            if phone_numbers:
-                # Celery Task Call
-                from .tasks import send_sms_notification_task
-                send_sms_notification_task.delay(
-                    phone_numbers=phone_numbers,
-                    message=f"{title}\n{body}",
-                    data=data
+        # 4. Email - Async
+        if 'email' in channels:
+            # L'email est facultatif sur User (l'inscription se fait par
+            # telephone) : la plupart des comptes n'en ont pas. On degrade en
+            # silence plutot que d'echouer, les autres canaux ont deja porte
+            # l'information.
+            recipient = (user.email or '').strip()
+            if recipient:
+                from .tasks import send_email_notification_task
+                send_email_notification_task.delay(
+                    recipient=recipient,
+                    subject=title,
+                    body=body,
                 )
             else:
-                logger.debug("no_active_phone_numbers_for_sms", user_id=str(user.id))
+                logger.debug("no_email_for_user", user_id=str(user.id))
+
+        # Garde-fou : un canal inconnu passait jusqu'ici en silence (c'est ce qui
+        # a fait disparaitre les notifications 'email' pendant longtemps).
+        unknown = set(channels) - {'db', 'ws', 'push', 'email'}
+        if unknown:
+            logger.warning(
+                "notification_unknown_channels_ignored",
+                channels=sorted(unknown),
+                user_id=str(user.id),
+            )
 

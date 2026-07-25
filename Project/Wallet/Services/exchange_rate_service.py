@@ -1,7 +1,6 @@
 from decimal import Decimal
 from django.core.cache import cache
 import structlog
-from django.conf import settings
 
 logger = structlog.get_logger(__name__)
 

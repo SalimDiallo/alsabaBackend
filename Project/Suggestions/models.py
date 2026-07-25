@@ -1,7 +1,5 @@
 from django.db import models
 from django.conf import settings
-from Offer.models import Offer
-import uuid
 
 class UserPreference(models.Model):
     """

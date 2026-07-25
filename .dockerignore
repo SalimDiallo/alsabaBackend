@@ -55,3 +55,6 @@ Dockerfile*
 tmp/
 temp/
 node_modules/
+
+# Cle de compte de service Firebase : montee en volume, jamais cuite dans l'image
+Project/firebase-credentials.json

@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from decimal import Decimal
 from typing import Dict, List, Optional
 
 from django.conf import settings

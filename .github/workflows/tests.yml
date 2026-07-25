@@ -1,0 +1,103 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, Developpement]
+  pull_request:
+    branches: [main, Developpement]
+
+concurrency:
+  # Un push qui suit de près le précédent annule le run devenu obsolète.
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      # Postgres est obligatoire : l'escrow repose sur select_for_update(), qui
+      # est un no-op silencieux sur SQLite. Tester le verrouillage des fonds sur
+      # SQLite donnerait une confiance fausse.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: alsaba_test
+          POSTGRES_USER: alsaba_user
+          POSTGRES_PASSWORD: alsaba_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alsaba_user -d alsaba_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7.2-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # DEBUG=True reproduit les conditions du conteneur web où la suite est
+      # conçue pour tourner (cache locmem, Celery en mode eager, clés externes
+      # remplacées par des placeholders au lieu de faire échouer le démarrage).
+      DEBUG: 'True'
+      SECRET_KEY: ci-secret-key-not-used-in-production
+      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      DATABASE_ENGINE: django.db.backends.postgresql
+      DATABASE_NAME: alsaba_test
+      DATABASE_USER: alsaba_user
+      DATABASE_PASSWORD: alsaba_password
+      DATABASE_HOST: localhost
+      DATABASE_PORT: '5432'
+      REDIS_URL: redis://localhost:6379/1
+      REDIS_BROKER_URL: redis://localhost:6379/0
+      REDIS_BACKEND_URL: redis://localhost:6379/0
+      # Aucun événement de CI ne doit polluer le projet Sentry.
+      SENTRY_DSN: ''
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Aligné sur le Dockerfile (python:3.12-slim) : la CI doit tester la
+          # version qui tourne réellement en production.
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: Project/requirements-dev.txt
+
+      - name: Installer les dépendances
+        working-directory: Project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Vérifier les migrations manquantes
+        working-directory: Project
+        # Attrape le cas classique : un champ modifié sans makemigrations, qui
+        # passe les tests mais casse le déploiement.
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Django system checks
+        working-directory: Project
+        run: python manage.py check
+
+      - name: Tests
+        working-directory: Project
+        run: pytest -v --cov --cov-report=term-missing --cov-report=xml
+
+      - name: Publier le rapport de couverture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: Project/coverage.xml
+          if-no-files-found: warn

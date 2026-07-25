@@ -76,7 +76,6 @@ class EncryptionUtils:
             str: Base64 encrypted payload
         """
         from Crypto.Util.Padding import pad
-        import json
         
         try:
             # 1. Data preparation (PKCS7 padding required for ECB)

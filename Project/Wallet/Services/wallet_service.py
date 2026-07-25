@@ -185,7 +185,7 @@ class WalletService:
                         is_default=False
                     )
                     transaction.payment_method_saved = new_payment_method
-                except Exception as e:
+                except Exception:
                     logger.exception("failed_to_save_payment_method", user_id=str(user.id))
 
             if not flutterwave_result["success"]:
@@ -370,7 +370,7 @@ class WalletService:
                         )
                     transaction.payment_method_saved = new_payment_method
                     transaction.save()
-                except Exception as e:
+                except Exception:
                     logger.exception("failed_to_save_payment_method", user_id=str(user.id))
 
         # FLUTTERWAVE CALL (Outside DB lock to avoid blocking the row too long)
@@ -525,7 +525,7 @@ class WalletService:
                     body=f"Your deposit of {transaction.amount_euros} {transaction.currency} has been confirmed.",
                     notification_type='transaction',
                     data={'transaction_id': str(transaction.id)},
-                    channels=['push', 'email']
+                    channels=['db', 'push', 'email']
                 )
 
                 return {"success": True, "message": "Deposit processed successfully"}
@@ -595,7 +595,7 @@ class WalletService:
                     body=f"Your withdrawal of {transaction.amount_euros} {transaction.currency} has been sent successfully.",
                     notification_type='transaction',
                     data={'transaction_id': str(transaction.id)},
-                    channels=['push', 'email']
+                    channels=['db', 'push', 'email']
                 )
 
                 return {"success": True, "message": "Withdrawal processed successfully"}
@@ -878,7 +878,7 @@ class WalletService:
                 "error": "Transaction not found",
                 "code": "transaction_not_found"
             }
-        except Exception as e:
+        except Exception:
             logger.exception("deposit_cancellation_error", transaction_id=str(transaction_id))
             return {
                 "success": False,
@@ -948,7 +948,7 @@ class WalletService:
                 "error": "Transaction not found",
                 "code": "transaction_not_found"
             }
-        except Exception as e:
+        except Exception:
             logger.exception("withdrawal_confirmation_error", transaction_id=str(transaction_id))
             return {
                 "success": False,
@@ -1022,7 +1022,7 @@ class WalletService:
                 "error": "Transaction not found",
                 "code": "transaction_not_found"
             }
-        except Exception as e:
+        except Exception:
             logger.exception("withdrawal_cancellation_error", transaction_id=str(transaction_id))
             return {
                 "success": False,

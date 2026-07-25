@@ -136,7 +136,7 @@ class CreateOfferView(APIView):
             
             except ValidationError as e:
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-            except Exception as e:
+            except Exception:
                 logger.exception("create_offer_failed", user_id=str(request.user.id))
                 return Response({'error': "An error occurred"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
@@ -250,7 +250,7 @@ class AcceptOfferView(APIView):
 
             except ValidationError as e:
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-            except Exception as e:
+            except Exception:
                 logger.exception("accept_offer_failed", offer_id=str(id), user_id=str(request.user.id))
                 return Response({'error': "Error during acceptance"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
@@ -290,7 +290,7 @@ class ValidateOfferView(APIView):
 
             except ValidationError as e:
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-            except Exception as e:
+            except Exception:
                 logger.exception("validate_offer_failed", offer_id=str(id), user_id=str(request.user.id))
                 return Response({'error': "Error during validation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
@@ -317,7 +317,7 @@ class ConfirmOfferView(APIView):
             return Response(OfferSerializer(offer).data, status=status.HTTP_200_OK)
         except ValidationError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
+        except Exception:
             logger.exception("confirm_offer_failed", offer_id=str(id))
             return Response({'error': "Error during confirmation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -344,7 +344,7 @@ class BeneficiaryConfirmView(APIView):
             return Response(OfferSerializer(offer).data, status=status.HTTP_200_OK)
         except ValidationError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
+        except Exception:
             logger.exception("beneficiary_confirm_failed", offer_id=str(id), user_id=str(request.user.id))
             return Response({'error': "Error during beneficiary confirmation"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -400,7 +400,7 @@ class DisputeOfferView(APIView):
                 return Response(OfferSerializer(offer).data, status=status.HTTP_200_OK)
             except ValidationError as e:
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-            except Exception as e:
+            except Exception:
                 logger.exception("dispute_offer_failed", offer_id=str(id))
                 return Response({'error': "Internal error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
@@ -441,7 +441,7 @@ class InitiateDisputeView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Offer.DoesNotExist:
             return Response({'error': 'Offer not found'}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
+        except Exception:
             logger.exception("initiate_dispute_failed", offer_id=offer_id)
             return Response(
                 {'error': 'Error during dispute creation'},
@@ -548,7 +548,7 @@ class ResolveDisputeView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Dispute.DoesNotExist:
             return Response({'error': 'Dispute not found'}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
+        except Exception:
             logger.exception("resolve_dispute_failed", dispute_id=dispute_id)
             return Response(
                 {'error': 'Error during resolution'},

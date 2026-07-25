@@ -3,9 +3,7 @@ Service to manage saved payment methods
 """
 import structlog
 from django.db import transaction as db_transaction
-from django.utils import timezone
 from ..models import PaymentMethod
-from django.conf import settings
 
 logger = structlog.get_logger(__name__)
 

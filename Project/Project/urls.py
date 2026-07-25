@@ -21,9 +21,15 @@ from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
+from . import health
+
 urlpatterns = [
     path('admin/', admin.site.urls),
-    
+
+    # Monitoring (liveness / readiness)
+    path('health/', health.liveness, name='health'),
+    path('ready/', health.readiness, name='ready'),
+
     # API endpoints
     path('api/accounts/', include('Accounts.urls')), 
     path('api/wallet/', include('Wallet.urls')),

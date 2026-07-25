@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Offer, EscrowLock, Dispute
+from .models import Offer, Dispute
 from Accounts.models import User
 
 class UserMinimalSerializer(serializers.ModelSerializer):
